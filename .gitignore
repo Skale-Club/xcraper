@@ -1,33 +1,234 @@
+# ============================================================
+# Xcraper .gitignore - Comprehensive Version
+# ============================================================
+
+# ============================================================
+# NODE.JS
+# ============================================================
+
 # Dependencies
 node_modules/
 
-# Build outputs
-dist/
-build/
+# Lock files (uncomment if you want to ignore lock files)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
 
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
+# Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Drizzle
-drizzle/meta/
+# ============================================================
+# TYPESCRIPT
+# ============================================================
 
-# Testing
+# TypeScript build cache
+*.tsbuildinfo
+
+# TypeScript cache
+*.tscache/
+
+# ============================================================
+# ENVIRONMENT FILES
+# ============================================================
+
+# Environment variables (keep .env.example files)
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+
+# ============================================================
+# BUILD OUTPUTS
+# ============================================================
+
+# Build directories
+dist/
+build/
+out/
+
+# Cache directories
+.cache/
+.parcel-cache/
+.vite/
+.eslintcache
+.stylelintcache
+
+# ============================================================
+# IDE / EDITOR
+# ============================================================
+
+# VS Code
+.vscode/
+
+# JetBrains IDEs (IntelliJ, WebStorm, PhpStorm)
+.idea/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Sublime Text
+.sublime-*
+*.sublime-project
+*.sublime-workspace
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+
+# ============================================================
+# OPERATING SYSTEM FILES
+# ============================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.stackdump
+[Dd]esktop.ini
+
+# Linux
+*~
+.directory
+
+# ============================================================
+# LOGS
+# ============================================================
+
+# Log directories and files
+logs/
+*.log
+
+# PM2 logs
+.pm2/
+
+# ============================================================
+# DATABASE
+# ============================================================
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# PostgreSQL local data (if any)
+pgdata/
+
+# ============================================================
+# TESTING
+# ============================================================
+
+# Test coverage
 coverage/
+.nyc_output/
+
+# Jest
+jest-results.json
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# ============================================================
+# SUPABASE
+# ============================================================
+
+# Supabase temporary files
+supabase/.temp/
+
+# ============================================================
+# DRIZZLE ORM
+# ============================================================
+
+# Drizzle meta files (generated, can be regenerated)
+# Uncomment if you don't want to track drizzle meta
+# drizzle/meta/
+
+# ============================================================
+# MISCELLANEOUS
+# ============================================================
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+tmp/
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Sensitive files
+*.pem
+*.key
+*.crt
+*.p12
+
+# Uploaded files (if stored locally)
+uploads/
+
+# Generated documentation
+docs/_build/
+
+# ============================================================
+# FRAMEWORK / TOOL SPECIFIC
+# ============================================================
+
+# Next.js (if used in future)
+.next/
+next-env.d.ts
+
+# Nuxt.js (if used in future)
+.nuxt/
+.output/
+
+# Svelte (if used in future)
+.svelte-kit/
+
+# Vercel
+.vercel
+
+# Netlify
+.netlify/
+
+# Docker
+docker-compose.override.yml
+
+# ============================================================
+# ADDITIONAL IGNORES FOR THIS PROJECT
+# ============================================================
+
+# Keep package-lock.json for dependency locking (do NOT ignore)
+# !package-lock.json
+
+# Keep .env.example files (do NOT ignore)
+# !**/.env.example

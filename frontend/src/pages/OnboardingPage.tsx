@@ -95,6 +95,7 @@ export default function OnboardingPage() {
         company: user?.company ?? '',
         phone: user?.phone ?? '',
     });
+    const displayedCredits = user?.totalCredits ?? user?.credits ?? 0;
 
     const buildPayload = () => ({
         name: formData.name.trim() || undefined,
@@ -324,7 +325,7 @@ export default function OnboardingPage() {
                 </div>
                 <div className="bg-green-50 rounded-lg p-4 text-center">
                     <p className="text-green-800 font-medium mb-1">Your Current Balance</p>
-                    <p className="text-3xl font-bold text-green-600">{user?.credits ?? 0} credits</p>
+                    <p className="text-3xl font-bold text-green-600">{displayedCredits} credits</p>
                     <p className="text-sm text-green-600 mt-1">Purchase more anytime from the Credits page</p>
                 </div>
             </div>

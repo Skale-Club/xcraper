@@ -149,10 +149,8 @@ const updateSettingsSchema = z.object({
     contactPhone: z.string().nullable().optional(),
     contactAddress: z.string().nullable().optional(),
 
-    // Custom code
-    googleAnalyticsId: z.string().nullable().optional(),
-    customHeadCode: z.string().nullable().optional(),
-    customBodyCode: z.string().nullable().optional(),
+    // Google Tag Manager
+    gtmContainerId: z.string().nullable().optional(),
 
     // Feature flags
     registrationEnabled: z.boolean().optional(),

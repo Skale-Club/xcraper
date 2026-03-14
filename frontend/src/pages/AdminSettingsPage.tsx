@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import PageIntro from '@/components/app/PageIntro';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { FileUpload } from '@/components/ui/file-upload';
 import { useToast } from '@/hooks/use-toast';
-import { settingsApi, ApiError, AdminSettings, AdminCreditPackage } from '@/lib/api';
+import { settingsApi, subscriptionApi, uploadApi, ApiError, AdminSettings, AdminCreditPackage, AdminSubscriptionPlan } from '@/lib/api';
 import {
     Loader2,
     Plus,
@@ -14,8 +14,14 @@ import {
     Globe,
     Palette,
     DollarSign,
-    Code,
+    Cpu,
     Settings as SettingsIcon,
+    Eye,
+    EyeOff,
+    Star,
+    Coins,
+    Zap,
+    Users,
 } from 'lucide-react';
 
 type SettingsTab = 'branding' | 'seo' | 'content' | 'pricing' | 'advanced';
@@ -71,6 +77,51 @@ export default function AdminSettingsPage() {
         },
     });
 
+    const updatePackageMutation = useMutation({
+        mutationFn: ({ id, data }: { id: string; data: Parameters<typeof settingsApi.updatePackage>[1] }) =>
+            settingsApi.updatePackage(id, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['admin-settings'] });
+            toast({ title: 'Package updated successfully!' });
+        },
+        onError: (error: Error) => {
+            const message = error instanceof ApiError ? error.message : 'Failed to update package';
+            toast({ variant: 'destructive', title: 'Error', description: message });
+        },
+    });
+
+    const { data: plansData } = useQuery({
+        queryKey: ['admin-subscription-plans'],
+        queryFn: () => subscriptionApi.getAdminPlans(),
+    });
+
+    const subscriptionPlans: AdminSubscriptionPlan[] = plansData?.plans ?? [];
+
+    const updatePlanMutation = useMutation({
+        mutationFn: ({ id, data }: { id: string; data: Partial<AdminSubscriptionPlan> }) =>
+            subscriptionApi.updatePlan(id, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['admin-subscription-plans'] });
+            toast({ title: 'Plan updated successfully!' });
+        },
+        onError: (error: Error) => {
+            const message = error instanceof ApiError ? error.message : 'Failed to update plan';
+            toast({ variant: 'destructive', title: 'Error', description: message });
+        },
+    });
+
+    const deletePlanMutation = useMutation({
+        mutationFn: (id: string) => subscriptionApi.deletePlan(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['admin-subscription-plans'] });
+            toast({ title: 'Plan deleted successfully!' });
+        },
+        onError: (error: Error) => {
+            const message = error instanceof ApiError ? error.message : 'Failed to delete plan';
+            toast({ variant: 'destructive', title: 'Error', description: message });
+        },
+    });
+
     const handleSave = (data: Partial<AdminSettings>) => {
         updateMutation.mutate(data);
     };
@@ -82,7 +133,7 @@ export default function AdminSettingsPage() {
         { id: 'seo', label: 'SEO', icon: Globe },
         { id: 'content', label: 'Content', icon: SettingsIcon },
         { id: 'pricing', label: 'Pricing', icon: DollarSign },
-        { id: 'advanced', label: 'Advanced', icon: Code },
+        { id: 'advanced', label: 'Advanced', icon: Cpu },
     ];
 
     if (isLoading) {
@@ -94,25 +145,19 @@ export default function AdminSettingsPage() {
     }
 
     return (
-        <div className="mx-auto max-w-7xl space-y-8">
-            <PageIntro
-                eyebrow="Administration"
-                title="Admin Settings"
-                description="Configure the brand, landing page, pricing packages, and advanced platform settings."
-            />
-
+        <div className="w-full space-y-8">
             <div className="flex flex-col gap-8 lg:flex-row">
                 <div className="lg:w-64 lg:flex-shrink-0">
-                    <Card>
+                    <Card className="border-border">
                         <CardContent className="p-2">
                             <nav className="space-y-1">
                                 {tabs.map((tab) => (
                                     <button
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id)}
-                                        className={`w-full flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${activeTab === tab.id
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'text-gray-600 hover:bg-gray-100'
+                                        className={`w-full flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === tab.id
+                                            ? 'bg-primary text-primary-foreground shadow-sm'
+                                            : 'text-slate-700 dark:text-white hover:bg-muted hover:text-slate-900 dark:hover:text-white'
                                             }`}
                                     >
                                         <tab.icon className="h-4 w-4" />
@@ -161,25 +206,37 @@ export default function AdminSettingsPage() {
                                         placeholder="The most powerful Google Maps scraping tool..."
                                     />
                                 </div>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                                     <div className="space-y-2">
-                                        <Label htmlFor="logoUrl">Logo URL</Label>
-                                        <Input
-                                            id="logoUrl"
-                                            type="url"
-                                            defaultValue={settings.logoUrl || ''}
-                                            onBlur={(e) => handleSave({ logoUrl: optionalValue(e.target.value) })}
-                                            placeholder="https://example.com/logo.png"
+                                        <Label>Logo</Label>
+                                        <FileUpload
+                                            currentUrl={settings.logoUrl}
+                                            accept="image/png,image/jpeg,image/svg+xml,image/webp,image/x-icon"
+                                            maxSize={5 * 1024 * 1024}
+                                            onUpload={async (file) => {
+                                                const result = await uploadApi.uploadLogo(file);
+                                                handleSave({ logoUrl: result.url });
+                                            }}
+                                            onDelete={async () => {
+                                                await uploadApi.deleteLogo();
+                                                handleSave({ logoUrl: undefined });
+                                            }}
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="faviconUrl">Favicon URL</Label>
-                                        <Input
-                                            id="faviconUrl"
-                                            type="url"
-                                            defaultValue={settings.faviconUrl || ''}
-                                            onBlur={(e) => handleSave({ faviconUrl: optionalValue(e.target.value) })}
-                                            placeholder="https://example.com/favicon.ico"
+                                        <Label>Favicon</Label>
+                                        <FileUpload
+                                            currentUrl={settings.faviconUrl}
+                                            accept="image/png,image/x-icon,image/vnd.microsoft.icon"
+                                            maxSize={1 * 1024 * 1024}
+                                            onUpload={async (file) => {
+                                                const result = await uploadApi.uploadFavicon(file);
+                                                handleSave({ faviconUrl: result.url });
+                                            }}
+                                            onDelete={async () => {
+                                                await uploadApi.deleteFavicon();
+                                                handleSave({ faviconUrl: undefined });
+                                            }}
                                         />
                                     </div>
                                 </div>
@@ -221,15 +278,17 @@ export default function AdminSettingsPage() {
                                         placeholder="google maps scraper, lead generation, business contacts"
                                     />
                                 </div>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                                     <div className="space-y-2">
-                                        <Label htmlFor="ogImageUrl">Open Graph Image URL</Label>
-                                        <Input
-                                            id="ogImageUrl"
-                                            type="url"
-                                            defaultValue={settings.ogImageUrl || ''}
-                                            onBlur={(e) => handleSave({ ogImageUrl: optionalValue(e.target.value) })}
-                                            placeholder="https://example.com/og-image.png"
+                                        <Label>Open Graph Image</Label>
+                                        <FileUpload
+                                            currentUrl={settings.ogImageUrl}
+                                            accept="image/png,image/jpeg,image/webp"
+                                            maxSize={5 * 1024 * 1024}
+                                            onUpload={async (file) => {
+                                                const result = await uploadApi.uploadOgImage(file);
+                                                handleSave({ ogImageUrl: result.url });
+                                            }}
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -378,95 +437,298 @@ export default function AdminSettingsPage() {
                     )}
 
                     {activeTab === 'pricing' && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Credit Packages</CardTitle>
-                                <CardDescription>Manage pricing packages</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4">
-                                    {packages.map((pkg) => (
-                                        <div
-                                            key={pkg.id}
-                                            className="flex items-center justify-between rounded-lg bg-gray-50 p-4"
-                                        >
-                                            <div>
-                                                <p className="font-medium">{pkg.name}</p>
-                                                <p className="text-sm text-gray-500">
-                                                    {pkg.credits} credits - ${pkg.price}
-                                                </p>
+                        <div className="space-y-6">
+                            {/* Subscription Plans */}
+                            <Card className="border-border">
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <CardTitle>Subscription Plans</CardTitle>
+                                            <CardDescription>Manage subscription plans visible to users</CardDescription>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <div className="flex items-center gap-1">
+                                                <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                                                {subscriptionPlans.filter(p => p.isActive).length} active
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                {pkg.isPopular && (
-                                                    <span className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground">
-                                                        Popular
-                                                    </span>
-                                                )}
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => deletePackageMutation.mutate(pkg.id)}
-                                                >
-                                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                                </Button>
+                                            <span className="opacity-40">|</span>
+                                            <div className="flex items-center gap-1">
+                                                <div className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                                                {subscriptionPlans.filter(p => !p.isActive).length} hidden
                                             </div>
                                         </div>
-                                    ))}
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-3">
+                                        {subscriptionPlans
+                                            .sort((a, b) => a.displayOrder - b.displayOrder)
+                                            .map((plan) => (
+                                            <div
+                                                key={plan.id}
+                                                className={`group relative rounded-xl border p-4 transition-all duration-200 ${
+                                                    plan.isActive
+                                                        ? 'border-border bg-card'
+                                                        : 'border-border/50 bg-muted/30 opacity-60'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-4 min-w-0">
+                                                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                                                            plan.isActive
+                                                                ? 'bg-primary/10 text-primary'
+                                                                : 'bg-muted text-muted-foreground'
+                                                        }`}>
+                                                            <Zap className="h-5 w-5" />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="font-semibold text-foreground truncate">{plan.name}</p>
+                                                                {!plan.isActive && (
+                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                                                        <EyeOff className="h-2.5 w-2.5" />
+                                                                        Hidden
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="mt-0.5 text-sm text-muted-foreground">
+                                                                <span className="font-medium text-foreground">{plan.monthlyCredits}</span> credits/mo
+                                                                <span className="mx-1.5 opacity-40">&middot;</span>
+                                                                <span className="font-medium text-foreground">${plan.price}</span>/{plan.billingInterval === 'yearly' ? 'yr' : 'mo'}
+                                                                {plan.subscriberCount > 0 && (
+                                                                    <>
+                                                                        <span className="mx-1.5 opacity-40">&middot;</span>
+                                                                        <span className="inline-flex items-center gap-1">
+                                                                            <Users className="inline h-3 w-3" />
+                                                                            {plan.subscriberCount}
+                                                                        </span>
+                                                                    </>
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </div>
 
-                                    <Button
-                                        variant="outline"
-                                        className="w-full"
-                                        onClick={() => {
-                                            createPackageMutation.mutate({
-                                                name: 'New Package',
-                                                credits: 100,
-                                                price: '19.99',
-                                            });
-                                        }}
-                                    >
-                                        <Plus className="mr-2 h-4 w-4" />
-                                        Add Package
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                                                            title={plan.isActive ? 'Hide from users' : 'Show to users'}
+                                                            onClick={() => updatePlanMutation.mutate({
+                                                                id: plan.id,
+                                                                data: { isActive: !plan.isActive },
+                                                            })}
+                                                        >
+                                                            {plan.isActive ? (
+                                                                <Eye className="h-3.5 w-3.5" />
+                                                            ) : (
+                                                                <EyeOff className="h-3.5 w-3.5" />
+                                                            )}
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                                            title={plan.subscriberCount > 0 ? 'Cannot delete plan with subscribers' : 'Delete plan'}
+                                                            disabled={plan.subscriberCount > 0}
+                                                            onClick={() => deletePlanMutation.mutate(plan.id)}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {subscriptionPlans.length === 0 && (
+                                            <div className="flex flex-col items-center justify-center py-10 text-center">
+                                                <div className="rounded-full bg-muted p-3 mb-3">
+                                                    <Zap className="h-6 w-6 text-muted-foreground" />
+                                                </div>
+                                                <p className="text-sm font-medium text-foreground">No subscription plans yet</p>
+                                                <p className="mt-1 text-xs text-muted-foreground">Subscription plans are created via Stripe integration.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Credit Packages */}
+                            <Card className="border-border">
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <CardTitle>Credit Packages</CardTitle>
+                                            <CardDescription>Manage one-time credit packages for purchase</CardDescription>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <div className="flex items-center gap-1">
+                                                <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                                                {packages.filter(p => p.isActive).length} active
+                                            </div>
+                                            <span className="opacity-40">|</span>
+                                            <div className="flex items-center gap-1">
+                                                <div className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                                                {packages.filter(p => !p.isActive).length} hidden
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-3">
+                                        {packages
+                                            .sort((a, b) => a.sortOrder - b.sortOrder)
+                                            .map((pkg) => (
+                                            <div
+                                                key={pkg.id}
+                                                className={`group relative rounded-xl border p-4 transition-all duration-200 ${
+                                                    pkg.isActive
+                                                        ? 'border-border bg-card'
+                                                        : 'border-border/50 bg-muted/30 opacity-60'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-4 min-w-0">
+                                                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                                                            pkg.isActive
+                                                                ? 'bg-primary/10 text-primary'
+                                                                : 'bg-muted text-muted-foreground'
+                                                        }`}>
+                                                            <Coins className="h-5 w-5" />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="font-semibold text-foreground truncate">{pkg.name}</p>
+                                                                {pkg.isPopular && (
+                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                                                        <Star className="h-2.5 w-2.5 fill-current" />
+                                                                        Popular
+                                                                    </span>
+                                                                )}
+                                                                {!pkg.isActive && (
+                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                                                        <EyeOff className="h-2.5 w-2.5" />
+                                                                        Hidden
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="mt-0.5 text-sm text-muted-foreground">
+                                                                <span className="font-medium text-foreground">{pkg.credits}</span> credits
+                                                                <span className="mx-1.5 opacity-40">&middot;</span>
+                                                                <span className="font-medium text-foreground">${pkg.price}</span>
+                                                                {pkg.description && (
+                                                                    <>
+                                                                        <span className="mx-1.5 opacity-40">&middot;</span>
+                                                                        <span className="text-muted-foreground">{pkg.description}</span>
+                                                                    </>
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                                                            title={pkg.isPopular ? 'Remove popular badge' : 'Mark as popular'}
+                                                            onClick={() => updatePackageMutation.mutate({
+                                                                id: pkg.id,
+                                                                data: { isPopular: !pkg.isPopular },
+                                                            })}
+                                                        >
+                                                            <Star className={`h-3.5 w-3.5 ${pkg.isPopular ? 'fill-amber-500 text-amber-500' : ''}`} />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                                                            title={pkg.isActive ? 'Hide from users' : 'Show to users'}
+                                                            onClick={() => updatePackageMutation.mutate({
+                                                                id: pkg.id,
+                                                                data: { isActive: !pkg.isActive },
+                                                            })}
+                                                        >
+                                                            {pkg.isActive ? (
+                                                                <Eye className="h-3.5 w-3.5" />
+                                                            ) : (
+                                                                <EyeOff className="h-3.5 w-3.5" />
+                                                            )}
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                                            title="Delete package"
+                                                            onClick={() => deletePackageMutation.mutate(pkg.id)}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {packages.length === 0 && (
+                                            <div className="flex flex-col items-center justify-center py-10 text-center">
+                                                <div className="rounded-full bg-muted p-3 mb-3">
+                                                    <Coins className="h-6 w-6 text-muted-foreground" />
+                                                </div>
+                                                <p className="text-sm font-medium text-foreground">No packages yet</p>
+                                                <p className="mt-1 text-xs text-muted-foreground">Create your first credit package below.</p>
+                                            </div>
+                                        )}
+
+                                        <Button
+                                            variant="outline"
+                                            className="w-full border-dashed"
+                                            onClick={() => {
+                                                createPackageMutation.mutate({
+                                                    name: 'New Package',
+                                                    credits: 100,
+                                                    price: '9.99',
+                                                    sortOrder: packages.length,
+                                                });
+                                            }}
+                                            disabled={createPackageMutation.isPending}
+                                        >
+                                            {createPackageMutation.isPending ? (
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <Plus className="mr-2 h-4 w-4" />
+                                            )}
+                                            Add Package
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
                     )}
 
                     {activeTab === 'advanced' && (
                         <Card>
                             <CardHeader>
                                 <CardTitle>Advanced Settings</CardTitle>
-                                <CardDescription>Custom code and integrations</CardDescription>
+                                <CardDescription>Integrations and contact information</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
-                                <div className="space-y-2">
-                                    <Label htmlFor="googleAnalyticsId">Google Analytics ID</Label>
-                                    <Input
-                                        id="googleAnalyticsId"
-                                        defaultValue={settings.googleAnalyticsId || ''}
-                                        onBlur={(e) => handleSave({ googleAnalyticsId: optionalValue(e.target.value) })}
-                                        placeholder="G-XXXXXXXXXX"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="customHeadCode">Custom Head Code</Label>
-                                    <textarea
-                                        id="customHeadCode"
-                                        className="min-h-[100px] w-full rounded-lg border p-3 font-mono text-sm"
-                                        defaultValue={settings.customHeadCode || ''}
-                                        onBlur={(e) => handleSave({ customHeadCode: optionalValue(e.target.value) })}
-                                        placeholder="<!-- Custom code to inject in <head> -->"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="customBodyCode">Custom Body Code</Label>
-                                    <textarea
-                                        id="customBodyCode"
-                                        className="min-h-[100px] w-full rounded-lg border p-3 font-mono text-sm"
-                                        defaultValue={settings.customBodyCode || ''}
-                                        onBlur={(e) => handleSave({ customBodyCode: optionalValue(e.target.value) })}
-                                        placeholder="<!-- Custom code to inject before </body> -->"
-                                    />
+                                <div className="space-y-4">
+                                    <h3 className="font-medium">Google Tag Manager</h3>
+                                    <p className="text-sm text-muted-foreground">
+                                        Connect Google Tag Manager to track analytics, conversions, and user behavior across your site.
+                                    </p>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="gtmContainerId">GTM Container ID</Label>
+                                        <Input
+                                            id="gtmContainerId"
+                                            defaultValue={settings.gtmContainerId || ''}
+                                            onBlur={(e) => handleSave({ gtmContainerId: optionalValue(e.target.value) })}
+                                            placeholder="GTM-XXXXXXX"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Find your Container ID in Google Tag Manager under Admin → Container Settings
+                                        </p>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-4 border-t pt-4">

@@ -3,7 +3,6 @@ import {
     ChevronsLeft,
     ChevronsRight,
     Coins,
-    Database,
     LayoutDashboard,
     LogOut,
     Settings,
@@ -11,10 +10,16 @@ import {
     Contact,
     Receipt,
     Shield,
+    History,
+    CreditCard,
+    Moon,
+    Sun,
+    Activity,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { AppUser } from '@/hooks/useAuth';
+import { useTheme } from '@/components/ThemeProvider';
 
 type NavItem = {
     href: string;
@@ -24,16 +29,17 @@ type NavItem = {
 
 const baseNavItems: NavItem[] = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/contacts', label: 'Contacts', icon: Database },
-    { href: '/credits', label: 'Credits', icon: Coins },
+    { href: '/searches', label: 'Searches', icon: History },
+    { href: '/billing', label: 'Billing', icon: CreditCard },
 ];
 
 const adminNavItems: NavItem[] = [
     { href: '/admin', label: 'Admin Dashboard', icon: Shield },
     { href: '/admin/users', label: 'Users', icon: Users },
+    { href: '/admin/searches', label: 'Search Logs', icon: Activity },
     { href: '/admin/contacts', label: 'All Contacts', icon: Contact },
     { href: '/admin/transactions', label: 'Transactions', icon: Receipt },
-    { href: '/admin/settings', label: 'Settings', icon: Settings },
+    { href: '/admin/settings/branding', label: 'Settings', icon: Settings },
 ];
 
 interface AppSidebarProps {
@@ -54,8 +60,13 @@ export default function AppSidebar({
     onNavigate,
 }: AppSidebarProps) {
     const [location] = useLocation();
-    const navItems = baseNavItems;
+    const { theme, setTheme } = useTheme();
     const isAdmin = user?.role === 'admin';
+    const displayedCredits = user?.totalCredits ?? user?.credits ?? 0;
+    // Filter out Billing menu item for admins (they don't need credits/billing)
+    const navItems = isAdmin
+        ? baseNavItems.filter((item) => item.href !== '/billing')
+        : baseNavItems;
 
     return (
         <div className="flex h-full flex-col bg-background dark:bg-[#0B1120] text-foreground dark:text-slate-200 border-r border-border dark:border-slate-800 shadow-xl">
@@ -67,8 +78,8 @@ export default function AppSidebar({
                         onClick={onNavigate}
                         className={cn('flex items-center transition-opacity hover:opacity-90', collapsed ? 'justify-center' : 'gap-3')}
                     >
-                        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-500 text-sm font-bold text-white shadow-lg shadow-indigo-500/20">
-                            XC
+                        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-lg overflow-hidden">
+                            <img src="/favicon.png" alt="Xcraper" className="w-full h-full object-cover" />
                             <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/20"></div>
                         </div>
                         {!collapsed && (
@@ -81,53 +92,35 @@ export default function AppSidebar({
                 </div>
             </div>
 
-            {/* User Profile Area */}
+            {/* User Profile Area - Simplified */}
             <div className={cn('px-4 py-4', collapsed && 'px-2')}>
-                <div
+                <Link
+                    href="/profile"
+                    onClick={onNavigate}
+                    title={collapsed ? 'Profile settings' : undefined}
                     className={cn(
-                        'group relative overflow-hidden rounded-2xl border border-border dark:border-slate-800 bg-muted/30 dark:bg-slate-800/30 transition-all hover:bg-muted/50 dark:hover:bg-slate-800/50',
-                        collapsed ? 'p-2 flex flex-col items-center gap-3' : 'p-4'
+                        'flex w-full items-center gap-3 rounded-2xl border border-transparent px-2 py-2 text-left transition-colors hover:border-border hover:bg-muted/40',
+                        collapsed && 'flex-col'
                     )}
                 >
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 transition-opacity group-hover:opacity-100"></div>
-                    
-                    {!collapsed ? (
-                        <div className="relative">
-                            <div className="flex items-center gap-3 mb-3">
-                                <div className="h-10 w-10 rounded-full bg-muted dark:bg-gradient-to-br dark:from-slate-700 dark:to-slate-800 flex items-center justify-center border border-border dark:border-slate-600/50 shadow-inner">
-                                    <span className="text-sm font-semibold text-foreground dark:text-slate-300">
-                                        {user?.name?.charAt(0).toUpperCase() || 'U'}
-                                    </span>
-                                </div>
-                                <div className="overflow-hidden">
-                                    <p className="truncate text-sm font-semibold text-foreground dark:text-white">
-                                        {user?.name || 'Workspace User'}
-                                    </p>
-                                    <p className="truncate text-xs text-muted-foreground dark:text-slate-400">{user?.email}</p>
-                                </div>
-                            </div>
-                            
-                            <div className="flex items-center justify-between rounded-xl bg-background dark:bg-slate-900/50 px-3 py-2 border border-border dark:border-slate-800">
-                                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                                    <Coins className="h-4 w-4" />
-                                    <span className="text-xs font-medium">Credits</span>
-                                </div>
-                                <span className="text-sm font-bold text-foreground dark:text-white">{user?.credits ?? 0}</span>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="relative flex flex-col items-center w-full gap-2">
-                             <div className="h-10 w-10 rounded-full bg-muted dark:bg-gradient-to-br dark:from-slate-700 dark:to-slate-800 flex items-center justify-center border border-border dark:border-slate-600/50">
-                                <span className="text-sm font-semibold text-foreground dark:text-slate-300">
-                                    {user?.name?.charAt(0).toUpperCase() || 'U'}
-                                </span>
-                            </div>
-                            <div className="flex w-full justify-center rounded-lg bg-background dark:bg-slate-900/80 p-1.5 border border-border dark:border-slate-800 text-blue-600 dark:text-blue-400" title={`${user?.credits ?? 0} Credits`}>
-                                <Coins className="h-3.5 w-3.5" />
-                            </div>
+                    <div className="h-10 w-10 rounded-full bg-muted dark:bg-gradient-to-br dark:from-slate-700 dark:to-slate-800 flex items-center justify-center border border-border dark:border-slate-600/50 shadow-inner overflow-hidden">
+                        {user?.avatarUrl ? (
+                            <img src={user.avatarUrl} alt={user.name || 'User'} className="h-full w-full object-cover" />
+                        ) : (
+                            <span className="text-sm font-semibold text-foreground dark:text-slate-300">
+                                {user?.name?.charAt(0).toUpperCase() || 'U'}
+                            </span>
+                        )}
+                    </div>
+                    {!collapsed && (
+                        <div className="overflow-hidden">
+                            <p className="truncate text-sm font-semibold text-foreground dark:text-white">
+                                {user?.name || 'Workspace User'}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground dark:text-slate-400">{user?.email}</p>
                         </div>
                     )}
-                </div>
+                </Link>
             </div>
 
             {/* Navigation */}
@@ -215,7 +208,36 @@ export default function AppSidebar({
             </div>
 
             {/* Footer / Logout */}
-            <div className={cn('mt-auto border-t border-border dark:border-slate-800/80 bg-muted/20 dark:bg-slate-900/50 p-3 flex flex-col gap-1', collapsed ? 'px-2' : 'px-4')}>
+            <div className={cn('mt-auto border-t border-border dark:border-slate-800/80 bg-muted/20 dark:bg-slate-900/50 p-3 flex flex-col gap-2', collapsed ? 'px-2' : 'px-4')}>
+                {/* Credits Display for non-admin users */}
+                {!isAdmin && (
+                    <div className={cn(
+                        'rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800/50 p-3',
+                        collapsed && 'p-2'
+                    )}>
+                        {!collapsed ? (
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-8 w-8 rounded-lg bg-blue-600 dark:bg-blue-500 flex items-center justify-center">
+                                        <Coins className="h-4 w-4 text-white" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-medium text-muted-foreground dark:text-slate-400">Credits</p>
+                                        <p className="text-lg font-bold text-foreground dark:text-white">{displayedCredits}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center gap-1">
+                                <div className="h-7 w-7 rounded-lg bg-blue-600 dark:bg-blue-500 flex items-center justify-center">
+                                    <Coins className="h-3.5 w-3.5 text-white" />
+                                </div>
+                                <span className="text-xs font-bold text-foreground dark:text-white">{displayedCredits}</span>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {showCollapseToggle && onToggleCollapse && (
                     <button
                         type="button"
@@ -237,6 +259,23 @@ export default function AppSidebar({
                         )}
                     </button>
                 )}
+                
+                <Button
+                    variant="ghost"
+                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                    title={collapsed ? 'Toggle theme' : undefined}
+                    className={cn(
+                        'group w-full rounded-xl text-muted-foreground dark:text-slate-400 transition-all hover:bg-muted dark:hover:bg-slate-800 hover:text-foreground dark:hover:text-white',
+                        collapsed ? 'h-12 justify-center px-0' : 'justify-start px-3 py-5'
+                    )}
+                >
+                    {theme === 'dark' ? (
+                        <Sun className={cn('transition-transform group-hover:rotate-45', collapsed ? 'h-5 w-5' : 'mr-3 h-4 w-4')} />
+                    ) : (
+                        <Moon className={cn('transition-transform group-hover:-rotate-12', collapsed ? 'h-5 w-5' : 'mr-3 h-4 w-4')} />
+                    )}
+                    {!collapsed && <span className="font-medium">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>}
+                </Button>
                 
                 <Button
                     variant="ghost"

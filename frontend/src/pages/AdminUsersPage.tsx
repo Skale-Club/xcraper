@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import PageIntro from '@/components/app/PageIntro';
 import { useToast } from '@/hooks/use-toast';
 import {
     Search,
@@ -91,7 +90,7 @@ function UserRow({
                                 className="fixed inset-0 z-10"
                                 onClick={() => setShowMenu(false)}
                             />
-                            <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg border z-20 py-1">
+                            <div className="absolute right-0 mt-1 w-48 bg-popover text-popover-foreground rounded-md shadow-lg border z-20 py-1">
                                 <button
                                     className="w-full px-4 py-2 text-left text-sm hover:bg-muted flex items-center gap-2"
                                     onClick={() => { onEdit(user); setShowMenu(false); }}
@@ -230,12 +229,6 @@ export default function AdminUsersPage() {
 
     return (
         <div className="space-y-6">
-            <PageIntro
-                eyebrow="Admin"
-                title="User Management"
-                description="View and manage all registered users"
-            />
-
             <Card>
                 <CardHeader>
                     <div className="flex items-center justify-between">

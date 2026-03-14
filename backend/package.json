@@ -10,7 +10,10 @@
         "db:push": "drizzle-kit push --config drizzle.config.ts",
         "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
         "db:studio": "drizzle-kit studio",
-        "db:seed": "tsx src/scripts/seed-settings.ts"
+        "db:seed": "tsx src/scripts/seed-settings.ts",
+        "stripe:sync": "tsx src/scripts/sync-stripe-catalog.ts",
+        "stripe:listen:payments": "stripe listen --events checkout.session.completed,payment_intent.succeeded,payment_intent.payment_failed --forward-to http://localhost:3001/api/payments/webhook",
+        "stripe:listen:subscriptions": "stripe listen --events checkout.session.completed,customer.subscription.updated,customer.subscription.deleted,invoice.paid,invoice.payment_failed --forward-to http://localhost:3001/api/subscriptions/webhook"
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.39.8",
@@ -26,6 +29,7 @@
         "express-session": "^1.18.0",
         "helmet": "^7.1.0",
         "morgan": "^1.10.0",
+        "multer": "^2.1.1",
         "pg": "^8.11.3",
         "stripe": "^14.18.0",
         "uuid": "^9.0.1",
@@ -36,6 +40,7 @@
         "@types/cors": "^2.8.17",
         "@types/express": "^4.17.21",
         "@types/morgan": "^1.9.9",
+        "@types/multer": "^2.1.0",
         "@types/node": "^20.11.24",
         "@types/pg": "^8.11.2",
         "@types/uuid": "^9.0.8",

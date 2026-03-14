@@ -4,7 +4,6 @@ import { adminApi } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import PageIntro from '@/components/app/PageIntro';
 import {
     Search,
     ChevronLeft,
@@ -108,12 +107,6 @@ export default function AdminTransactionsPage() {
 
     return (
         <div className="space-y-6">
-            <PageIntro
-                eyebrow="Admin"
-                title="All Transactions"
-                description="View all credit transactions across the platform"
-            />
-
             <Card>
                 <CardHeader>
                     <div className="flex items-center justify-between">

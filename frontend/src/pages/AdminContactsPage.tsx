@@ -4,7 +4,6 @@ import { adminApi } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import PageIntro from '@/components/app/PageIntro';
 import {
     Search,
     ChevronLeft,
@@ -37,12 +36,6 @@ export default function AdminContactsPage() {
 
     return (
         <div className="space-y-6">
-            <PageIntro
-                eyebrow="Admin"
-                title="All Contacts"
-                description="View all contacts saved by users across the platform"
-            />
-
             <Card>
                 <CardHeader>
                     <div className="flex items-center justify-between">

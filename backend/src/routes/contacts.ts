@@ -270,7 +270,86 @@ router.get('/export/json', requireAuth, async (req, res: Response): Promise<void
     }
 });
 
-// Export contacts as CSV
+// Export contacts from specific search as CSV
+router.get('/export/csv/search/:searchId', requireAuth, async (req, res: Response): Promise<void> => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ error: 'User not authenticated' });
+            return;
+        }
+
+        const { searchId } = req.params;
+
+        // Verify search belongs to user
+        const [search] = await db.select()
+            .from(searchHistory)
+            .where(and(
+                eq(searchHistory.id, searchId),
+                eq(searchHistory.userId, req.user.id)
+            ))
+            .limit(1);
+
+        if (!search) {
+            res.status(404).json({ error: 'Search not found' });
+            return;
+        }
+
+        // Only allow export if search is completed
+        if (search.status !== 'completed') {
+            res.status(400).json({
+                error: 'Search not completed yet',
+                status: search.status,
+                message: 'You can only export results after the search completes'
+            });
+            return;
+        }
+
+        const searchContacts = await db.select()
+            .from(contacts)
+            .where(eq(contacts.searchId, searchId))
+            .orderBy(desc(contacts.createdAt));
+
+        // Generate CSV
+        const headers = [
+            'Title', 'Category', 'Address', 'Phone', 'Website', 'Email',
+            'Rating', 'Review Count', 'Latitude', 'Longitude', 'Google Maps URL'
+        ];
+
+        const csvRows = [headers.join(',')];
+
+        for (const contact of searchContacts) {
+            const row = [
+                `"${(contact.title || '').replace(/"/g, '""')}"`,
+                `"${(contact.category || '').replace(/"/g, '""')}"`,
+                `"${(contact.address || '').replace(/"/g, '""')}"`,
+                `"${(contact.phone || '').replace(/"/g, '""')}"`,
+                `"${(contact.website || '').replace(/"/g, '""')}"`,
+                `"${(contact.email || '').replace(/"/g, '""')}"`,
+                contact.rating || '',
+                contact.reviewCount || '',
+                contact.latitude || '',
+                contact.longitude || '',
+                `"${(contact.googleMapsUrl || '').replace(/"/g, '""')}"`,
+            ];
+            csvRows.push(row.join(','));
+        }
+
+        const csv = csvRows.join('\n');
+
+        const filename = `search_${search.query}_${search.location}.csv`
+            .replace(/[^a-z0-9_\-.]/gi, '_')
+            .toLowerCase();
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+        res.send(csv);
+    } catch (error) {
+        console.error('Export search CSV error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Export all contacts as CSV
 router.get('/export/csv', requireAuth, async (req, res: Response): Promise<void> => {
     try {
         if (!req.user) {

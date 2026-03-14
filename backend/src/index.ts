@@ -16,6 +16,9 @@ import onboardingRoutes from './routes/onboarding.js';
 import adminRoutes from './routes/admin.js';
 import subscriptionRoutes from './routes/subscriptions.js';
 import adminBillingRoutes from './routes/adminBilling.js';
+import placesRoutes from './routes/places.js';
+import webhookRoutes from './routes/webhooks.js';
+import uploadRoutes from './routes/upload.js';
 
 dotenv.config();
 
@@ -38,9 +41,10 @@ app.use(cors({
     credentials: true,
 }));
 
-// Body parsing (except for webhook route which needs raw body)
+// Body parsing (except for webhook routes which needs raw body for Stripe)
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use('/api/subscriptions/webhook', express.raw({ type: 'application/json' }));
+// Apify webhooks use JSON body (not raw)
 
 // Regular JSON parsing for other routes
 app.use(express.json({ limit: '10mb' }));
@@ -52,8 +56,10 @@ app.use(morgan('combined'));
 // Rate limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    max: process.env.NODE_ENV === 'production' ? 1000 : 5000,
     message: { error: 'Too many requests, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 app.use('/api/', limiter);
 
@@ -69,6 +75,9 @@ app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin/billing', adminBillingRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/places', placesRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

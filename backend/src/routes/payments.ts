@@ -68,10 +68,18 @@ router.get('/verify/:sessionId', requireAuth, async (req: Request, res: Response
             return res.status(400). json({ error: 'Session ID is required' });
         }
 
+        if (!req.user) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
+
         const result = await handleSuccessfulPayment(sessionId);
 
         if (!result) {
             return res.status(400). json({ error: 'Payment verification failed' });
+        }
+
+        if (result.userId !== req.user.id) {
+            return res.status(403).json({ error: 'Payment session does not belong to the authenticated user' });
         }
 
         res.json({

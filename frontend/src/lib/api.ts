@@ -1,5 +1,21 @@
 import { supabase } from './supabase';
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+export function getApiUrl(path: string): string {
+    if (/^https?:\/\//.test(path)) {
+        return path;
+    }
+
+    const normalizedPath = path.startsWith('/api')
+        ? path
+        : `/api${path}`;
+
+    return API_BASE_URL
+        ? `${API_BASE_URL}${normalizedPath}`
+        : normalizedPath;
+}
+
  // API Types
 export interface User {
     id: string;
@@ -7,6 +23,10 @@ export interface User {
     name: string;
     role: 'user' | 'admin';
     credits: number;
+    monthlyCredits?: number;
+    rolloverCredits?: number;
+    purchasedCredits?: number;
+    totalCredits?: number;
     isActive: boolean;
     onboardingCompleted: boolean;
     onboardingStep: number;
@@ -14,13 +34,14 @@ export interface User {
     phone?: string | null;
     avatarUrl?: string | null;
     subscriptionPlanId?: string | null;
-    subscriptionStatus?: 'incomplete' | 'active' | 'canceled' | 'past_due' | 'trial';
+    subscriptionStatus?: 'incomplete' | 'active' | 'canceled' | 'past_due' | 'trialing' | 'unpaid';
     trialEnd?: string | null;
     stripeCustomerId?: string | null;
     stripeSubscriptionId?: string | null;
     autoTopUpEnabled?: boolean;
-    monthlyTopUpCap?: string;
-    currentMonthTopUpSpend?: string;
+    monthlyTopUpCap?: string | null;
+    currentMonthTopUpSpend?: string | null;
+    topUpThreshold?: number | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -36,6 +57,11 @@ export interface SubscriptionPlan {
     isActive: boolean;
     allowAutoTopUp: boolean;
     allowManualPurchase: boolean;
+    allowOverage?: boolean;
+    defaultTopUpCredits?: number | null;
+    defaultTopUpPrice?: string | null;
+    defaultMonthlyTopUpCap?: string | null;
+    topUpThreshold?: number | null;
     allowRollover: boolean;
     maxRolloverCredits?: number | null;
     rolloverExpirationDays?: number | null;
@@ -46,22 +72,41 @@ export interface SubscriptionPlan {
     updatedAt: string;
 }
 
+export interface AdminSubscriptionPlan extends SubscriptionPlan {
+    subscriberCount: number;
+    isPublic: boolean;
+    stripeProductId?: string | null;
+    stripePriceId?: string | null;
+}
+
 export interface SearchHistory {
     id: string;
     userId: string;
     query: string;
     location: string;
-    status: 'pending' | 'running' | 'completed' | 'failed';
-    apifyRunId?: string;
+    requestedMaxResults: number;
+    requestEnrichment: boolean;
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+    apifyRunId?: string | null;
+    apifyActorId?: string | null;
+    apifyActorName?: string | null;
+    apifyDatasetId?: string | null;
+    apifyStatusMessage?: string | null;
+    apifyUsageUsd?: string | null;
+    apifyContainerUrl?: string | null;
+    apifyStartedAt?: string | null;
+    apifyFinishedAt?: string | null;
     creditsUsed: number;
     totalResults?: number;
     savedResults?: number;
     createdAt: string;
-    completedAt?: string;
+    completedAt?: string | null;
 }
 
 export interface SearchStatus {
-    status: 'pending' | 'running' | 'completed' | 'failed';
+    requestedMaxResults?: number;
+    requestEnrichment?: boolean;
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
     progress?: number;
     itemsCount?: number;
     totalResults?: number;
@@ -69,8 +114,25 @@ export interface SearchStatus {
     standardResults?: number;
     enrichedResults?: number;
     creditsUsed?: number;
-    completedAt?: string;
+    completedAt?: string | null;
+    apifyRunId?: string | null;
+    apifyActorId?: string | null;
+    apifyActorName?: string | null;
+    apifyDatasetId?: string | null;
+    apifyStatusMessage?: string | null;
+    apifyUsageUsd?: string | null;
+    apifyContainerUrl?: string | null;
+    apifyStartedAt?: string | null;
+    apifyFinishedAt?: string | null;
     message?: string;
+}
+
+export interface PlacesSuggestion {
+    kind: 'place' | 'query';
+    placeId?: string;
+    text: string;
+    mainText?: string;
+    secondaryText?: string;
 }
 
 export interface Contact {
@@ -134,10 +196,10 @@ export interface SubscriptionDetails {
     id: string;
     planId: string;
     planName: string;
-    status: 'incomplete' | 'active' | 'canceled' | 'past_due' | 'trial';
+    status: 'incomplete' | 'active' | 'canceled' | 'past_due' | 'trialing' | 'unpaid';
     currentPeriodStart?: string;
     currentPeriodEnd?: string;
-    cancelAtPeriodEnd?: boolean;
+    cancelAtPeriodEnd: boolean;
     creditsRemaining: number;
     creditsUsedThisPeriod: number;
     monthlyCredits: number;
@@ -176,7 +238,7 @@ async function apiFetch<T>(
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
 
-    const response = await fetch(`/api${endpoint}`, {
+    const response = await fetch(getApiUrl(endpoint), {
         ...options,
         headers: {
             'Content-Type': 'application/json',
@@ -209,11 +271,17 @@ export const authApi = {
 
     adminGetUsers: () =>
         apiFetch<{ users: User[] }>('/auth/admin/users'),
+
+    changePassword: (currentPassword: string, newPassword: string) =>
+        apiFetch<{ message: string }>('/auth/change-password', {
+            method: 'POST',
+            body: JSON.stringify({ currentPassword, newPassword }),
+        }),
 };
 
-// Users API
+ // Users API
 export const usersApi = {
-    updateProfile: (data: { name?: string; email?: string }) =>
+    updateProfile: (data: { name?: string; company?: string; phone?: string }) =>
         apiFetch<{ message: string; user: User }>('/users/profile', {
             method: 'PATCH',
             body: JSON.stringify(data),
@@ -243,8 +311,16 @@ export const searchApi = {
             body: JSON.stringify({ query, location, maxResults, requestEnrichment }),
         }),
 
+    get: (searchId: string) =>
+        apiFetch<{ search: SearchHistory; contacts: Contact[] }>(`/search/${searchId}`),
+
     getStatus: (searchId: string) =>
         apiFetch<SearchStatus>(`/search/${searchId}/status`),
+
+    pause: (searchId: string) =>
+        apiFetch<{ message: string; status: 'paused'; completedAt?: string }>(`/search/${searchId}/pause`, {
+            method: 'POST',
+        }),
 
     getResults: (searchId: string, page = 1, limit = 50) =>
         apiFetch<{ results: Contact[]; total: number; page: number; totalPages: number }>(
@@ -255,6 +331,17 @@ export const searchApi = {
         apiFetch<{ history: SearchHistory[]; total: number; page: number; totalPages: number }>(
             `/search/history?page=${page}&limit=${limit}`
         ),
+};
+
+export const placesApi = {
+    autocomplete: (mode: 'query' | 'location', input: string) => {
+        const params = new URLSearchParams({
+            mode,
+            input,
+        });
+
+        return apiFetch<{ suggestions: PlacesSuggestion[] }>(`/places/autocomplete?${params.toString()}`);
+    },
 };
 
 // Contacts API
@@ -297,7 +384,7 @@ export const contactsApi = {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
-        const response = await fetch('/api/contacts/export/csv', {
+        const response = await fetch(getApiUrl('/contacts/export/csv'), {
             headers: {
                 ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             },
@@ -311,7 +398,7 @@ export const contactsApi = {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
-        const response = await fetch('/api/contacts/export/json', {
+        const response = await fetch(getApiUrl('/contacts/export/json'), {
             headers: {
                 ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             },
@@ -411,9 +498,7 @@ export interface AdminSettings extends PublicSettings {
     contactEmail?: string;
     contactPhone?: string;
     contactAddress?: string;
-    googleAnalyticsId?: string;
-    customHeadCode?: string;
-    customBodyCode?: string;
+    gtmContainerId?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -493,17 +578,41 @@ export const subscriptionApi = {
         }),
 
     cancel: () =>
-        apiFetch<{ message: string; subscription: SubscriptionDetails }>(`/subscriptions/cancel`, {
+        apiFetch<{ message: string; subscription: SubscriptionDetails | null }>(`/subscriptions/cancel`, {
             method: 'POST'
         }),
 
     reactivate: () =>
-        apiFetch<{ message: string; subscription: SubscriptionDetails }>(`/subscriptions/reactivate`, {
+        apiFetch<{ message: string; subscription: SubscriptionDetails | null }>(`/subscriptions/reactivate`, {
             method: 'POST'
         }),
 
+    verifyCheckout: (sessionId: string) =>
+        apiFetch<{ message: string; subscription: SubscriptionDetails | null; creditsGranted: number }>(`/subscriptions/verify/${sessionId}`),
+
+    updateAutoTopUp: (data: { enabled?: boolean; threshold?: number; monthlyCap?: string }) =>
+        apiFetch<{ user: User }>('/subscriptions/auto-topup', {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        }),
+
     getPortalUrl: () =>
-        apiFetch<{ url: string }>('/subscriptions/portal')
+        apiFetch<{ url: string }>('/subscriptions/portal'),
+
+    // Admin
+    getAdminPlans: () =>
+        apiFetch<{ plans: AdminSubscriptionPlan[] }>('/subscriptions/admin/plans'),
+
+    updatePlan: (id: string, data: Partial<SubscriptionPlan>) =>
+        apiFetch<{ plan: AdminSubscriptionPlan }>(`/subscriptions/admin/plans/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        }),
+
+    deletePlan: (id: string) =>
+        apiFetch<{ message: string; plan: AdminSubscriptionPlan }>(`/subscriptions/admin/plans/${id}`, {
+            method: 'DELETE',
+        }),
 };
 
 export interface OnboardingData {
@@ -589,15 +698,41 @@ export interface AdminSearch {
     id: string;
     query: string;
     location: string;
-    status: string;
+    requestedMaxResults: number;
+    requestEnrichment: boolean;
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+    apifyRunId?: string | null;
+    apifyActorId?: string | null;
+    apifyActorName?: string | null;
+    apifyDatasetId?: string | null;
+    apifyStatusMessage?: string | null;
+    apifyUsageUsd?: string | null;
     creditsUsed: number;
     totalResults?: number;
+    standardResultsCount?: number;
+    enrichedResultsCount?: number;
     createdAt: string;
     completedAt?: string;
     user: {
         id: string;
         name: string;
         email: string;
+    };
+}
+
+export interface AdminSearchTimeline {
+    timeline: Array<{
+        id: string;
+        status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+        createdAt: string;
+    }>;
+    stats: {
+        total: number;
+        completed: number;
+        failed: number;
+        running: number;
+        pending: number;
+        paused: number;
     };
 }
 
@@ -665,14 +800,86 @@ export const adminApi = {
         ),
 
     // Searches management
-    getSearches: (page = 1, limit = 20) =>
-        apiFetch<{ searches: AdminSearch[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
-            `/admin/searches?page=${page}&limit=${limit}`
-        ),
+    getSearches: (page = 1, limit = 20, status?: string, search?: string) => {
+        const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+        if (status && status !== 'all') params.append('status', status);
+        if (search) params.append('search', search);
+        return apiFetch<{ searches: AdminSearch[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+            `/admin/searches?${params}`
+        );
+    },
+
+    getSearchesTimeline: () =>
+        apiFetch<AdminSearchTimeline>('/admin/searches/timeline'),
 
     // Transactions management
     getTransactions: (page = 1, limit = 20) =>
         apiFetch<{ transactions: AdminTransaction[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
             `/admin/transactions?page=${page}&limit=${limit}`
         ),
+};
+
+async function uploadFile(endpoint: string, file: File, fieldName: string): Promise<{ message: string; url: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    const formData = new FormData();
+    formData.append(fieldName, file);
+
+    const response = await fetch(getApiUrl(endpoint), {
+        method: 'POST',
+        headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new ApiError(error.error || 'Upload failed', response.status);
+    }
+
+    return response.json();
+}
+
+async function deleteUploadedFile(endpoint: string): Promise<{ message: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    const response = await fetch(getApiUrl(endpoint), {
+        method: 'DELETE',
+        headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new ApiError(error.error || 'Delete failed', response.status);
+    }
+
+    return response.json();
+}
+
+export const uploadApi = {
+    uploadLogo: (file: File) =>
+        uploadFile('/upload/logo', file, 'logo'),
+
+    deleteLogo: () =>
+        deleteUploadedFile('/upload/logo'),
+
+    uploadFavicon: (file: File) =>
+        uploadFile('/upload/favicon', file, 'favicon'),
+
+    deleteFavicon: () =>
+        deleteUploadedFile('/upload/favicon'),
+
+    uploadOgImage: (file: File) =>
+        uploadFile('/upload/og-image', file, 'ogImage'),
+
+    uploadAvatar: (file: File) =>
+        uploadFile('/upload/avatar', file, 'avatar'),
+
+    deleteAvatar: () =>
+        deleteUploadedFile('/upload/avatar'),
 };

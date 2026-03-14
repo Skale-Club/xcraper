@@ -14,15 +14,68 @@ const appUserFields = {
     name: users.name,
     role: users.role,
     credits: users.credits,
+    rolloverCredits: users.rolloverCredits,
+    purchasedCredits: users.purchasedCredits,
     isActive: users.isActive,
     onboardingCompleted: users.onboardingCompleted,
     onboardingStep: users.onboardingStep,
     company: users.company,
     phone: users.phone,
     avatarUrl: users.avatarUrl,
+    subscriptionPlanId: users.subscriptionPlanId,
+    subscriptionStatus: users.subscriptionStatus,
+    stripeCustomerId: users.stripeCustomerId,
+    stripeSubscriptionId: users.stripeSubscriptionId,
+    autoTopUpEnabled: users.autoTopUpEnabled,
+    monthlyTopUpCap: users.monthlyTopUpCap,
+    currentMonthTopUpSpend: users.currentMonthTopUpSpend,
+    topUpThreshold: users.topUpThreshold,
     createdAt: users.createdAt,
     updatedAt: users.updatedAt,
 };
+
+type AppUserRow = {
+    id: string;
+    email: string;
+    name: string;
+    role: 'user' | 'admin';
+    credits: number;
+    rolloverCredits: number;
+    purchasedCredits: number;
+    isActive: boolean;
+    onboardingCompleted: boolean;
+    onboardingStep: number;
+    company: string | null;
+    phone: string | null;
+    avatarUrl: string | null;
+    subscriptionPlanId: string | null;
+    subscriptionStatus: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'trialing' | 'unpaid' | null;
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+    autoTopUpEnabled: boolean;
+    monthlyTopUpCap: string | null;
+    currentMonthTopUpSpend: string | null;
+    topUpThreshold: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+};
+
+function mapAppUser(
+    user: AppUserRow
+) {
+    const monthlyCredits = user.credits ?? 0;
+    const rolloverCredits = user.rolloverCredits ?? 0;
+    const purchasedCredits = user.purchasedCredits ?? 0;
+
+    return {
+        ...user,
+        credits: monthlyCredits + rolloverCredits + purchasedCredits,
+        monthlyCredits,
+        rolloverCredits,
+        purchasedCredits,
+        totalCredits: monthlyCredits + rolloverCredits + purchasedCredits,
+    };
+}
 
 // Initialize Supabase client for server-side verification
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -98,10 +151,10 @@ router.get('/me', async (req: Request, res: Response) => {
                 .where(eq(users.id, supabaseUser.id))
                 .returning(appUserFields);
 
-            return res.json({ user: updatedUser });
+            return res.json({ user: mapAppUser(updatedUser) });
         }
 
-        res.json({ user });
+        res.json({ user: mapAppUser(user) });
     } catch (error) {
         console.error('Get user error:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -163,7 +216,7 @@ router.post('/sync', async (req: Request, res: Response) => {
                 .where(eq(users.id, userId))
                 .returning(appUserFields);
 
-            return res.json({ user: updatedUser, isNew: false });
+            return res.json({ user: mapAppUser(updatedUser), isNew: false });
         }
 
         // Get free credits setting
@@ -183,11 +236,11 @@ router.post('/sync', async (req: Request, res: Response) => {
                 name: body.name || email.split('@')[0],
                 avatarUrl: body.avatarUrl || null,
                 role: isAdmin ? 'admin' : 'user',
-                credits: freeCredits,
+                purchasedCredits: freeCredits,
             })
             .returning(appUserFields);
 
-        res.status(201).json({ user: newUser, isNew: true });
+        res.status(201).json({ user: mapAppUser(newUser), isNew: true });
     } catch (error) {
         console.error('Sync user error:', error);
         if (error instanceof z.ZodError) {

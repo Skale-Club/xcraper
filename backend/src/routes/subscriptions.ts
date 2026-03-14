@@ -6,14 +6,337 @@ import { eq, desc, sql, and, gte, lte } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { z } from 'zod';
 import Stripe from 'stripe';
+import { createPortalSession, stripe } from '../services/stripe.js';
 
 const router = Router();
 
-// Initialize Stripe
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
-    apiVersion: '2023-10-16',
-}) : null;
+type SubscriptionDetailsResponse = {
+    id: string;
+    planId: string;
+    planName: string;
+    status: 'active' | 'canceled' | 'past_due' | 'incomplete' | 'trialing' | 'unpaid';
+    currentPeriodStart?: string;
+    currentPeriodEnd?: string;
+    cancelAtPeriodEnd: boolean;
+    creditsRemaining: number;
+    creditsUsedThisPeriod: number;
+    monthlyCredits: number;
+};
+
+function getSubscriptionsWebhookSecret(): string | null {
+    return process.env.STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET
+        || process.env.STRIPE_WEBHOOK_SECRET
+        || null;
+}
+
+function normalizeSubscriptionStatus(
+    status: string | null | undefined
+): SubscriptionDetailsResponse['status'] {
+    switch (status) {
+        case 'active':
+        case 'canceled':
+        case 'past_due':
+        case 'incomplete':
+        case 'trialing':
+        case 'unpaid':
+            return status;
+        default:
+            return 'incomplete';
+    }
+}
+
+function toIsoString(value: Date | number | null | undefined): string | undefined {
+    if (!value) {
+        return undefined;
+    }
+
+    if (value instanceof Date) {
+        return value.toISOString();
+    }
+
+    return new Date(value * 1000).toISOString();
+}
+
+async function getStripeSubscription(stripeSubscriptionId: string | null): Promise<Stripe.Subscription | null> {
+    if (!stripe || !stripeSubscriptionId) {
+        return null;
+    }
+
+    try {
+        return await stripe.subscriptions.retrieve(stripeSubscriptionId);
+    } catch (error) {
+        console.error('Retrieve Stripe subscription error:', error);
+        return null;
+    }
+}
+
+async function findUserByStripeReference(
+    customerId?: string | null,
+    subscriptionId?: string | null
+) {
+    if (subscriptionId) {
+        const [bySubscription] = await db
+            .select()
+            .from(users)
+            .where(eq(users.stripeSubscriptionId, subscriptionId))
+            .limit(1);
+
+        if (bySubscription) {
+            return bySubscription;
+        }
+    }
+
+    if (customerId) {
+        const [byCustomer] = await db
+            .select()
+            .from(users)
+            .where(eq(users.stripeCustomerId, customerId))
+            .limit(1);
+
+        if (byCustomer) {
+            return byCustomer;
+        }
+    }
+
+    return null;
+}
+
+async function buildSubscriptionResponse(
+    userId: string,
+    stripeSubscriptionOverride?: Stripe.Subscription | null
+): Promise<SubscriptionDetailsResponse | null> {
+    const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+    if (!user || !user.subscriptionPlanId) {
+        return null;
+    }
+
+    const [plan] = await db
+        .select()
+        .from(subscriptionPlans)
+        .where(eq(subscriptionPlans.id, user.subscriptionPlanId))
+        .limit(1);
+
+    if (!plan) {
+        return null;
+    }
+
+    const stripeSubscription = stripeSubscriptionOverride ?? await getStripeSubscription(user.stripeSubscriptionId);
+
+    return {
+        id: user.stripeSubscriptionId ?? plan.id,
+        planId: plan.id,
+        planName: plan.name,
+        status: normalizeSubscriptionStatus(stripeSubscription?.status ?? user.subscriptionStatus),
+        currentPeriodStart: toIsoString(stripeSubscription?.current_period_start ?? user.billingCycleStart),
+        currentPeriodEnd: toIsoString(stripeSubscription?.current_period_end ?? user.billingCycleEnd),
+        cancelAtPeriodEnd: stripeSubscription?.cancel_at_period_end ?? false,
+        creditsRemaining: user.credits + user.rolloverCredits + user.purchasedCredits,
+        creditsUsedThisPeriod: user.monthlyCreditsUsed,
+        monthlyCredits: plan.monthlyCredits,
+    };
+}
+
+async function preserveLegacyPermanentCredits(userId: string): Promise<void> {
+    const [user] = await db
+        .select({
+            credits: users.credits,
+            purchasedCredits: users.purchasedCredits,
+            subscriptionPlanId: users.subscriptionPlanId,
+            stripeSubscriptionId: users.stripeSubscriptionId,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    if (
+        user.credits > 0
+        && user.purchasedCredits === 0
+        && !user.subscriptionPlanId
+        && !user.stripeSubscriptionId
+    ) {
+        await db
+            .update(users)
+            .set({
+                credits: 0,
+                purchasedCredits: user.credits,
+                updatedAt: new Date(),
+            })
+            .where(eq(users.id, userId));
+    }
+}
+
+async function syncUserSubscriptionState(
+    userId: string,
+    plan: typeof subscriptionPlans.$inferSelect,
+    stripeSubscription: Stripe.Subscription,
+    stripeCustomerId?: string | null,
+): Promise<void> {
+    await db
+        .update(users)
+        .set({
+            subscriptionPlanId: plan.id,
+            subscriptionStatus: normalizeSubscriptionStatus(stripeSubscription.status),
+            stripeCustomerId: stripeCustomerId ?? (typeof stripeSubscription.customer === 'string' ? stripeSubscription.customer : null),
+            stripeSubscriptionId: stripeSubscription.id,
+            billingCycleStart: stripeSubscription.current_period_start
+                ? new Date(stripeSubscription.current_period_start * 1000)
+                : null,
+            billingCycleEnd: stripeSubscription.current_period_end
+                ? new Date(stripeSubscription.current_period_end * 1000)
+                : null,
+            monthlyCreditsUsed: 0,
+            autoTopUpEnabled: plan.allowAutoTopUp,
+            monthlyTopUpCap: plan.defaultMonthlyTopUpCap,
+            topUpThreshold: plan.topUpThreshold,
+            updatedAt: new Date(),
+        })
+        .where(eq(users.id, userId));
+}
+
+async function applyPaidInvoiceToUser(
+    userId: string,
+    plan: typeof subscriptionPlans.$inferSelect,
+    invoice: Stripe.Invoice,
+    stripeSubscription?: Stripe.Subscription | null,
+): Promise<number> {
+    if (invoice.status !== 'paid') {
+        return 0;
+    }
+
+    const [existingGrant] = await db
+        .select({ id: creditTransactions.id })
+        .from(creditTransactions)
+        .where(and(
+            eq(creditTransactions.type, 'monthly_grant'),
+            eq(creditTransactions.stripeInvoiceId, invoice.id)
+        ))
+        .limit(1);
+
+    if (existingGrant) {
+        return 0;
+    }
+
+    const resolvedSubscription = stripeSubscription ?? (
+        typeof invoice.subscription === 'string'
+            ? await stripe?.subscriptions.retrieve(invoice.subscription)
+            : null
+    );
+
+    const periodStart = resolvedSubscription?.current_period_start
+        ? new Date(resolvedSubscription.current_period_start * 1000)
+        : new Date();
+    const periodEnd = resolvedSubscription?.current_period_end
+        ? new Date(resolvedSubscription.current_period_end * 1000)
+        : null;
+
+    await db
+        .update(users)
+        .set({
+            billingCycleStart: periodStart,
+            billingCycleEnd: periodEnd,
+            monthlyCreditsUsed: 0,
+            credits: plan.monthlyCredits,
+            subscriptionStatus: normalizeSubscriptionStatus(resolvedSubscription?.status ?? 'active'),
+            stripeCustomerId: typeof invoice.customer === 'string' ? invoice.customer : null,
+            stripeSubscriptionId: resolvedSubscription?.id ?? null,
+            updatedAt: new Date(),
+        })
+        .where(eq(users.id, userId));
+
+    await db.insert(creditTransactions).values({
+        userId,
+        amount: plan.monthlyCredits,
+        type: 'monthly_grant',
+        description: `Monthly credits from ${plan.name} subscription`,
+        subscriptionPlanId: plan.id,
+        stripeInvoiceId: invoice.id,
+        moneyAmount: invoice.amount_paid !== null && invoice.amount_paid !== undefined
+            ? (invoice.amount_paid / 100).toFixed(2)
+            : null,
+        currency: invoice.currency ?? 'usd',
+        metadata: {
+            billingCycleStart: periodStart.toISOString(),
+            billingCycleEnd: periodEnd?.toISOString(),
+            invoiceId: invoice.id,
+        },
+    });
+
+    return plan.monthlyCredits;
+}
+
+async function syncSubscriptionCheckoutSession(
+    sessionId: string,
+    expectedUserId?: string,
+): Promise<{ subscription: SubscriptionDetailsResponse | null; creditsGranted: number }> {
+    if (!stripe) {
+        throw new Error('Payment system not configured');
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const { userId, planId } = session.metadata || {};
+
+    if (session.mode !== 'subscription' || !userId || !planId || !session.subscription) {
+        throw new Error('Invalid subscription checkout session');
+    }
+
+    if (expectedUserId && userId !== expectedUserId) {
+        throw new Error('Session does not belong to this user');
+    }
+
+    if (session.payment_status !== 'paid') {
+        throw new Error('Subscription checkout is not paid');
+    }
+
+    const [plan] = await db
+        .select()
+        .from(subscriptionPlans)
+        .where(eq(subscriptionPlans.id, planId))
+        .limit(1);
+
+    if (!plan) {
+        throw new Error('Subscription plan not found');
+    }
+
+    await preserveLegacyPermanentCredits(userId);
+
+    const stripeSubscription = await stripe.subscriptions.retrieve(session.subscription as string);
+
+    await syncUserSubscriptionState(
+        userId,
+        plan,
+        stripeSubscription,
+        typeof session.customer === 'string' ? session.customer : null,
+    );
+
+    const invoiceId = typeof session.invoice === 'string'
+        ? session.invoice
+        : session.invoice?.id
+            ?? (typeof stripeSubscription.latest_invoice === 'string'
+                ? stripeSubscription.latest_invoice
+                : stripeSubscription.latest_invoice?.id);
+
+    let creditsGranted = 0;
+    if (invoiceId) {
+        const invoice = await stripe.invoices.retrieve(invoiceId);
+        creditsGranted = await applyPaidInvoiceToUser(userId, plan, invoice, stripeSubscription);
+    }
+
+    const subscription = await buildSubscriptionResponse(userId, stripeSubscription);
+
+    return {
+        subscription,
+        creditsGranted,
+    };
+}
 
 // Schema validation
 const createPlanSchema = z.object({
@@ -60,6 +383,14 @@ router.get('/public', async (req: Request, res: Response) => {
                 isPopular: sql<boolean>`false`, // Can be computed based on some logic
                 allowAutoTopUp: subscriptionPlans.allowAutoTopUp,
                 allowManualPurchase: subscriptionPlans.allowManualPurchase,
+                allowOverage: subscriptionPlans.allowOverage,
+                defaultTopUpCredits: subscriptionPlans.defaultTopUpCredits,
+                defaultTopUpPrice: subscriptionPlans.defaultTopUpPrice,
+                defaultMonthlyTopUpCap: subscriptionPlans.defaultMonthlyTopUpCap,
+                topUpThreshold: subscriptionPlans.topUpThreshold,
+                allowRollover: subscriptionPlans.allowRollover,
+                maxRolloverCredits: subscriptionPlans.maxRolloverCredits,
+                rolloverExpirationDays: subscriptionPlans.rolloverExpirationDays,
                 trialDays: subscriptionPlans.trialDays,
                 trialCredits: subscriptionPlans.trialCredits,
             })
@@ -83,68 +414,13 @@ router.get('/public', async (req: Request, res: Response) => {
 router.get('/me', requireAuth, async (req: Request, res: Response) => {
     try {
         const userId = req.user!.id;
+        const subscription = await buildSubscriptionResponse(userId);
 
-        const [user] = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, userId))
-            .limit(1);
-
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
+        if (!subscription) {
+            return res.status(404).json({ error: 'No active subscription found' });
         }
 
-        let plan = null;
-        if (user.subscriptionPlanId) {
-            [plan] = await db
-                .select()
-                .from(subscriptionPlans)
-                .where(eq(subscriptionPlans.id, user.subscriptionPlanId))
-                .limit(1);
-        }
-
-        // Calculate available credits
-        const totalCredits = user.credits + user.rolloverCredits + user.purchasedCredits;
-        const remainingMonthlyCredits = plan ? Math.max(0, plan.monthlyCredits - user.monthlyCreditsUsed) : 0;
-
-        // Get current month's top-up spend
-        const currentMonthSpend = parseFloat(user.currentMonthTopUpSpend || '0');
-        const topUpCap = parseFloat(user.monthlyTopUpCap || '0');
-        const remainingTopUpCap = Math.max(0, topUpCap - currentMonthSpend);
-
-        res.json({
-            subscription: {
-                status: user.subscriptionStatus,
-                plan: plan ? {
-                    id: plan.id,
-                    name: plan.name,
-                    price: plan.price,
-                    billingInterval: plan.billingInterval,
-                    monthlyCredits: plan.monthlyCredits,
-                } : null,
-                billingCycle: {
-                    start: user.billingCycleStart,
-                    end: user.billingCycleEnd,
-                },
-                credits: {
-                    total: totalCredits,
-                    monthly: user.credits,
-                    rollover: user.rolloverCredits,
-                    purchased: user.purchasedCredits,
-                    monthlyUsed: user.monthlyCreditsUsed,
-                    monthlyRemaining: remainingMonthlyCredits,
-                },
-                autoTopUp: {
-                    enabled: user.autoTopUpEnabled,
-                    threshold: user.topUpThreshold,
-                    monthlyCap: user.monthlyTopUpCap,
-                    currentMonthSpend: user.currentMonthTopUpSpend,
-                    remainingCap: remainingTopUpCap,
-                },
-                stripeCustomerId: user.stripeCustomerId,
-                stripeSubscriptionId: user.stripeSubscriptionId,
-            },
-        });
+        res.json(subscription);
     } catch (error) {
         console.error('Get subscription error:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -193,7 +469,7 @@ router.post('/subscribe', requireAuth, async (req: Request, res: Response) => {
         if (!customerId) {
             const customer = await stripe.customers.create({
                 email: user.email,
-                name: user.name,
+                name: user.company?.trim() || undefined,
                 metadata: {
                     userId: user.id,
                 },
@@ -218,8 +494,8 @@ router.post('/subscribe', requireAuth, async (req: Request, res: Response) => {
                     quantity: 1,
                 },
             ],
-            success_url: `${process.env.FRONTEND_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.FRONTEND_URL}/subscription/canceled`,
+            success_url: `${process.env.FRONTEND_URL}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${process.env.FRONTEND_URL}/billing?checkout=canceled`,
             metadata: {
                 userId: user.id,
                 planId: plan.id,
@@ -263,7 +539,12 @@ router.post('/cancel', requireAuth, async (req: Request, res: Response) => {
             cancel_at_period_end: true,
         });
 
-        res.json({ message: 'Subscription will be canceled at the end of the billing period' });
+        const subscription = await buildSubscriptionResponse(userId);
+
+        res.json({
+            message: 'Subscription will be canceled at the end of the billing period',
+            subscription,
+        });
     } catch (error) {
         console.error('Cancel subscription error:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -290,13 +571,70 @@ router.post('/reactivate', requireAuth, async (req: Request, res: Response) => {
         }
 
         // Remove cancel_at_period_end flag
-        await stripe.subscriptions.update(user.stripeSubscriptionId, {
+        const stripeSubscription = await stripe.subscriptions.update(user.stripeSubscriptionId, {
             cancel_at_period_end: false,
         });
 
-        res.json({ message: 'Subscription reactivated' });
+        const subscription = await buildSubscriptionResponse(userId, stripeSubscription);
+
+        res.json({ message: 'Subscription reactivated', subscription });
     } catch (error) {
         console.error('Reactivate subscription error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/verify/:sessionId', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const userId = req.user!.id;
+        const { sessionId } = z.object({ sessionId: z.string().min(1) }).parse(req.params);
+
+        const result = await syncSubscriptionCheckoutSession(sessionId, userId);
+
+        res.json({
+            message: result.creditsGranted > 0
+                ? 'Subscription synchronized and credits granted'
+                : 'Subscription synchronized',
+            subscription: result.subscription,
+            creditsGranted: result.creditsGranted,
+        });
+    } catch (error) {
+        console.error('Verify subscription checkout error:', error);
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: 'Invalid input', details: error.errors });
+        }
+
+        return res.status(400).json({
+            error: error instanceof Error ? error.message : 'Failed to verify subscription checkout',
+        });
+    }
+});
+
+router.post('/portal', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const userId = req.user!.id;
+
+        const [user] = await db
+            .select({
+                stripeCustomerId: users.stripeCustomerId,
+            })
+            .from(users)
+            .where(eq(users.id, userId))
+            .limit(1);
+
+        if (!user?.stripeCustomerId) {
+            return res.status(400).json({ error: 'No Stripe customer found for this user' });
+        }
+
+        const portal = await createPortalSession(user.stripeCustomerId);
+
+        if (!portal?.url) {
+            return res.status(500).json({ error: 'Failed to create portal session' });
+        }
+
+        res.json({ url: portal.url });
+    } catch (error) {
+        console.error('Subscription portal error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -635,9 +973,9 @@ router.post('/webhook', async (req: Request, res: Response) => {
             return res.status(500).json({ error: 'Payment system not configured' });
         }
 
-        const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+        const webhookSecret = getSubscriptionsWebhookSecret();
         if (!webhookSecret) {
-            console.error('STRIPE_WEBHOOK_SECRET not configured');
+            console.error('Subscription webhook secret not configured');
             return res.status(500).json({ error: 'Webhook not configured' });
         }
 
@@ -658,7 +996,9 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 const session = event.data.object as Stripe.Checkout.Session;
                 const { userId, planId } = session.metadata || {};
 
-                if (userId && planId && session.subscription) {
+                if (session.mode === 'subscription' && userId && planId && session.subscription) {
+                    await preserveLegacyPermanentCredits(userId);
+
                     // Get the plan
                     const [plan] = await db
                         .select()
@@ -667,43 +1007,31 @@ router.post('/webhook', async (req: Request, res: Response) => {
                         .limit(1);
 
                     if (plan) {
-                        const now = new Date();
-                        const cycleEnd = new Date(now);
-                        cycleEnd.setMonth(cycleEnd.getMonth() + 1);
+                        const stripeSubscription = await stripe.subscriptions.retrieve(session.subscription as string);
 
                         // Update user subscription
                         await db
                             .update(users)
                             .set({
                                 subscriptionPlanId: planId,
-                                subscriptionStatus: 'active',
+                                subscriptionStatus: normalizeSubscriptionStatus(stripeSubscription.status),
+                                stripeCustomerId: typeof session.customer === 'string' ? session.customer : null,
                                 stripeSubscriptionId: session.subscription as string,
-                                billingCycleStart: now,
-                                billingCycleEnd: cycleEnd,
+                                billingCycleStart: stripeSubscription.current_period_start
+                                    ? new Date(stripeSubscription.current_period_start * 1000)
+                                    : null,
+                                billingCycleEnd: stripeSubscription.current_period_end
+                                    ? new Date(stripeSubscription.current_period_end * 1000)
+                                    : null,
                                 monthlyCreditsUsed: 0,
-                                credits: plan.monthlyCredits,
                                 autoTopUpEnabled: plan.allowAutoTopUp,
                                 monthlyTopUpCap: plan.defaultMonthlyTopUpCap,
                                 topUpThreshold: plan.topUpThreshold,
-                                updatedAt: now,
+                                updatedAt: new Date(),
                             })
                             .where(eq(users.id, userId));
 
-                        // Log credit grant
-                        await db.insert(creditTransactions).values({
-                            userId,
-                            amount: plan.monthlyCredits,
-                            type: 'monthly_grant',
-                            description: `Initial credits from ${plan.name} subscription`,
-                            subscriptionPlanId: planId,
-                            metadata: {
-                                billingCycleStart: now.toISOString(),
-                                billingCycleEnd: cycleEnd.toISOString(),
-                                stripeSubscriptionId: session.subscription,
-                            },
-                        });
-
-                        console.log(`Subscription activated for user ${userId}, plan ${plan.name}`);
+                        console.log(`Subscription synced for user ${userId}, plan ${plan.name}`);
                     }
                 }
                 break;
@@ -713,24 +1041,26 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 const subscription = event.data.object as Stripe.Subscription;
                 const customerId = subscription.customer as string;
 
-                // Find user by Stripe customer ID
-                const [user] = await db
-                    .select()
-                    .from(users)
-                    .where(eq(users.stripeCustomerId, customerId))
-                    .limit(1);
+                const user = await findUserByStripeReference(customerId, subscription.id);
 
                 if (user) {
-                    const status = subscription.status as 'active' | 'canceled' | 'past_due' | 'incomplete' | 'trialing' | 'unpaid';
                     await db
                         .update(users)
                         .set({
-                            subscriptionStatus: status,
+                            subscriptionStatus: normalizeSubscriptionStatus(subscription.status),
+                            stripeCustomerId: customerId,
+                            stripeSubscriptionId: subscription.id,
+                            billingCycleStart: subscription.current_period_start
+                                ? new Date(subscription.current_period_start * 1000)
+                                : user.billingCycleStart,
+                            billingCycleEnd: subscription.current_period_end
+                                ? new Date(subscription.current_period_end * 1000)
+                                : user.billingCycleEnd,
                             updatedAt: new Date(),
                         })
                         .where(eq(users.id, user.id));
 
-                    console.log(`Subscription updated for user ${user.id}, status: ${status}`);
+                    console.log(`Subscription updated for user ${user.id}, status: ${subscription.status}`);
                 }
                 break;
             }
@@ -739,12 +1069,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 const subscription = event.data.object as Stripe.Subscription;
                 const customerId = subscription.customer as string;
 
-                // Find user by Stripe customer ID
-                const [user] = await db
-                    .select()
-                    .from(users)
-                    .where(eq(users.stripeCustomerId, customerId))
-                    .limit(1);
+                const user = await findUserByStripeReference(customerId, subscription.id);
 
                 if (user) {
                     await db
@@ -753,6 +1078,8 @@ router.post('/webhook', async (req: Request, res: Response) => {
                             subscriptionStatus: 'canceled',
                             subscriptionPlanId: null,
                             stripeSubscriptionId: null,
+                            billingCycleStart: null,
+                            billingCycleEnd: null,
                             updatedAt: new Date(),
                         })
                         .where(eq(users.id, user.id));
@@ -765,15 +1092,27 @@ router.post('/webhook', async (req: Request, res: Response) => {
             case 'invoice.paid': {
                 const invoice = event.data.object as Stripe.Invoice;
                 const customerId = invoice.customer as string;
+                const subscriptionId = typeof invoice.subscription === 'string'
+                    ? invoice.subscription
+                    : invoice.subscription?.id;
 
-                // Find user by Stripe customer ID
-                const [user] = await db
-                    .select()
-                    .from(users)
-                    .where(eq(users.stripeCustomerId, customerId))
-                    .limit(1);
+                const user = await findUserByStripeReference(customerId, subscriptionId);
 
                 if (user && user.subscriptionPlanId) {
+                    const [existingGrant] = await db
+                        .select({ id: creditTransactions.id })
+                        .from(creditTransactions)
+                        .where(and(
+                            eq(creditTransactions.type, 'monthly_grant'),
+                            eq(creditTransactions.stripeInvoiceId, invoice.id)
+                        ))
+                        .limit(1);
+
+                    if (existingGrant) {
+                        console.log(`Invoice ${invoice.id} already processed for user ${user.id}`);
+                        break;
+                    }
+
                     // Get the plan
                     const [plan] = await db
                         .select()
@@ -782,20 +1121,28 @@ router.post('/webhook', async (req: Request, res: Response) => {
                         .limit(1);
 
                     if (plan) {
-                        const now = new Date();
-                        const cycleEnd = new Date(now);
-                        cycleEnd.setMonth(cycleEnd.getMonth() + 1);
+                        const stripeSubscription = subscriptionId
+                            ? await stripe.subscriptions.retrieve(subscriptionId)
+                            : null;
+                        const periodStart = stripeSubscription?.current_period_start
+                            ? new Date(stripeSubscription.current_period_start * 1000)
+                            : new Date();
+                        const periodEnd = stripeSubscription?.current_period_end
+                            ? new Date(stripeSubscription.current_period_end * 1000)
+                            : null;
 
                         // Reset billing cycle and grant credits
                         await db
                             .update(users)
                             .set({
-                                billingCycleStart: now,
-                                billingCycleEnd: cycleEnd,
+                                billingCycleStart: periodStart,
+                                billingCycleEnd: periodEnd,
                                 monthlyCreditsUsed: 0,
                                 credits: plan.monthlyCredits,
-                                subscriptionStatus: 'active',
-                                updatedAt: now,
+                                subscriptionStatus: normalizeSubscriptionStatus(stripeSubscription?.status ?? 'active'),
+                                stripeCustomerId: customerId,
+                                stripeSubscriptionId: subscriptionId ?? user.stripeSubscriptionId,
+                                updatedAt: new Date(),
                             })
                             .where(eq(users.id, user.id));
 
@@ -806,9 +1153,14 @@ router.post('/webhook', async (req: Request, res: Response) => {
                             type: 'monthly_grant',
                             description: `Monthly credits from ${plan.name} subscription`,
                             subscriptionPlanId: plan.id,
+                            stripeInvoiceId: invoice.id,
+                            moneyAmount: invoice.amount_paid !== null && invoice.amount_paid !== undefined
+                                ? (invoice.amount_paid / 100).toFixed(2)
+                                : null,
+                            currency: invoice.currency ?? 'usd',
                             metadata: {
-                                billingCycleStart: now.toISOString(),
-                                billingCycleEnd: cycleEnd.toISOString(),
+                                billingCycleStart: periodStart.toISOString(),
+                                billingCycleEnd: periodEnd?.toISOString(),
                                 invoiceId: invoice.id,
                             },
                         });
@@ -822,13 +1174,11 @@ router.post('/webhook', async (req: Request, res: Response) => {
             case 'invoice.payment_failed': {
                 const invoice = event.data.object as Stripe.Invoice;
                 const customerId = invoice.customer as string;
+                const subscriptionId = typeof invoice.subscription === 'string'
+                    ? invoice.subscription
+                    : invoice.subscription?.id;
 
-                // Find user by Stripe customer ID
-                const [user] = await db
-                    .select()
-                    .from(users)
-                    .where(eq(users.stripeCustomerId, customerId))
-                    .limit(1);
+                const user = await findUserByStripeReference(customerId, subscriptionId);
 
                 if (user) {
                     await db

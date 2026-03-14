@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import PageIntro from '@/components/app/PageIntro';
 import {
     Users,
     Search,
@@ -56,12 +55,6 @@ export default function AdminDashboardPage() {
 
     return (
         <div className="space-y-6">
-            <PageIntro
-                eyebrow="Admin"
-                title="Dashboard"
-                description="Overview of your platform's performance and statistics"
-            />
-
             {/* Main Stats */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <StatCard

@@ -120,106 +120,147 @@ const PricingPage = () => {
     }
 
     return (
-        <div className="container mx-auto px-4 py-8 max-w-6xl">
+        <div className="w-full space-y-8">
             <div className="text-center mb-8">
                 <h1 className="text-3xl font-bold">Simple, Transparent Pricing</h1>
                 <p className="text-muted-foreground mt-2">
-                    Choose a plan and purchase credits as needed. No hidden fees.
+                    The product is in validation, so only the starter offer is available right now.
                 </p>
             </div>
 
-            <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
-                <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
-                    <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
-                    <TabsTrigger value="credits">Credit Packs</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="subscriptions" className="mt-6">
-                    {plans.length === 0 ? (
-                        <div className="text-center py-8">
-                            <p className="text-muted-foreground">No plans available</p>
-                        </div>
-                    ) : (
-                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                            {plans.map((plan) => (
-                                <Card
-                                    key={plan.id}
-                                    className={`relative ${user?.subscriptionPlanId === plan.id ? 'ring-2 ring-primary' : ''}`}
+            {plans.length === 0 && packages.length === 0 ? (
+                <div className="text-center py-12">
+                    <p className="text-muted-foreground">No plans available at the moment.</p>
+                </div>
+            ) : packages.length === 0 ? (
+                /* Only subscription plans exist — no tabs needed */
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-4xl mx-auto">
+                    {plans.map((plan) => (
+                        <Card
+                            key={plan.id}
+                            className={`relative ${user?.subscriptionPlanId === plan.id ? 'ring-2 ring-primary' : ''}`}
+                        >
+                            {plan.isPopular && (
+                                <Badge className="absolute -top-2 right-4">Popular</Badge>
+                            )}
+                            <CardHeader>
+                                <CardTitle className="text-2xl font-bold">{plan.name}</CardTitle>
+                                {plan.description && (
+                                    <p className="text-sm text-muted-foreground">{plan.description}</p>
+                                )}
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-center py-4">
+                                    <div className="text-4xl font-bold">
+                                        ${plan.price}
+                                        <span className="text-lg font-normal text-muted-foreground">
+                                            /{plan.billingInterval}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="text-center">
+                                        <p className="text-sm font-medium text-muted-foreground">Monthly Credits</p>
+                                        <p className="text-2xl font-bold">{plan.monthlyCredits}</p>
+                                    </div>
+                                    <ul className="text-sm text-muted-foreground space-y-2">
+                                        <li>Manual purchase: {plan.allowManualPurchase ? 'Yes' : 'No'}</li>
+                                        <li>Rollover: {plan.allowRollover ? 'Yes' : 'No'}</li>
+                                        {plan.trialDays && <li>Free trial: {plan.trialDays} days</li>}
+                                    </ul>
+                                </div>
+                                <Button
+                                    className="w-full mt-6"
+                                    onClick={() => handleSubscribe(plan.id)}
+                                    disabled={processingId === plan.id || user?.subscriptionPlanId === plan.id}
                                 >
-                                    {plan.isPopular && (
-                                        <Badge className="absolute -top-2 right-4">Popular</Badge>
-                                    )}
+                                    {processingId === plan.id
+                                        ? 'Processing...'
+                                        : user?.subscriptionPlanId === plan.id
+                                            ? 'Current Plan'
+                                            : 'Get Started'}
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            ) : (
+                /* Both plans and packages exist — show tabs */
+                <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
+                    <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
+                        <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
+                        <TabsTrigger value="credits">Offer</TabsTrigger>
+                    </TabsList>
 
-                                    <CardHeader>
-                                        <CardTitle className="text-2xl font-bold">
-                                            {plan.name}
-                                        </CardTitle>
-                                        {plan.description && (
-                                            <p className="text-sm text-muted-foreground">{plan.description}</p>
+                    <TabsContent value="subscriptions" className="mt-6">
+                        {plans.length === 0 ? (
+                            <div className="text-center py-8">
+                                <p className="text-muted-foreground">No plans available</p>
+                            </div>
+                        ) : (
+                            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                                {plans.map((plan) => (
+                                    <Card
+                                        key={plan.id}
+                                        className={`relative ${user?.subscriptionPlanId === plan.id ? 'ring-2 ring-primary' : ''}`}
+                                    >
+                                        {plan.isPopular && (
+                                            <Badge className="absolute -top-2 right-4">Popular</Badge>
                                         )}
-                                    </CardHeader>
-
-                                    <CardContent>
-                                        <div className="text-center py-4">
-                                            <div className="text-4xl font-bold">
-                                                ${plan.price}
-                                                <span className="text-lg font-normal text-muted-foreground">
-                                                    /{plan.billingInterval}
-                                                </span>
+                                        <CardHeader>
+                                            <CardTitle className="text-2xl font-bold">{plan.name}</CardTitle>
+                                            {plan.description && (
+                                                <p className="text-sm text-muted-foreground">{plan.description}</p>
+                                            )}
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-center py-4">
+                                                <div className="text-4xl font-bold">
+                                                    ${plan.price}
+                                                    <span className="text-lg font-normal text-muted-foreground">
+                                                        /{plan.billingInterval}
+                                                    </span>
+                                                </div>
                                             </div>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            <div className="text-center">
-                                                <p className="text-sm font-medium text-muted-foreground">Monthly Credits</p>
-                                                <p className="text-2xl font-bold">{plan.monthlyCredits}</p>
+                                            <div className="space-y-4">
+                                                <div className="text-center">
+                                                    <p className="text-sm font-medium text-muted-foreground">Monthly Credits</p>
+                                                    <p className="text-2xl font-bold">{plan.monthlyCredits}</p>
+                                                </div>
+                                                <ul className="text-sm text-muted-foreground space-y-2">
+                                                    <li>Manual purchase: {plan.allowManualPurchase ? 'Yes' : 'No'}</li>
+                                                    <li>Rollover: {plan.allowRollover ? 'Yes' : 'No'}</li>
+                                                    {plan.trialDays && <li>Free trial: {plan.trialDays} days</li>}
+                                                </ul>
                                             </div>
+                                            <Button
+                                                className="w-full mt-6"
+                                                onClick={() => handleSubscribe(plan.id)}
+                                                disabled={processingId === plan.id || user?.subscriptionPlanId === plan.id}
+                                            >
+                                                {processingId === plan.id
+                                                    ? 'Processing...'
+                                                    : user?.subscriptionPlanId === plan.id
+                                                        ? 'Current Plan'
+                                                        : 'Get Started'}
+                                            </Button>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </TabsContent>
 
-                                            <ul className="text-sm text-muted-foreground space-y-2">
-                                                <li>Auto top-up: {plan.allowAutoTopUp ? 'Yes' : 'No'}</li>
-                                                <li>Manual purchase: {plan.allowManualPurchase ? 'Yes' : 'No'}</li>
-                                                <li>Rollover: {plan.allowRollover ? 'Yes' : 'No'}</li>
-                                                {plan.trialDays && <li>Free trial: {plan.trialDays} days</li>}
-                                            </ul>
-                                        </div>
-
-                                        <Button
-                                            className="w-full mt-6"
-                                            onClick={() => handleSubscribe(plan.id)}
-                                            disabled={processingId === plan.id || user?.subscriptionPlanId === plan.id}
-                                        >
-                                            {processingId === plan.id
-                                                ? 'Processing...'
-                                                : user?.subscriptionPlanId === plan.id
-                                                    ? 'Current Plan'
-                                                    : 'Get Started'}
-                                        </Button>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-                </TabsContent>
-
-                <TabsContent value="credits" className="mt-6">
-                    {packages.length === 0 ? (
-                        <div className="text-center py-8">
-                            <p className="text-muted-foreground">No credit packages available</p>
-                        </div>
-                    ) : (
+                    <TabsContent value="credits" className="mt-6">
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                             {packages.map((pkg) => (
                                 <Card key={pkg.id} className="relative">
                                     {pkg.isPopular && (
                                         <Badge className="absolute -top-2 right-4">Best Value</Badge>
                                     )}
-
                                     <CardHeader>
-                                        <CardTitle className="text-xl font-bold">
-                                            {pkg.credits} Credits
-                                        </CardTitle>
+                                        <CardTitle className="text-xl font-bold">{pkg.name}</CardTitle>
                                     </CardHeader>
-
                                     <CardContent>
                                         <div className="text-center py-4">
                                             <div className="text-3xl font-bold">${pkg.price}</div>
@@ -227,13 +268,11 @@ const PricingPage = () => {
                                                 ${(parseFloat(pkg.price) / pkg.credits).toFixed(3)} per credit
                                             </p>
                                         </div>
-
                                         {pkg.description && (
                                             <p className="text-sm text-muted-foreground text-center">
                                                 {pkg.description}
                                             </p>
                                         )}
-
                                         <Button
                                             className="w-full mt-6"
                                             onClick={() => handlePurchase(pkg.id)}
@@ -245,9 +284,9 @@ const PricingPage = () => {
                                 </Card>
                             ))}
                         </div>
-                    )}
-                </TabsContent>
-            </Tabs>
+                    </TabsContent>
+                </Tabs>
+            )}
         </div>
     );
 };

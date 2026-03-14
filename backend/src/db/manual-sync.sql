@@ -76,6 +76,17 @@ END $$;
 ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "standard_results_count" integer DEFAULT 0;
 ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "enriched_results_count" integer DEFAULT 0;
 ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "saved_results" integer DEFAULT 0;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "requested_max_results" integer DEFAULT 50 NOT NULL;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "request_enrichment" boolean DEFAULT false NOT NULL;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_actor_id" text;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_actor_name" text;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_dataset_id" text;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_status_message" text;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_usage_usd" numeric(10, 4);
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_container_url" text;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_started_at" timestamp;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_finished_at" timestamp;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_input" jsonb;
 
 -- Update contacts table
 ALTER TABLE "contacts" ADD COLUMN IF NOT EXISTS "place_id" text;

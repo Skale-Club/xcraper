@@ -178,8 +178,19 @@ export const searchHistory = pgTable('search_history', {
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     query: text('query').notNull(),
     location: text('location').notNull(),
-    status: text('status', { enum: ['pending', 'running', 'completed', 'failed'] }).notNull().default('pending'),
+    requestedMaxResults: integer('requested_max_results').notNull().default(50),
+    requestEnrichment: boolean('request_enrichment').notNull().default(false),
+    status: text('status', { enum: ['pending', 'running', 'completed', 'failed', 'paused'] }).notNull().default('pending'),
     apifyRunId: text('apify_run_id'),
+    apifyActorId: text('apify_actor_id'),
+    apifyActorName: text('apify_actor_name'),
+    apifyDatasetId: text('apify_dataset_id'),
+    apifyStatusMessage: text('apify_status_message'),
+    apifyUsageUsd: decimal('apify_usage_usd', { precision: 10, scale: 4 }),
+    apifyContainerUrl: text('apify_container_url'),
+    apifyStartedAt: timestamp('apify_started_at'),
+    apifyFinishedAt: timestamp('apify_finished_at'),
+    apifyInput: jsonb('apify_input').$type<Record<string, unknown>>(),
 
     // Credit tracking
     creditsUsed: integer('credits_used').notNull().default(0),
@@ -454,10 +465,8 @@ export const settings = pgTable('settings', {
     contactPhone: text('contact_phone'),
     contactAddress: text('contact_address'),
 
-    // Custom Code
-    googleAnalyticsId: text('google_analytics_id'),
-    customHeadCode: text('custom_head_code'),
-    customBodyCode: text('custom_body_code'),
+    // Google Tag Manager
+    gtmContainerId: text('gtm_container_id'),
 
     // Feature Flags
     registrationEnabled: boolean('registration_enabled').notNull().default(true),

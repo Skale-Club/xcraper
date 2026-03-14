@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { subscriptionApi, paymentsApi, SubscriptionDetails, SubscriptionPlan } from '@/lib/api';
+import { ApiError, subscriptionApi, paymentsApi, SubscriptionDetails, SubscriptionPlan } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,7 +20,7 @@ const SubscriptionPage = () => {
         const loadData = async () => {
             try {
                 const [subData, plansData] = await Promise.all([
-                    subscriptionApi.getSubscription(),
+                    subscriptionApi.getSubscription().catch(() => null),
                     subscriptionApi.getPublicPlans(),
                 ]);
 
@@ -36,13 +36,31 @@ const SubscriptionPage = () => {
         loadData();
     }, []);
 
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const checkoutStatus = params.get('checkout');
+        const sessionId = params.get('session_id');
+
+        if (!checkoutStatus) {
+            return;
+        }
+
+        const redirectParams = new URLSearchParams();
+        redirectParams.set('checkout', checkoutStatus);
+        if (sessionId) {
+            redirectParams.set('session_id', sessionId);
+        }
+
+        setLocation(`/billing?${redirectParams.toString()}`);
+    }, [setLocation]);
+
     const handleCancel = async () => {
         if (!confirm('Are you sure you want to cancel your subscription?')) return;
 
         setProcessing(true);
         try {
             const result = await subscriptionApi.cancel();
-            setSubscription(result.subscription);
+            setSubscription(result.subscription ?? null);
             toast({
                 title: 'Subscription cancelled',
                 description: 'Your subscription has been cancelled. You can continue using it until the end of your billing period.',
@@ -63,7 +81,7 @@ const SubscriptionPage = () => {
         setProcessing(true);
         try {
             const result = await subscriptionApi.reactivate();
-            setSubscription(result.subscription);
+            setSubscription(result.subscription ?? null);
             toast({
                 title: 'Subscription reactivated',
                 description: 'Your subscription has been reactivated.',
@@ -107,7 +125,7 @@ const SubscriptionPage = () => {
         } catch (err) {
             toast({
                 title: 'Error',
-                description: err instanceof Error ? err.message : 'Failed to open billing portal',
+                description: err instanceof ApiError ? err.message : 'Failed to open billing portal',
                 variant: 'destructive',
             });
             setProcessing(false);
@@ -123,7 +141,7 @@ const SubscriptionPage = () => {
     }
 
     return (
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="w-full space-y-8">
             <h1 className="text-3xl font-bold mb-6">Subscription Management</h1>
 
             {subscription ? (
@@ -135,7 +153,7 @@ const SubscriptionPage = () => {
                                     <CardTitle>{subscription.planName || 'Current Plan'}</CardTitle>
                                     <CardDescription>
                                         {subscription.status === 'active' && 'Your subscription is active'}
-                                        {subscription.status === 'trial' && 'You are on a free trial'}
+                                        {subscription.status === 'trialing' && 'You are on a free trial'}
                                         {subscription.status === 'past_due' && 'Payment overdue - please update your payment method'}
                                         {subscription.status === 'canceled' && 'Subscription cancelled'}
                                         {subscription.cancelAtPeriodEnd && ' - Ends at billing period end'}
@@ -143,7 +161,7 @@ const SubscriptionPage = () => {
                                 </div>
                                 <Badge variant={
                                     subscription.status === 'active' ? 'default' :
-                                        subscription.status === 'trial' ? 'secondary' :
+                                        subscription.status === 'trialing' ? 'secondary' :
                                             subscription.status === 'past_due' ? 'destructive' :
                                                 'outline'
                                 }>
@@ -192,55 +210,57 @@ const SubscriptionPage = () => {
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Available Plans</CardTitle>
-                            <CardDescription>Upgrade or change your plan at any time</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                                {plans.map((plan) => (
-                                    <Card
-                                        key={plan.id}
-                                        className={`cursor-pointer transition-all ${plan.id === subscription.planId
-                                                ? 'ring-2 ring-primary'
-                                                : 'hover:border-primary/50'
-                                            }`}
-                                        onClick={() => plan.id !== subscription.planId && handleChangePlan(plan.id)}
-                                    >
-                                        <CardHeader className="pb-2">
-                                            <div className="flex items-center justify-between">
-                                                <CardTitle className="text-lg">{plan.name}</CardTitle>
-                                                {plan.isPopular && (
-                                                    <Badge variant="secondary">Popular</Badge>
+                    {plans.length > 1 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Available Plans</CardTitle>
+                                <CardDescription>Upgrade or change your plan at any time</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                    {plans.map((plan) => (
+                                        <Card
+                                            key={plan.id}
+                                            className={`cursor-pointer transition-all ${plan.id === subscription.planId
+                                                    ? 'ring-2 ring-primary'
+                                                    : 'hover:border-primary/50'
+                                                }`}
+                                            onClick={() => plan.id !== subscription.planId && handleChangePlan(plan.id)}
+                                        >
+                                            <CardHeader className="pb-2">
+                                                <div className="flex items-center justify-between">
+                                                    <CardTitle className="text-lg">{plan.name}</CardTitle>
+                                                    {plan.isPopular && (
+                                                        <Badge variant="secondary">Popular</Badge>
+                                                    )}
+                                                </div>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="text-2xl font-bold">
+                                                    ${plan.price}
+                                                    <span className="text-sm font-normal text-muted-foreground">
+                                                        /{plan.billingInterval}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-muted-foreground mt-1">
+                                                    {plan.monthlyCredits} credits/month
+                                                </p>
+                                                {plan.id === subscription.planId && (
+                                                    <Badge className="mt-2">Current</Badge>
                                                 )}
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="text-2xl font-bold">
-                                                ${plan.price}
-                                                <span className="text-sm font-normal text-muted-foreground">
-                                                    /{plan.billingInterval}
-                                                </span>
-                                            </div>
-                                            <p className="text-sm text-muted-foreground mt-1">
-                                                {plan.monthlyCredits} credits/month
-                                            </p>
-                                            {plan.id === subscription.planId && (
-                                                <Badge className="mt-2">Current</Badge>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
             ) : (
                 <Card>
                     <CardContent className="py-12 text-center">
                         <p className="text-muted-foreground mb-4">You don't have an active subscription</p>
-                        <Button onClick={() => setLocation('/pricing')}>
+                        <Button onClick={() => setLocation('/billing')}>
                             View Plans
                         </Button>
                     </CardContent>

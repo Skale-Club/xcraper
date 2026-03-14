@@ -189,7 +189,7 @@ export default function AuthPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex flex-col">
+        <div className="min-h-screen bg-background flex flex-col">
             {/* Header */}
             <header className="p-4">
                 <Button
@@ -211,11 +211,9 @@ export default function AuthPage() {
                     transition={{ duration: 0.5 }}
                     className="w-full max-w-md"
                 >
-                    <Card className="shadow-xl border-0">
+                    <Card className="shadow-xl">
                         <CardHeader className="text-center space-y-2">
-                            <div className="mx-auto w-12 h-12 bg-primary rounded-xl flex items-center justify-center mb-4">
-                                <span className="text-2xl">🗺️</span>
-                            </div>
+                            <img src="/favicon.png" alt="Xcraper" className="mx-auto w-12 h-12 rounded-xl mb-4" />
                             <CardTitle className="text-2xl font-bold">
                                 {activeTab === 'forgot' ? 'Reset Password' : 'Welcome to Xcraper'}
                             </CardTitle>
@@ -237,7 +235,7 @@ export default function AuthPage() {
                                     >
                                         <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
                                         <h3 className="text-lg font-semibold mb-2">Check your email</h3>
-                                        <p className="text-gray-600 mb-4">
+                                        <p className="text-muted-foreground mb-4">
                                             We've sent a password reset link to <strong>{forgotEmail}</strong>
                                         </p>
                                         <Button
@@ -255,7 +253,7 @@ export default function AuthPage() {
                                         <div className="space-y-2">
                                             <Label htmlFor="forgot-email">Email</Label>
                                             <div className="relative">
-                                                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                                 <Input
                                                     id="forgot-email"
                                                     type="email"
@@ -310,7 +308,7 @@ export default function AuthPage() {
                                                 <span className="w-full border-t" />
                                             </div>
                                             <div className="relative flex justify-center text-xs uppercase">
-                                                <span className="bg-white px-2 text-gray-500">Or continue with email</span>
+                                                <span className="bg-card px-2 text-muted-foreground">Or continue with email</span>
                                             </div>
                                         </div>
 
@@ -318,7 +316,7 @@ export default function AuthPage() {
                                             <div className="space-y-2">
                                                 <Label htmlFor="login-email">Email</Label>
                                                 <div className="relative">
-                                                    <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                                     <Input
                                                         id="login-email"
                                                         type="email"
@@ -344,7 +342,7 @@ export default function AuthPage() {
                                                     </Button>
                                                 </div>
                                                 <div className="relative">
-                                                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                                     <Input
                                                         id="login-password"
                                                         type={showPassword ? 'text' : 'password'}
@@ -357,9 +355,9 @@ export default function AuthPage() {
                                                     <button
                                                         type="button"
                                                         onClick={() => setShowPassword(!showPassword)}
-                                                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                                        className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
                                                     >
-                                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 h-4" />}
                                                     </button>
                                                 </div>
                                             </div>
@@ -392,7 +390,7 @@ export default function AuthPage() {
                                                 <span className="w-full border-t" />
                                             </div>
                                             <div className="relative flex justify-center text-xs uppercase">
-                                                <span className="bg-white px-2 text-gray-500">Or sign up with email</span>
+                                                <span className="bg-card px-2 text-muted-foreground">Or sign up with email</span>
                                             </div>
                                         </div>
 
@@ -400,7 +398,7 @@ export default function AuthPage() {
                                             <div className="space-y-2">
                                                 <Label htmlFor="register-name">Full Name</Label>
                                                 <div className="relative">
-                                                    <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                    <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                                     <Input
                                                         id="register-name"
                                                         type="text"
@@ -416,7 +414,7 @@ export default function AuthPage() {
                                             <div className="space-y-2">
                                                 <Label htmlFor="register-email">Email</Label>
                                                 <div className="relative">
-                                                    <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                                     <Input
                                                         id="register-email"
                                                         type="email"
@@ -432,7 +430,7 @@ export default function AuthPage() {
                                             <div className="space-y-2">
                                                 <Label htmlFor="register-password">Password</Label>
                                                 <div className="relative">
-                                                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                                     <Input
                                                         id="register-password"
                                                         type={showPassword ? 'text' : 'password'}
@@ -448,9 +446,9 @@ export default function AuthPage() {
                                                     <button
                                                         type="button"
                                                         onClick={() => setShowPassword(!showPassword)}
-                                                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                                        className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
                                                     >
-                                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 h-4" />}
                                                     </button>
                                                 </div>
                                                 {/* Password requirements */}
@@ -464,7 +462,7 @@ export default function AuthPage() {
                                                         ].map((req, i) => (
                                                             <div
                                                                 key={i}
-                                                                className={`flex items-center gap-2 text-xs ${req.test ? 'text-green-600' : 'text-gray-400'
+                                                                className={`flex items-center gap-2 text-xs ${req.test ? 'text-green-500' : 'text-muted-foreground'
                                                                     }`}
                                                             >
                                                                 <CheckCircle2 className="w-3 h-3" />
@@ -478,7 +476,7 @@ export default function AuthPage() {
                                             <div className="space-y-2">
                                                 <Label htmlFor="confirm-password">Confirm Password</Label>
                                                 <div className="relative">
-                                                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                                     <Input
                                                         id="confirm-password"
                                                         type={showConfirmPassword ? 'text' : 'password'}
@@ -491,13 +489,13 @@ export default function AuthPage() {
                                                     <button
                                                         type="button"
                                                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                                        className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
                                                     >
-                                                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 h-4" />}
                                                     </button>
                                                 </div>
                                                 {confirmPassword && registerPassword !== confirmPassword && (
-                                                    <p className="text-xs text-red-500">Passwords do not match</p>
+                                                    <p className="text-xs text-destructive">Passwords do not match</p>
                                                 )}
                                             </div>
 
@@ -517,7 +515,7 @@ export default function AuthPage() {
                             )}
                         </CardContent>
 
-                        <CardFooter className="flex justify-center text-sm text-gray-500">
+                        <CardFooter className="flex justify-center text-sm text-muted-foreground">
                             {activeTab !== 'forgot' && (
                                 <p>
                                     By continuing, you agree to our{' '}

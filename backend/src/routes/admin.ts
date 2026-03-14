@@ -315,16 +315,31 @@ router.get('/searches', async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 20;
+        const status = req.query.status as string;
+        const search = req.query.search as string;
         const offset = (page - 1) * limit;
+
+        const validStatuses = ['pending', 'running', 'completed', 'failed', 'paused'];
+        const statusFilter = status && validStatuses.includes(status) ? status : null;
 
         const allSearches = await db
             .select({
                 id: searchHistory.id,
                 query: searchHistory.query,
                 location: searchHistory.location,
+                requestedMaxResults: searchHistory.requestedMaxResults,
+                requestEnrichment: searchHistory.requestEnrichment,
                 status: searchHistory.status,
+                apifyRunId: searchHistory.apifyRunId,
+                apifyActorId: searchHistory.apifyActorId,
+                apifyActorName: searchHistory.apifyActorName,
+                apifyDatasetId: searchHistory.apifyDatasetId,
+                apifyStatusMessage: searchHistory.apifyStatusMessage,
+                apifyUsageUsd: searchHistory.apifyUsageUsd,
                 creditsUsed: searchHistory.creditsUsed,
                 totalResults: searchHistory.totalResults,
+                standardResultsCount: searchHistory.standardResultsCount,
+                enrichedResultsCount: searchHistory.enrichedResultsCount,
                 createdAt: searchHistory.createdAt,
                 completedAt: searchHistory.completedAt,
                 user: {
@@ -335,9 +350,21 @@ router.get('/searches', async (req: Request, res: Response) => {
             })
             .from(searchHistory)
             .innerJoin(users, eq(searchHistory.userId, users.id))
+            .where(statusFilter ? eq(searchHistory.status, statusFilter as 'pending' | 'running' | 'completed' | 'failed' | 'paused') : sql`1=1`)
             .orderBy(desc(searchHistory.createdAt))
             .limit(limit)
             .offset(offset);
+
+        let filteredSearches = allSearches;
+        if (search) {
+            const searchLower = search.toLowerCase();
+            filteredSearches = allSearches.filter(s => 
+                s.query.toLowerCase().includes(searchLower) ||
+                s.location.toLowerCase().includes(searchLower) ||
+                s.user.name.toLowerCase().includes(searchLower) ||
+                s.user.email.toLowerCase().includes(searchLower)
+            );
+        }
 
         // Get total count
         const [{ total }] = await db
@@ -345,7 +372,7 @@ router.get('/searches', async (req: Request, res: Response) => {
             .from(searchHistory);
 
         res.json({
-            searches: allSearches,
+            searches: filteredSearches,
             pagination: {
                 page,
                 limit,
@@ -355,6 +382,38 @@ router.get('/searches', async (req: Request, res: Response) => {
         });
     } catch (error) {
         console.error('Get admin searches error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Get searches timeline (last 100 searches)
+router.get('/searches/timeline', async (req: Request, res: Response) => {
+    try {
+        const recentSearches = await db
+            .select({
+                id: searchHistory.id,
+                status: searchHistory.status,
+                createdAt: searchHistory.createdAt,
+            })
+            .from(searchHistory)
+            .orderBy(desc(searchHistory.createdAt))
+            .limit(100);
+
+        const stats = {
+            total: recentSearches.length,
+            completed: recentSearches.filter(s => s.status === 'completed').length,
+            failed: recentSearches.filter(s => s.status === 'failed').length,
+            running: recentSearches.filter(s => s.status === 'running').length,
+            pending: recentSearches.filter(s => s.status === 'pending').length,
+            paused: recentSearches.filter(s => s.status === 'paused').length,
+        };
+
+        res.json({
+            timeline: recentSearches,
+            stats,
+        });
+    } catch (error) {
+        console.error('Get searches timeline error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

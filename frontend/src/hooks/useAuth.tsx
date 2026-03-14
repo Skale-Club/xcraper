@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode 
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { getApiUrl } from '@/lib/api';
 
 // Extended user type with app-specific fields
 export interface AppUser {
@@ -10,6 +11,10 @@ export interface AppUser {
     name: string;
     role: 'user' | 'admin';
     credits: number;
+    monthlyCredits?: number;
+    rolloverCredits?: number;
+    purchasedCredits?: number;
+    totalCredits?: number;
     isActive: boolean;
     onboardingCompleted: boolean;
     onboardingStep: number;
@@ -17,8 +22,15 @@ export interface AppUser {
     phone?: string | null;
     avatarUrl?: string;
     subscriptionPlanId?: string | null;
-    subscriptionStatus?: 'incomplete' | 'active' | 'canceled' | 'past_due' | 'trial';
+    subscriptionStatus?: 'incomplete' | 'active' | 'canceled' | 'past_due' | 'trialing' | 'unpaid';
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    autoTopUpEnabled?: boolean;
+    monthlyTopUpCap?: string | null;
+    currentMonthTopUpSpend?: string | null;
+    topUpThreshold?: number | null;
     createdAt: string;
+    updatedAt?: string;
 }
 
 interface AuthContextType {
@@ -49,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Fetch app-specific user data from backend
     const fetchAppUser = useCallback(async (accessToken: string): Promise<AppUser | null> => {
         try {
-            const response = await fetch('/api/auth/me', {
+            const response = await fetch(getApiUrl('/auth/me'), {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                 },
@@ -74,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Create user in backend database
     const createAppUser = useCallback(async (supabaseUser: User, accessToken: string): Promise<AppUser | null> => {
         try {
-            const response = await fetch('/api/auth/sync', {
+            const response = await fetch(getApiUrl('/auth/sync'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

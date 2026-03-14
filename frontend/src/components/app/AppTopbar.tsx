@@ -1,18 +1,21 @@
 import { Menu } from 'lucide-react';
-import { ThemeToggle } from './ThemeToggle';
 
 const pageMetadata: Record<string, { title: string; description: string }> = {
     '/dashboard': {
         title: 'Dashboard',
         description: 'Search Google Maps, track activity, and keep credits under control.',
     },
-    '/contacts': {
-        title: 'Contacts',
-        description: 'Review, organize, and export the leads you have saved.',
+    '/searches': {
+        title: 'Searches',
+        description: 'Review, organize, and export the leads you have saved from your searches.',
     },
-    '/credits': {
-        title: 'Credits',
-        description: 'Monitor your balance, package options, and transaction history.',
+    '/billing': {
+        title: 'Billing',
+        description: 'Manage your subscription, credit packages, and view transaction history.',
+    },
+    '/profile': {
+        title: 'Profile',
+        description: 'Update your account information and password.',
     },
     '/admin/settings': {
         title: 'Admin Settings',
@@ -51,10 +54,6 @@ export default function AppTopbar({ location, onOpenSidebar }: AppTopbarProps) {
                             {currentPage.description}
                         </p>
                     </div>
-                </div>
-                
-                <div className="flex items-center gap-4">
-                    <ThemeToggle />
                 </div>
             </div>
         </header>
