@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import Stripe from 'stripe';
 import { db } from '../db';
 import { users, creditTransactions, creditPackages } from '../db/schema';
@@ -49,7 +50,7 @@ export async function createCheckoutSession(
                     currency: 'usd',
                     product_data: {
                         name: creditPackage.name,
-                        description: creditPackage.description || `${creditPackage.credits} credits for XCraper`,
+                        description: creditPackage.description || `${creditPackage.credits} credits for Xcraper`,
                     },
                     unit_amount: Math.round(parseFloat(creditPackage.price) * 100), // Convert to cents
                 },

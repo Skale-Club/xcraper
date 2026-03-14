@@ -1,18 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Route, Switch, Redirect, Link, useLocation } from 'wouter';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { Toaster } from '@/components/ui/toaster';
 import { Button } from '@/components/ui/button';
-import DashboardPage from '@/pages/DashboardPage';
-import ContactsPage from '@/pages/ContactsPage';
-import CreditsPage from '@/pages/CreditsPage';
-import LandingPage from '@/pages/LandingPage';
-import AuthPage from '@/pages/AuthPage';
-import AuthCallbackPage from '@/pages/AuthCallbackPage';
-import ResetPasswordPage from '@/pages/ResetPasswordPage';
-import AdminSettingsPage from '@/pages/AdminSettingsPage';
-import OnboardingPage from '@/pages/OnboardingPage';
 import {
     Search,
     Database,
@@ -22,7 +12,24 @@ import {
     X,
     Settings,
 } from 'lucide-react';
-import { useState } from 'react';
+import { Suspense, lazy, useState, type ReactNode } from 'react';
+
+const LandingPage = lazy(() => import('@/pages/LandingPage'));
+const AuthPage = lazy(() => import('@/pages/AuthPage'));
+const AuthCallbackPage = lazy(() => import('@/pages/AuthCallbackPage'));
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
+const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const ContactsPage = lazy(() => import('@/pages/ContactsPage'));
+const CreditsPage = lazy(() => import('@/pages/CreditsPage'));
+const AdminSettingsPage = lazy(() => import('@/pages/AdminSettingsPage'));
+
+const ReactQueryDevtools = import.meta.env.DEV
+    ? lazy(async () => {
+        const mod = await import('@tanstack/react-query-devtools');
+        return { default: mod.ReactQueryDevtools };
+    })
+    : null;
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -66,7 +73,7 @@ function Navigation() {
                     <div className="flex items-center gap-3">
                         <Link href="/dashboard" className="flex items-center gap-3">
                             <span className="text-2xl">🗺️</span>
-                            <h1 className="text-xl font-bold text-gray-900">XCraper</h1>
+                            <h1 className="text-xl font-bold text-gray-900">Xcraper</h1>
                         </Link>
                     </div>
 
@@ -154,15 +161,23 @@ function Navigation() {
     );
 }
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function PageFallback() {
+    return (
+        <div className="min-h-screen flex items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+    );
+}
+
+function RouteSuspense({ children }: { children: ReactNode }) {
+    return <Suspense fallback={<PageFallback />}>{children}</Suspense>;
+}
+
+function ProtectedRoute({ children }: { children: ReactNode }) {
     const { isAuthenticated, isLoading, user } = useAuth();
 
     if (isLoading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
-        );
+        return <PageFallback />;
     }
 
     if (!isAuthenticated) {
@@ -176,20 +191,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return (
         <>
             <Navigation />
-            {children}
+            <RouteSuspense>{children}</RouteSuspense>
         </>
     );
 }
 
-function AdminRoute({ children }: { children: React.ReactNode }) {
+function AdminRoute({ children }: { children: ReactNode }) {
     const { isAuthenticated, isLoading, user } = useAuth();
 
     if (isLoading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
-        );
+        return <PageFallback />;
     }
 
     if (!isAuthenticated) {
@@ -204,36 +215,28 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
         return <Redirect to="/dashboard" />;
     }
 
-    return <>{children}</>;
+    return <RouteSuspense>{children}</RouteSuspense>;
 }
 
-function PublicRoute({ children }: { children: React.ReactNode }) {
+function PublicRoute({ children }: { children: ReactNode }) {
     const { isAuthenticated, isLoading, user } = useAuth();
 
     if (isLoading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
-        );
+        return <PageFallback />;
     }
 
     if (isAuthenticated) {
         return <Redirect to={user?.onboardingCompleted ? '/dashboard' : '/onboarding'} />;
     }
 
-    return <>{children}</>;
+    return <RouteSuspense>{children}</RouteSuspense>;
 }
 
-function OnboardingRoute({ children }: { children: React.ReactNode }) {
+function OnboardingRoute({ children }: { children: ReactNode }) {
     const { isAuthenticated, isLoading, user } = useAuth();
 
     if (isLoading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
-        );
+        return <PageFallback />;
     }
 
     if (!isAuthenticated) {
@@ -244,7 +247,7 @@ function OnboardingRoute({ children }: { children: React.ReactNode }) {
         return <Redirect to="/dashboard" />;
     }
 
-    return <>{children}</>;
+    return <RouteSuspense>{children}</RouteSuspense>;
 }
 
 function AppRoutes() {
@@ -266,12 +269,16 @@ function AppRoutes() {
 
             {/* Auth callback for OAuth */}
             <Route path="/auth/callback">
-                <AuthCallbackPage />
+                <RouteSuspense>
+                    <AuthCallbackPage />
+                </RouteSuspense>
             </Route>
 
             {/* Reset password - public */}
             <Route path="/auth/reset-password">
-                <ResetPasswordPage />
+                <RouteSuspense>
+                    <ResetPasswordPage />
+                </RouteSuspense>
             </Route>
 
             {/* Onboarding - protected (for authenticated users who haven't completed onboarding) */}
@@ -324,7 +331,11 @@ function App() {
                 <AppRoutes />
                 <Toaster />
             </AuthProvider>
-            <ReactQueryDevtools initialIsOpen={false} />
+            {ReactQueryDevtools ? (
+                <Suspense fallback={null}>
+                    <ReactQueryDevtools initialIsOpen={false} />
+                </Suspense>
+            ) : null}
         </QueryClientProvider>
     );
 }

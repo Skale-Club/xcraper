@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { db } from '../db';
