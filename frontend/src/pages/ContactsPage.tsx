@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -23,7 +22,6 @@ import {
 } from 'lucide-react';
 
 export default function ContactsPage() {
-    const { user } = useAuth();
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -32,13 +30,11 @@ export default function ContactsPage() {
     const [showFavorites, setShowFavorites] = useState(false);
     const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
 
-    // Fetch contacts
     const { data, isLoading } = useQuery({
         queryKey: ['contacts', page, searchQuery, showFavorites],
         queryFn: () => contactsApi.getAll(page, 20, searchQuery || undefined, showFavorites || undefined),
     });
 
-    // Toggle favorite mutation
     const toggleFavoriteMutation = useMutation({
         mutationFn: (contactId: string) => contactsApi.toggleFavorite(contactId),
         onSuccess: () => {
@@ -50,7 +46,6 @@ export default function ContactsPage() {
         },
     });
 
-    // Delete contact mutation
     const deleteMutation = useMutation({
         mutationFn: (contactId: string) => contactsApi.delete(contactId),
         onSuccess: () => {
@@ -63,7 +58,6 @@ export default function ContactsPage() {
         },
     });
 
-    // Bulk delete mutation
     const bulkDeleteMutation = useMutation({
         mutationFn: (contactIds: string[]) => contactsApi.bulkDelete(contactIds),
         onSuccess: () => {
@@ -77,7 +71,6 @@ export default function ContactsPage() {
         },
     });
 
-    // Export functions
     const handleExportJson = async () => {
         try {
             const blob = await contactsApi.exportJson();
@@ -107,10 +100,10 @@ export default function ContactsPage() {
     };
 
     const toggleSelectContact = (contactId: string) => {
-        setSelectedContacts(prev =>
+        setSelectedContacts((prev) =>
             prev.includes(contactId)
-                ? prev.filter(id => id !== contactId)
-                : [...prev, contactId]
+                ? prev.filter((id) => id !== contactId)
+                : [...prev, contactId],
         );
     };
 
@@ -118,233 +111,205 @@ export default function ContactsPage() {
     const pagination = data?.pagination;
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <header className="bg-white shadow-sm border-b">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <span className="text-2xl">📇</span>
-                        <h1 className="text-xl font-bold text-gray-900">My Contacts</h1>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
-                    </div>
-                </div>
-            </header>
-
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Filters and Actions */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-6"
-                >
-                    <Card>
-                        <CardContent className="p-4">
-                            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                                <div className="flex flex-1 gap-4 items-center w-full md:w-auto">
-                                    <div className="relative flex-1">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <Input
-                                            type="text"
-                                            placeholder="Search contacts..."
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="pl-10"
-                                        />
-                                    </div>
-                                    <Button
-                                        variant={showFavorites ? 'default' : 'outline'}
-                                        onClick={() => setShowFavorites(!showFavorites)}
-                                    >
-                                        <Star className={`w-4 h-4 mr-2 ${showFavorites ? 'fill-current' : ''}`} />
-                                        Favorites
-                                    </Button>
+        <div className="mx-auto max-w-7xl space-y-8">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                <Card>
+                    <CardContent className="p-4">
+                        <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
+                            <div className="flex w-full flex-1 items-center gap-4 md:w-auto">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        type="text"
+                                        placeholder="Search contacts..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="pl-10"
+                                    />
                                 </div>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" onClick={handleExportJson}>
-                                        <Download className="w-4 h-4 mr-2" />
-                                        JSON
-                                    </Button>
-                                    <Button variant="outline" onClick={handleExportCsv}>
-                                        <Download className="w-4 h-4 mr-2" />
-                                        CSV
-                                    </Button>
-                                    {selectedContacts.length > 0 && (
-                                        <Button
-                                            variant="destructive"
-                                            onClick={() => bulkDeleteMutation.mutate(selectedContacts)}
-                                        >
-                                            <Trash2 className="w-4 h-4 mr-2" />
-                                            Delete ({selectedContacts.length})
-                                        </Button>
-                                    )}
-                                </div>
+                                <Button
+                                    variant={showFavorites ? 'default' : 'outline'}
+                                    onClick={() => setShowFavorites(!showFavorites)}
+                                >
+                                    <Star className={`mr-2 h-4 w-4 ${showFavorites ? 'fill-current' : ''}`} />
+                                    Favorites
+                                </Button>
                             </div>
-                        </CardContent>
-                    </Card>
-                </motion.div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button variant="outline" onClick={handleExportJson}>
+                                    <Download className="mr-2 h-4 w-4" />
+                                    JSON
+                                </Button>
+                                <Button variant="outline" onClick={handleExportCsv}>
+                                    <Download className="mr-2 h-4 w-4" />
+                                    CSV
+                                </Button>
+                                {selectedContacts.length > 0 && (
+                                    <Button
+                                        variant="destructive"
+                                        onClick={() => bulkDeleteMutation.mutate(selectedContacts)}
+                                    >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Delete ({selectedContacts.length})
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </motion.div>
 
-                {/* Contacts List */}
-                {isLoading ? (
-                    <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                    </div>
-                ) : contacts.length === 0 ? (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="text-center py-12"
-                    >
-                        <Search className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                        <h3 className="text-lg font-medium text-gray-900">No contacts found</h3>
-                        <p className="text-gray-500 mt-1">
-                            {searchQuery || showFavorites
-                                ? 'Try adjusting your filters'
-                                : 'Start a search to collect contacts'}
-                        </p>
-                    </motion.div>
-                ) : (
-                    <div className="space-y-4">
-                        {contacts.map((contact, index) => (
-                            <motion.div
-                                key={contact.id}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: index * 0.05 }}
-                            >
-                                <Card className="hover:shadow-md transition-shadow">
-                                    <CardContent className="p-4">
-                                        <div className="flex items-start gap-4">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedContacts.includes(contact.id)}
-                                                onChange={() => toggleSelectContact(contact.id)}
-                                                className="mt-1 h-4 w-4 rounded border-gray-300"
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-start justify-between gap-4">
-                                                    <div>
-                                                        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                                                            {contact.title}
-                                                            {contact.isFavorite && (
-                                                                <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                                            )}
-                                                        </h3>
-                                                        {contact.category && (
-                                                            <p className="text-sm text-gray-500">{contact.category}</p>
+            {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            ) : contacts.length === 0 ? (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
+                    <Search className="mx-auto mb-4 h-16 w-16 text-muted-foreground/50" />
+                    <h3 className="text-lg font-medium text-foreground">No contacts found</h3>
+                    <p className="mt-1 text-muted-foreground">
+                        {searchQuery || showFavorites
+                            ? 'Try adjusting your filters'
+                            : 'Start a search to collect contacts'}
+                    </p>
+                </motion.div>
+            ) : (
+                <div className="space-y-4">
+                    {contacts.map((contact, index) => (
+                        <motion.div
+                            key={contact.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                        >
+                            <Card className="hover:shadow-md transition-shadow">
+                                <CardContent className="p-4">
+                                    <div className="flex items-start gap-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedContacts.includes(contact.id)}
+                                            onChange={() => toggleSelectContact(contact.id)}
+                                            className="mt-1 h-4 w-4 rounded border-input bg-background"
+                                        />
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div>
+                                                    <h3 className="flex items-center gap-2 font-semibold text-foreground">
+                                                        {contact.title}
+                                                        {contact.isFavorite && (
+                                                            <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
                                                         )}
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => toggleFavoriteMutation.mutate(contact.id)}
-                                                        >
-                                                            <Star
-                                                                className={`w-4 h-4 ${contact.isFavorite ? 'text-yellow-500 fill-yellow-500' : ''
-                                                                    }`}
-                                                            />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => deleteMutation.mutate(contact.id)}
-                                                        >
-                                                            <Trash2 className="w-4 h-4 text-destructive" />
-                                                        </Button>
-                                                    </div>
+                                                    </h3>
+                                                    {contact.category && (
+                                                        <p className="text-sm text-muted-foreground">{contact.category}</p>
+                                                    )}
                                                 </div>
-                                                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                                                    {contact.address && (
-                                                        <div className="flex items-center gap-2 text-gray-600">
-                                                            <MapPin className="w-4 h-4 flex-shrink-0" />
-                                                            <span className="truncate">{contact.address}</span>
-                                                        </div>
-                                                    )}
-                                                    {contact.phone && (
-                                                        <div className="flex items-center gap-2 text-gray-600">
-                                                            <Phone className="w-4 h-4 flex-shrink-0" />
-                                                            <a href={`tel:${contact.phone}`} className="hover:text-primary">
-                                                                {contact.phone}
-                                                            </a>
-                                                        </div>
-                                                    )}
-                                                    {contact.email && (
-                                                        <div className="flex items-center gap-2 text-gray-600">
-                                                            <Mail className="w-4 h-4 flex-shrink-0" />
-                                                            <a href={`mailto:${contact.email}`} className="hover:text-primary truncate">
-                                                                {contact.email}
-                                                            </a>
-                                                        </div>
-                                                    )}
-                                                    {contact.website && (
-                                                        <div className="flex items-center gap-2 text-gray-600">
-                                                            <Globe className="w-4 h-4 flex-shrink-0" />
-                                                            <a
-                                                                href={contact.website}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="hover:text-primary truncate"
-                                                            >
-                                                                {contact.website}
-                                                            </a>
-                                                        </div>
-                                                    )}
-                                                    {contact.rating && (
-                                                        <div className="flex items-center gap-2 text-gray-600">
-                                                            <Star className="w-4 h-4 flex-shrink-0 fill-yellow-500 text-yellow-500" />
-                                                            <span>{contact.rating} ({contact.reviewCount} reviews)</span>
-                                                        </div>
-                                                    )}
-                                                    {contact.googleMapsUrl && (
-                                                        <div className="flex items-center gap-2">
-                                                            <a
-                                                                href={contact.googleMapsUrl}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="text-primary hover:underline flex items-center gap-1"
-                                                            >
-                                                                <ExternalLink className="w-4 h-4" />
-                                                                View on Maps
-                                                            </a>
-                                                        </div>
-                                                    )}
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => toggleFavoriteMutation.mutate(contact.id)}
+                                                    >
+                                                        <Star
+                                                            className={`h-4 w-4 ${contact.isFavorite ? 'fill-yellow-500 text-yellow-500' : ''}`}
+                                                        />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => deleteMutation.mutate(contact.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </Button>
                                                 </div>
                                             </div>
+                                            <div className="mt-3 grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
+                                                {contact.address && (
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <MapPin className="h-4 w-4 flex-shrink-0" />
+                                                        <span className="truncate">{contact.address}</span>
+                                                    </div>
+                                                )}
+                                                {contact.phone && (
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <Phone className="h-4 w-4 flex-shrink-0" />
+                                                        <a href={`tel:${contact.phone}`} className="hover:text-primary">
+                                                            {contact.phone}
+                                                        </a>
+                                                    </div>
+                                                )}
+                                                {contact.email && (
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <Mail className="h-4 w-4 flex-shrink-0" />
+                                                        <a
+                                                            href={`mailto:${contact.email}`}
+                                                            className="truncate hover:text-primary"
+                                                        >
+                                                            {contact.email}
+                                                        </a>
+                                                    </div>
+                                                )}
+                                                {contact.website && (
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <Globe className="h-4 w-4 flex-shrink-0" />
+                                                        <a
+                                                            href={contact.website}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="truncate hover:text-primary"
+                                                        >
+                                                            {contact.website}
+                                                        </a>
+                                                    </div>
+                                                )}
+                                                {contact.rating && (
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <Star className="h-4 w-4 flex-shrink-0 fill-yellow-500 text-yellow-500" />
+                                                        <span>{contact.rating} ({contact.reviewCount} reviews)</span>
+                                                    </div>
+                                                )}
+                                                {contact.googleMapsUrl && (
+                                                    <div className="flex items-center gap-2">
+                                                        <a
+                                                            href={contact.googleMapsUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center gap-1 text-primary hover:underline"
+                                                        >
+                                                            <ExternalLink className="h-4 w-4" />
+                                                            View on Maps
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    </CardContent>
-                                </Card>
-                            </motion.div>
-                        ))}
-                    </div>
-                )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </motion.div>
+                    ))}
+                </div>
+            )}
 
-                {/* Pagination */}
-                {pagination && pagination.totalPages > 1 && (
-                    <div className="flex items-center justify-center gap-4 mt-8">
-                        <Button
-                            variant="outline"
-                            disabled={page === 1}
-                            onClick={() => setPage(page - 1)}
-                        >
-                            <ChevronLeft className="w-4 h-4 mr-2" />
-                            Previous
-                        </Button>
-                        <span className="text-sm text-gray-600">
-                            Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
-                        </span>
-                        <Button
-                            variant="outline"
-                            disabled={page === pagination.totalPages}
-                            onClick={() => setPage(page + 1)}
-                        >
-                            Next
-                            <ChevronRight className="w-4 h-4 ml-2" />
-                        </Button>
-                    </div>
-                )}
-            </main>
+            {pagination && pagination.totalPages > 1 && (
+                <div className="mt-8 flex items-center justify-center gap-4">
+                    <Button variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>
+                        <ChevronLeft className="mr-2 h-4 w-4" />
+                        Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                        Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
+                    </span>
+                    <Button
+                        variant="outline"
+                        disabled={page === pagination.totalPages}
+                        onClick={() => setPage(page + 1)}
+                    >
+                        Next
+                        <ChevronRight className="ml-2 h-4 w-4" />
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }

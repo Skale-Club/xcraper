@@ -20,10 +20,69 @@ import {
     ArrowLeft,
     Check,
     Loader2,
-    Sparkles,
+    type LucideIcon,
 } from 'lucide-react';
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
+
+interface QuestionStepProps {
+    icon: LucideIcon;
+    title: string;
+    description: string;
+    label: string;
+    value: string;
+    placeholder: string;
+    onChange: (value: string) => void;
+    optional?: boolean;
+    type?: string;
+}
+
+function QuestionStep({
+    icon: Icon,
+    title,
+    description,
+    label,
+    value,
+    placeholder,
+    onChange,
+    optional = false,
+    type = 'text',
+}: QuestionStepProps) {
+    return (
+        <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+        >
+            <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Icon className="w-8 h-8 text-primary" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
+                <p className="text-gray-600">{description}</p>
+            </div>
+            <div className="space-y-3">
+                <div>
+                    <Label htmlFor={label}>{label}{optional ? ' (Optional)' : ''}</Label>
+                    <Input
+                        id={label}
+                        value={value}
+                        onChange={(e) => onChange(e.target.value)}
+                        placeholder={placeholder}
+                        className="mt-2"
+                        type={type}
+                        autoFocus
+                    />
+                </div>
+                {optional ? (
+                    <p className="text-sm text-gray-500">
+                        You can leave this blank and update it later from your profile.
+                    </p>
+                ) : null}
+            </div>
+        </motion.div>
+    );
+}
 
 export default function OnboardingPage() {
     const { user, refreshUser } = useAuth();
@@ -51,16 +110,16 @@ export default function OnboardingPage() {
 
     // Redirect if already completed onboarding
     useEffect(() => {
-        if (statusData?.onboardingCompleted) {
+        if (statusData?.completed || statusData?.onboardingCompleted) {
             navigate('/dashboard');
         }
         if (statusData?.data) {
-            setCurrentStep(Math.min(statusData.currentStep ?? 0, TOTAL_STEPS - 1));
+            setCurrentStep(Math.min(statusData.step ?? statusData.currentStep ?? 0, TOTAL_STEPS - 1));
             setFormData(prev => ({
                 ...prev,
-                name: statusData.data.name || prev.name,
-                company: statusData.data.company || '',
-                phone: statusData.data.phone || '',
+                name: statusData.data?.name || prev.name,
+                company: statusData.data?.company || '',
+                phone: statusData.data?.phone || '',
             }));
         }
     }, [statusData, navigate]);
@@ -133,6 +192,8 @@ export default function OnboardingPage() {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
+    const isNextDisabled = currentStep === 0 && formData.name.trim().length < 2;
+
     if (statusLoading) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -142,102 +203,46 @@ export default function OnboardingPage() {
     }
 
     const steps = [
-        // Step 0: Welcome
-        <motion.div
-            key="welcome"
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -50 }}
-            className="text-center"
-        >
-            <div className="mb-6">
-                <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Sparkles className="w-10 h-10 text-primary" />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Xcraper!</h2>
-                <p className="text-gray-600">
-                    Let's get you set up in just a few quick steps.
-                </p>
-            </div>
-            <div className="bg-blue-50 rounded-lg p-4 text-left">
-                <h3 className="font-medium text-blue-900 mb-2">Here's what you'll be able to do:</h3>
-                <ul className="space-y-2 text-blue-800 text-sm">
-                    <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-blue-600" />
-                        Search Google Maps for business contacts
-                    </li>
-                    <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-blue-600" />
-                        Save and organize your leads
-                    </li>
-                    <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-blue-600" />
-                        Export contacts to CSV or JSON
-                    </li>
-                    <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-blue-600" />
-                        Manage your credits and billing
-                    </li>
-                </ul>
-            </div>
-        </motion.div>,
+        // Step 0: Name
+        <QuestionStep
+            key="name"
+            icon={User}
+            title="What should we call you?"
+            description="We will use this name across your dashboard and saved contact history."
+            label="Full Name"
+            value={formData.name}
+            placeholder="Enter your full name"
+            onChange={(value) => handleInputChange('name', value)}
+        />,
 
-        // Step 1: Profile Info
-        <motion.div
-            key="profile"
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -50 }}
-        >
-            <div className="text-center mb-6">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <User className="w-8 h-8 text-primary" />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your Profile</h2>
-                <p className="text-gray-600">
-                    Help us personalize your experience
-                </p>
-            </div>
-            <div className="space-y-4">
-                <div>
-                    <Label htmlFor="name">Full Name</Label>
-                    <Input
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) => handleInputChange('name', e.target.value)}
-                        placeholder="Enter your full name"
-                        className="mt-1"
-                    />
-                </div>
-                <div>
-                    <Label htmlFor="company">Company (Optional)</Label>
-                    <div className="relative mt-1">
-                        <Input
-                            id="company"
-                            value={formData.company}
-                            onChange={(e) => handleInputChange('company', e.target.value)}
-                            placeholder="Your company name"
-                        />
-                        <Building className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    </div>
-                </div>
-                <div>
-                    <Label htmlFor="phone">Phone (Optional)</Label>
-                    <div className="relative mt-1">
-                        <Input
-                            id="phone"
-                            value={formData.phone}
-                            onChange={(e) => handleInputChange('phone', e.target.value)}
-                            placeholder="Your phone number"
-                            type="tel"
-                        />
-                        <Phone className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    </div>
-                </div>
-            </div>
-        </motion.div>,
+        // Step 1: Company
+        <QuestionStep
+            key="company"
+            icon={Building}
+            title="What company are you working with?"
+            description="This helps tailor the experience and future messaging."
+            label="Company"
+            value={formData.company}
+            placeholder="Your company name"
+            onChange={(value) => handleInputChange('company', value)}
+            optional
+        />,
 
-        // Step 2: How it Works
+        // Step 2: Phone
+        <QuestionStep
+            key="phone"
+            icon={Phone}
+            title="What phone number should we keep on file?"
+            description="You can skip this if you prefer and add it later."
+            label="Phone"
+            value={formData.phone}
+            placeholder="Your phone number"
+            onChange={(value) => handleInputChange('phone', value)}
+            optional
+            type="tel"
+        />,
+
+        // Step 3: How it Works
         <motion.div
             key="how-it-works"
             initial={{ opacity: 0, x: 50 }}
@@ -284,7 +289,7 @@ export default function OnboardingPage() {
             </div>
         </motion.div>,
 
-        // Step 3: Credits Explanation
+        // Step 4: Credits Explanation
         <motion.div
             key="credits"
             initial={{ opacity: 0, x: 50 }}
@@ -384,7 +389,7 @@ export default function OnboardingPage() {
                             </div>
                             <div>
                                 {currentStep < TOTAL_STEPS - 1 ? (
-                                    <Button onClick={handleNext} disabled={saveProgressMutation.isPending}>
+                                    <Button onClick={handleNext} disabled={saveProgressMutation.isPending || isNextDisabled}>
                                         {saveProgressMutation.isPending ? (
                                             <>
                                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />

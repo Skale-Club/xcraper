@@ -5,6 +5,15 @@ import { db } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
+const authUserFields = {
+    id: users.id,
+    email: users.email,
+    name: users.name,
+    role: users.role,
+    credits: users.credits,
+    avatarUrl: users.avatarUrl,
+};
+
 // Initialize Supabase client for server-side verification
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -58,7 +67,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
         // Get user from our database
         const [user] = await db
-            .select()
+            .select(authUserFields)
             .from(users)
             .where(eq(users.id, supabaseUser.id))
             .limit(1);
@@ -126,7 +135,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
 
         // Get user from our database
         const [user] = await db
-            .select()
+            .select(authUserFields)
             .from(users)
             .where(eq(users.id, supabaseUser.id))
             .limit(1);

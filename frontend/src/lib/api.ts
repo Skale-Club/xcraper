@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-// API Types
+ // API Types
 export interface User {
     id: string;
     email: string;
@@ -12,9 +12,38 @@ export interface User {
     onboardingStep: number;
     company?: string | null;
     phone?: string | null;
-    avatarUrl?: string;
-    createdAt?: string;
-    updatedAt?: string;
+    avatarUrl?: string | null;
+    subscriptionPlanId?: string | null;
+    subscriptionStatus?: 'incomplete' | 'active' | 'canceled' | 'past_due' | 'trial';
+    trialEnd?: string | null;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    autoTopUpEnabled?: boolean;
+    monthlyTopUpCap?: string;
+    currentMonthTopUpSpend?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface SubscriptionPlan {
+    id: string;
+    name: string;
+    description?: string | null;
+    price: string;
+    billingInterval: 'monthly' | 'yearly';
+    monthlyCredits: number;
+    isPopular: boolean;
+    isActive: boolean;
+    allowAutoTopUp: boolean;
+    allowManualPurchase: boolean;
+    allowRollover: boolean;
+    maxRolloverCredits?: number | null;
+    rolloverExpirationDays?: number | null;
+    trialDays?: number | null;
+    trialCredits?: number | null;
+    displayOrder: number;
+    createdAt: string;
+    updatedAt: string;
 }
 
 export interface SearchHistory {
@@ -37,6 +66,8 @@ export interface SearchStatus {
     itemsCount?: number;
     totalResults?: number;
     savedResults?: number;
+    standardResults?: number;
+    enrichedResults?: number;
     creditsUsed?: number;
     completedAt?: string;
     message?: string;
@@ -80,7 +111,7 @@ export interface CreditTransaction {
     id: string;
     userId: string;
     amount: number;
-    type: 'purchase' | 'search' | 'contact_save' | 'admin_adjustment' | 'bonus' | 'usage' | 'refund';
+    type: 'monthly_grant' | 'purchase' | 'usage' | 'refund' | 'bonus' | 'top_up' | 'rollover' | 'expired' | 'adjustment';
     description?: string;
     searchId?: string;
     createdAt: string;
@@ -97,6 +128,32 @@ export interface CreditPackage {
     sortOrder: number;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface SubscriptionDetails {
+    id: string;
+    planId: string;
+    planName: string;
+    status: 'incomplete' | 'active' | 'canceled' | 'past_due' | 'trial';
+    currentPeriodStart?: string;
+    currentPeriodEnd?: string;
+    cancelAtPeriodEnd?: boolean;
+    creditsRemaining: number;
+    creditsUsedThisPeriod: number;
+    monthlyCredits: number;
+}
+
+export interface OnboardingStatus {
+    completed: boolean;
+    step: number;
+    totalSteps: number;
+    currentStep?: number;
+    onboardingCompleted?: boolean;
+    data?: {
+        name?: string;
+        company?: string;
+        phone?: string;
+    };
 }
 
 // API Error class
@@ -180,10 +237,10 @@ export const usersApi = {
 
 // Search API
 export const searchApi = {
-    start: (query: string, location: string, maxResults?: number) =>
-        apiFetch<{ message: string; searchId: string; apifyRunId: string }>('/search/', {
+    start: (query: string, location: string, maxResults?: number, requestEnrichment = false) =>
+        apiFetch<{ message: string; searchId: string; apifyRunId: string; estimatedCredits?: number; creditsPerLead?: number; requestEnrichment?: boolean }>('/search/', {
             method: 'POST',
-            body: JSON.stringify({ query, location, maxResults }),
+            body: JSON.stringify({ query, location, maxResults, requestEnrichment }),
         }),
 
     getStatus: (searchId: string) =>
@@ -306,6 +363,9 @@ export const paymentsApi = {
 
     verifyPayment: (sessionId: string) =>
         apiFetch<{ message: string; credits: number }>(`/payments/verify/${sessionId}`),
+
+    getPortalUrl: () =>
+        apiFetch<{ url: string }>('/payments/portal'),
 };
 
 // Settings types
@@ -340,6 +400,8 @@ export interface PublicSettings {
     socialLinks: Array<{ platform: string; url: string }>;
     registrationEnabled: boolean;
     freeCreditsOnSignup: number;
+    creditsPerStandardResult: number;
+    creditsPerEnrichedResult: number;
 }
 
 export interface AdminSettings extends PublicSettings {
@@ -369,7 +431,7 @@ export interface AdminCreditPackage {
     updatedAt: string;
 }
 
-// Settings API
+ // Settings API
 export const settingsApi = {
     getPublic: () =>
         apiFetch<{ settings: PublicSettings; packages: CreditPackage[] }>('/settings/public'),
@@ -380,7 +442,7 @@ export const settingsApi = {
     update: (data: Partial<AdminSettings>) =>
         apiFetch<{ message: string; settings: AdminSettings }>('/settings/', {
             method: 'PATCH',
-            body: JSON.stringify(data),
+            body: JSON.stringify(data)
         }),
 
     createPackage: (data: {
@@ -393,7 +455,7 @@ export const settingsApi = {
     }) =>
         apiFetch<{ message: string; package: AdminCreditPackage }>('/settings/packages', {
             method: 'POST',
-            body: JSON.stringify(data),
+            body: JSON.stringify(data)
         }),
 
     updatePackage: (packageId: string, data: Partial<{
@@ -407,25 +469,42 @@ export const settingsApi = {
     }>) =>
         apiFetch<{ message: string; package: AdminCreditPackage }>(`/settings/packages/${packageId}`, {
             method: 'PATCH',
-            body: JSON.stringify(data),
+            body: JSON.stringify(data)
         }),
 
     deletePackage: (packageId: string) =>
         apiFetch<{ message: string }>(`/settings/packages/${packageId}`, {
-            method: 'DELETE',
-        }),
+            method: 'DELETE'
+        })
 };
 
-// Onboarding types
-export interface OnboardingStatus {
-    onboardingCompleted: boolean;
-    currentStep: number;
-    data: {
-        name?: string;
-        company?: string;
-        phone?: string;
-    };
-}
+// Subscription API
+export const subscriptionApi = {
+    getPublicPlans: () =>
+        apiFetch<{ plans: SubscriptionPlan[] }>(`/subscriptions/public`),
+
+    getSubscription: () =>
+        apiFetch<SubscriptionDetails>('/subscriptions/me'),
+
+    subscribe: (planId: string) =>
+        apiFetch<{ url: string; sessionId: string }>(`/subscriptions/subscribe`, {
+            method: 'POST',
+            body: JSON.stringify({ planId })
+        }),
+
+    cancel: () =>
+        apiFetch<{ message: string; subscription: SubscriptionDetails }>(`/subscriptions/cancel`, {
+            method: 'POST'
+        }),
+
+    reactivate: () =>
+        apiFetch<{ message: string; subscription: SubscriptionDetails }>(`/subscriptions/reactivate`, {
+            method: 'POST'
+        }),
+
+    getPortalUrl: () =>
+        apiFetch<{ url: string }>('/subscriptions/portal')
+};
 
 export interface OnboardingData {
     name?: string;
@@ -456,4 +535,144 @@ export const onboardingApi = {
         apiFetch<{ message: string; completed: boolean }>('/onboarding/skip', {
             method: 'POST',
         }),
+};
+
+// Admin API Types
+export interface AdminStats {
+    totalUsers: number;
+    totalContacts: number;
+    totalSearches: number;
+    totalCreditsDistributed: number;
+    recentSignups: number;
+    recentSearches: number;
+    totalPurchasedCredits: number;
+    totalUsedCredits: number;
+}
+
+export interface AdminUser {
+    id: string;
+    email: string;
+    name: string;
+    role: 'user' | 'admin';
+    credits: number;
+    isActive: boolean;
+    onboardingCompleted: boolean;
+    company?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface AdminUserDetails extends AdminUser {
+    phone?: string | null;
+    avatarUrl?: string | null;
+}
+
+export interface AdminContact {
+    id: string;
+    title: string;
+    category?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+    rating?: string;
+    reviewCount?: number;
+    createdAt: string;
+    user: {
+        id: string;
+        name: string;
+        email: string;
+    };
+}
+
+export interface AdminSearch {
+    id: string;
+    query: string;
+    location: string;
+    status: string;
+    creditsUsed: number;
+    totalResults?: number;
+    createdAt: string;
+    completedAt?: string;
+    user: {
+        id: string;
+        name: string;
+        email: string;
+    };
+}
+
+export interface AdminTransaction {
+    id: string;
+    amount: number;
+    type: string;
+    description?: string;
+    createdAt: string;
+    user: {
+        id: string;
+        name: string;
+        email: string;
+    };
+}
+
+export interface PaginatedResponse<T> {
+    data: T[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+}
+
+// Admin API
+export const adminApi = {
+    // Dashboard statistics
+    getStats: () =>
+        apiFetch<AdminStats>('/admin/stats'),
+
+    // Users management
+    getUsers: (page = 1, limit = 20) =>
+        apiFetch<{ users: AdminUser[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+            `/admin/users?page=${page}&limit=${limit}`
+        ),
+
+    getUser: (userId: string) =>
+        apiFetch<{ user: AdminUserDetails; stats: { totalSearches: number; totalContacts: number; totalTransactions: number } }>(
+            `/admin/users/${userId}`
+        ),
+
+    updateUser: (userId: string, data: Partial<{ name: string; credits: number; role: 'user' | 'admin'; isActive: boolean }>) =>
+        apiFetch<{ user: AdminUser }>(`/admin/users/${userId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        }),
+
+    addCredits: (userId: string, amount: number, description?: string) =>
+        apiFetch<{ user: AdminUser }>(`/admin/users/${userId}/credits`, {
+            method: 'POST',
+            body: JSON.stringify({ amount, description }),
+        }),
+
+    deleteUser: (userId: string) =>
+        apiFetch<{ message: string; user: AdminUser }>(`/admin/users/${userId}`, {
+            method: 'DELETE',
+        }),
+
+    // Contacts management
+    getContacts: (page = 1, limit = 20) =>
+        apiFetch<{ contacts: AdminContact[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+            `/admin/contacts?page=${page}&limit=${limit}`
+        ),
+
+    // Searches management
+    getSearches: (page = 1, limit = 20) =>
+        apiFetch<{ searches: AdminSearch[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+            `/admin/searches?page=${page}&limit=${limit}`
+        ),
+
+    // Transactions management
+    getTransactions: (page = 1, limit = 20) =>
+        apiFetch<{ transactions: AdminTransaction[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+            `/admin/transactions?page=${page}&limit=${limit}`
+        ),
 };

@@ -8,6 +8,22 @@ import { z } from 'zod';
 
 const router = Router();
 
+const appUserFields = {
+    id: users.id,
+    email: users.email,
+    name: users.name,
+    role: users.role,
+    credits: users.credits,
+    isActive: users.isActive,
+    onboardingCompleted: users.onboardingCompleted,
+    onboardingStep: users.onboardingStep,
+    company: users.company,
+    phone: users.phone,
+    avatarUrl: users.avatarUrl,
+    createdAt: users.createdAt,
+    updatedAt: users.updatedAt,
+};
+
 // Initialize Supabase client for server-side verification
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -56,13 +72,33 @@ router.get('/me', async (req: Request, res: Response) => {
 
         // Get user from our database
         const [user] = await db
-            .select()
+            .select(appUserFields)
             .from(users)
             .where(eq(users.id, supabaseUser.id))
             .limit(1);
 
         if (!user) {
             return res.status(404).json({ error: 'User not found in database' });
+        }
+
+        const adminEmail = process.env.ADMIN_EMAIL;
+        const shouldBeAdmin = Boolean(
+            adminEmail &&
+            supabaseUser.email &&
+            supabaseUser.email.toLowerCase() === adminEmail.toLowerCase(),
+        );
+
+        if (shouldBeAdmin && user.role !== 'admin') {
+            const [updatedUser] = await db
+                .update(users)
+                .set({
+                    role: 'admin',
+                    updatedAt: new Date(),
+                })
+                .where(eq(users.id, supabaseUser.id))
+                .returning(appUserFields);
+
+            return res.json({ user: updatedUser });
         }
 
         res.json({ user });
@@ -97,10 +133,18 @@ router.post('/sync', async (req: Request, res: Response) => {
         const userId = supabaseUser.id;
         const body = syncUserSchema.parse(req.body);
         const email = supabaseUser.email ?? body.email;
+        const adminEmail = process.env.ADMIN_EMAIL;
+        const isAdmin = adminEmail ? email.toLowerCase() === adminEmail.toLowerCase() : false;
 
         // Check if user already exists
         const [existingUser] = await db
-            .select()
+            .select({
+                id: users.id,
+                email: users.email,
+                name: users.name,
+                role: users.role,
+                avatarUrl: users.avatarUrl,
+            })
             .from(users)
             .where(eq(users.id, userId))
             .limit(1);
@@ -113,10 +157,11 @@ router.post('/sync', async (req: Request, res: Response) => {
                     email,
                     name: body.name || existingUser.name,
                     avatarUrl: body.avatarUrl || existingUser.avatarUrl,
+                    role: isAdmin ? 'admin' : existingUser.role,
                     updatedAt: new Date(),
                 })
                 .where(eq(users.id, userId))
-                .returning();
+                .returning(appUserFields);
 
             return res.json({ user: updatedUser, isNew: false });
         }
@@ -137,10 +182,10 @@ router.post('/sync', async (req: Request, res: Response) => {
                 email,
                 name: body.name || email.split('@')[0],
                 avatarUrl: body.avatarUrl || null,
-                role: 'user',
+                role: isAdmin ? 'admin' : 'user',
                 credits: freeCredits,
             })
-            .returning();
+            .returning(appUserFields);
 
         res.status(201).json({ user: newUser, isNew: true });
     } catch (error) {
@@ -205,7 +250,10 @@ router.get('/admin/users', async (req: Request, res: Response) => {
 
         // Check if user is admin
         const [adminUser] = await db
-            .select()
+            .select({
+                id: users.id,
+                role: users.role,
+            })
             .from(users)
             .where(eq(users.id, supabaseUser.id))
             .limit(1);

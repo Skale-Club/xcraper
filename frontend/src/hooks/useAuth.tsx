@@ -16,6 +16,8 @@ export interface AppUser {
     company?: string | null;
     phone?: string | null;
     avatarUrl?: string;
+    subscriptionPlanId?: string | null;
+    subscriptionStatus?: 'incomplete' | 'active' | 'canceled' | 'past_due' | 'trial';
     createdAt: string;
 }
 
@@ -97,6 +99,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
+    const ensureAppUser = useCallback(async (supabaseUser: User, accessToken: string): Promise<AppUser | null> => {
+        let appUser = await fetchAppUser(accessToken);
+
+        if (!appUser) {
+            appUser = await createAppUser(supabaseUser, accessToken);
+        }
+
+        return appUser;
+    }, [createAppUser, fetchAppUser]);
+
     // Initialize auth state
     useEffect(() => {
         let mounted = true;
@@ -111,11 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     setSession(initialSession);
                     setSupabaseUser(initialSession.user);
 
-                    let appUser = await fetchAppUser(initialSession.access_token);
-
-                    if (!appUser && initialSession.user) {
-                        appUser = await createAppUser(initialSession.user, initialSession.access_token);
-                    }
+                    const appUser = await ensureAppUser(initialSession.user, initialSession.access_token);
 
                     if (mounted) {
                         setUser(appUser);
@@ -133,19 +141,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         initAuth();
 
         // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
             if (!mounted) return;
 
             setSession(newSession);
             setSupabaseUser(newSession?.user ?? null);
 
             if (newSession) {
-                let appUser = await fetchAppUser(newSession.access_token);
-
-                if (!appUser && event === 'SIGNED_IN') {
-                    appUser = await createAppUser(newSession.user, newSession.access_token);
-                }
-
+                const appUser = await ensureAppUser(newSession.user, newSession.access_token);
                 setUser(appUser);
             } else {
                 setUser(null);
@@ -158,7 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             mounted = false;
             subscription.unsubscribe();
         };
-    }, [fetchAppUser, createAppUser]);
+    }, [ensureAppUser]);
 
     const signUp = async (
         email: string,

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
+import PageIntro from '@/components/app/PageIntro';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -21,7 +22,6 @@ export default function CreditsPage() {
     const [purchasingPackage, setPurchasingPackage] = useState<string | null>(null);
     const [verifyingPayment, setVerifyingPayment] = useState(false);
 
-    // Check URL params for payment success/cancel
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const paymentStatus = params.get('payment');
@@ -37,7 +37,6 @@ export default function CreditsPage() {
                         title: 'Payment Successful!',
                         description: `${data.credits} credits have been added to your account.`,
                     });
-                    // Clean up URL
                     window.history.replaceState({}, '', window.location.pathname);
                 })
                 .catch((error: Error) => {
@@ -51,28 +50,23 @@ export default function CreditsPage() {
                 title: 'Payment Cancelled',
                 description: 'Your payment was cancelled. Please try again.',
             });
-            // Clean up URL
             window.history.replaceState({}, '', window.location.pathname);
         }
     }, [toast, refreshUser, queryClient]);
 
-    // Fetch credit packages from Stripe
     const { data: packagesData } = useQuery({
         queryKey: ['credit-packages'],
         queryFn: () => paymentsApi.getPackages(),
     });
 
-    // Fetch transaction history
     const { data: historyData, isLoading: historyLoading } = useQuery({
         queryKey: ['credit-history'],
         queryFn: () => creditsApi.getHistory(1, 20),
     });
 
-    // Create Stripe checkout session
     const checkoutMutation = useMutation({
         mutationFn: (packageId: string) => paymentsApi.createCheckout(packageId),
         onSuccess: (data) => {
-            // Redirect to Stripe Checkout
             window.location.href = data.url;
         },
         onError: (error: Error) => {
@@ -94,13 +88,13 @@ export default function CreditsPage() {
         switch (type) {
             case 'purchase':
             case 'bonus':
-                return <ArrowUpRight className="w-4 h-4 text-green-600" />;
+                return <ArrowUpRight className="h-4 w-4 text-green-600" />;
             case 'usage':
-                return <ArrowDownRight className="w-4 h-4 text-red-600" />;
+                return <ArrowDownRight className="h-4 w-4 text-red-600" />;
             case 'refund':
-                return <ArrowUpRight className="w-4 h-4 text-blue-600" />;
+                return <ArrowUpRight className="h-4 w-4 text-blue-600" />;
             default:
-                return <Coins className="w-4 h-4" />;
+                return <Coins className="h-4 w-4" />;
         }
     };
 
@@ -120,177 +114,160 @@ export default function CreditsPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <header className="bg-white shadow-sm border-b">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <span className="text-2xl">💰</span>
-                        <h1 className="text-xl font-bold text-gray-900">Credits</h1>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 text-sm">
-                            <Coins className="w-4 h-4 text-green-600" />
-                            <span className="font-medium">{user?.credits ?? 0} credits</span>
-                        </div>
-                        <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
-                    </div>
-                </div>
-            </header>
+        <div className="mx-auto max-w-7xl space-y-8">
+            <PageIntro
+                eyebrow="Billing"
+                title="Credits"
+                description="Track your current balance, buy more credits, and review every transaction in one place."
+            />
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Current Balance */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-8"
-                >
-                    <Card className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
-                        <CardContent className="p-8">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-blue-100 text-sm">Current Balance</p>
-                                    <p className="text-5xl font-bold mt-2">{user?.credits ?? 0}</p>
-                                    <p className="text-blue-100 mt-2">credits available</p>
-                                </div>
-                                <div className="p-4 bg-white/10 rounded-full">
-                                    <Coins className="w-16 h-16" />
-                                </div>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                <Card className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
+                    <CardContent className="p-8">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm text-blue-100">Current Balance</p>
+                                <p className="mt-2 text-5xl font-bold">{user?.credits ?? 0}</p>
+                                <p className="mt-2 text-blue-100">credits available</p>
                             </div>
+                            <div className="rounded-full bg-white/10 p-4">
+                                <Coins className="h-16 w-16" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </motion.div>
+
+            {verifyingPayment && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                >
+                    <Card className="mx-4 w-full max-w-md">
+                        <CardContent className="p-8 text-center">
+                            <Loader2 className="mx-auto mb-4 h-16 w-16 animate-spin text-primary" />
+                            <h3 className="mb-2 text-xl font-bold">Verifying Payment...</h3>
+                            <p className="text-gray-500">Please wait while we confirm your payment.</p>
                         </CardContent>
                     </Card>
                 </motion.div>
+            )}
 
-                {/* Payment Verification Overlay */}
-                {verifyingPayment && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-                    >
-                        <Card className="w-full max-w-md mx-4">
-                            <CardContent className="p-8 text-center">
-                                <Loader2 className="w-16 h-16 mx-auto mb-4 animate-spin text-primary" />
-                                <h3 className="text-xl font-bold mb-2">Verifying Payment...</h3>
-                                <p className="text-gray-500">Please wait while we confirm your payment.</p>
-                            </CardContent>
-                        </Card>
-                    </motion.div>
-                )}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="space-y-4"
+            >
+                <div>
+                    <h3 className="text-xl font-semibold text-slate-950">Purchase Credits</h3>
+                    <p className="text-sm text-slate-500">Pick a package and continue to checkout.</p>
+                </div>
 
-                {/* Credit Packages */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="mb-8"
-                >
-                    <h2 className="text-xl font-bold text-gray-900 mb-4">Purchase Credits</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {packages.map((pkg, index) => (
-                            <motion.div
-                                key={pkg.id}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.1 + index * 0.05 }}
-                            >
-                                <Card className={`relative overflow-hidden hover:shadow-lg transition-shadow ${pkg.isPopular ? 'ring-2 ring-primary' : ''}`}>
-                                    {pkg.isPopular && (
-                                        <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs px-3 py-1">
-                                            Most Popular
-                                        </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    {packages.map((pkg, index) => (
+                        <motion.div
+                            key={pkg.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1 + index * 0.05 }}
+                        >
+                            <Card className={`relative overflow-hidden hover:shadow-lg transition-shadow ${pkg.isPopular ? 'ring-2 ring-primary' : ''}`}>
+                                {pkg.isPopular && (
+                                    <div className="absolute right-0 top-0 bg-primary px-3 py-1 text-xs text-primary-foreground">
+                                        Most Popular
+                                    </div>
+                                )}
+                                <CardHeader className="pb-2 text-center">
+                                    <CardTitle className="text-lg">{pkg.name}</CardTitle>
+                                    <div className="mt-2">
+                                        <span className="text-3xl font-bold">${pkg.price}</span>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="text-center">
+                                    <p className="mb-2 text-2xl font-bold text-primary">{pkg.credits} credits</p>
+                                    {pkg.description && (
+                                        <p className="mb-2 text-sm text-gray-600">{pkg.description}</p>
                                     )}
-                                    <CardHeader className="text-center pb-2">
-                                        <CardTitle className="text-lg">{pkg.name}</CardTitle>
-                                        <div className="mt-2">
-                                            <span className="text-3xl font-bold">${pkg.price}</span>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="text-center">
-                                        <p className="text-2xl font-bold text-primary mb-2">{pkg.credits} credits</p>
-                                        {pkg.description && (
-                                            <p className="text-sm text-gray-600 mb-2">{pkg.description}</p>
+                                    <p className="mb-4 text-sm text-gray-500">
+                                        ${(parseFloat(pkg.price) / pkg.credits).toFixed(3)} per credit
+                                    </p>
+                                    <Button
+                                        className="w-full"
+                                        onClick={() => handlePurchase(pkg.id)}
+                                        disabled={purchasingPackage !== null}
+                                    >
+                                        {purchasingPackage === pkg.id ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Redirecting...
+                                            </>
+                                        ) : (
+                                            'Purchase'
                                         )}
-                                        <p className="text-sm text-gray-500 mb-4">
-                                            ${(parseFloat(pkg.price) / pkg.credits).toFixed(3)} per credit
-                                        </p>
-                                        <Button
-                                            className="w-full"
-                                            onClick={() => handlePurchase(pkg.id)}
-                                            disabled={purchasingPackage !== null}
-                                        >
-                                            {purchasingPackage === pkg.id ? (
-                                                <>
-                                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                    Redirecting...
-                                                </>
-                                            ) : (
-                                                'Purchase'
-                                            )}
-                                        </Button>
-                                    </CardContent>
-                                </Card>
-                            </motion.div>
-                        ))}
-                    </div>
-                </motion.div>
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        </motion.div>
+                    ))}
+                </div>
+            </motion.div>
 
-                {/* Transaction History */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                >
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <TrendingUp className="w-5 h-5" />
-                                Transaction History
-                            </CardTitle>
-                            <CardDescription>Your recent credit activity</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {historyLoading ? (
-                                <div className="flex items-center justify-center py-8">
-                                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                                </div>
-                            ) : transactions.length === 0 ? (
-                                <div className="text-center py-8 text-gray-500">
-                                    <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                                    <p>No transactions yet</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {transactions.map((transaction) => (
-                                        <div
-                                            key={transaction.id}
-                                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="p-2 bg-white rounded-full">
-                                                    {getTransactionIcon(transaction.type)}
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium">{getTransactionTypeLabel(transaction.type)}</p>
-                                                    <p className="text-sm text-gray-500">{transaction.description}</p>
-                                                </div>
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+            >
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <TrendingUp className="h-5 w-5" />
+                            Transaction History
+                        </CardTitle>
+                        <CardDescription>Your recent credit activity</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {historyLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            </div>
+                        ) : transactions.length === 0 ? (
+                            <div className="py-8 text-center text-gray-500">
+                                <TrendingUp className="mx-auto mb-4 h-12 w-12 opacity-50" />
+                                <p>No transactions yet</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {transactions.map((transaction) => (
+                                    <div
+                                        key={transaction.id}
+                                        className="flex items-center justify-between rounded-lg bg-gray-50 p-3"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="rounded-full bg-white p-2">
+                                                {getTransactionIcon(transaction.type)}
                                             </div>
-                                            <div className="text-right">
-                                                <p className={`font-bold ${transaction.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {transaction.amount > 0 ? '+' : ''}{transaction.amount}
-                                                </p>
-                                                <p className="text-xs text-gray-500">
-                                                    {new Date(transaction.createdAt).toLocaleDateString()}
-                                                </p>
+                                            <div>
+                                                <p className="font-medium">{getTransactionTypeLabel(transaction.type)}</p>
+                                                <p className="text-sm text-gray-500">{transaction.description}</p>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                </motion.div>
-            </main>
+                                        <div className="text-right">
+                                            <p className={`font-bold ${transaction.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {transaction.amount > 0 ? '+' : ''}{transaction.amount}
+                                            </p>
+                                            <p className="text-xs text-gray-500">
+                                                {new Date(transaction.createdAt).toLocaleDateString()}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </motion.div>
         </div>
     );
 }

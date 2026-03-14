@@ -23,6 +23,7 @@ export interface SearchParams {
     maxResults?: number;
     language?: string;
     countryCode?: string;
+    extractEmails?: boolean;
 }
 
 export interface ScrapedPlace {
@@ -39,6 +40,7 @@ export interface ScrapedPlace {
     openingHours?: string;
     imageUrl?: string;
     googleMapsUrl?: string;
+    placeId?: string;
     rawData?: Record<string, unknown>;
 }
 
@@ -55,7 +57,7 @@ export async function startScrapingTask(params: SearchParams): Promise<string> {
         maxItems: params.maxResults || 50,
         language: params.language || 'en',
         countryCode: params.countryCode || 'us',
-        extractEmails: true,
+        extractEmails: params.extractEmails ?? true,
         extractPhones: true,
         extractWebsites: true,
         extractAddress: true,
@@ -145,6 +147,7 @@ export async function getTaskResults(runId: string): Promise<ScrapedPlace[]> {
                 openingHours: item.hours ? JSON.stringify(item.hours) : undefined,
                 imageUrl: item.image ? String(item.image) : undefined,
                 googleMapsUrl: item.url ? String(item.url) : undefined,
+                placeId: item.placeId ? String(item.placeId) : undefined,
                 rawData: item,
             };
         });

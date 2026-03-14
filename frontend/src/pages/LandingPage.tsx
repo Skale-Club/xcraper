@@ -98,6 +98,8 @@ export default function LandingPage() {
         socialLinks: [],
         registrationEnabled: true,
         freeCreditsOnSignup: 10,
+        creditsPerStandardResult: 1,
+        creditsPerEnrichedResult: 3,
     };
 
     const packages: CreditPackage[] = data?.packages ?? [];
@@ -220,6 +222,12 @@ export default function LandingPage() {
     ];
 
     const displayFaqs = settings.faqContent?.length > 0 ? settings.faqContent : defaultFaqs;
+    const displayFooterLinks = settings.footerLinks?.length > 0
+        ? settings.footerLinks
+        : [
+            { label: 'Privacy Policy', url: '/privacy' },
+            { label: 'Terms of Service', url: '/terms' },
+        ];
 
     if (isLoading) {
         return (
@@ -642,7 +650,7 @@ export default function LandingPage() {
                         <div>
                             <h4 className="font-semibold text-white mb-4">Company</h4>
                             <ul className="space-y-2 text-sm">
-                                {settings.footerLinks?.map((link, index) => (
+                                {displayFooterLinks.map((link, index) => (
                                     <li key={index}>
                                         <a href={link.url} className="hover:text-white">{link.label}</a>
                                     </li>

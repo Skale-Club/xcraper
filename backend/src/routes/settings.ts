@@ -57,6 +57,8 @@ router.get('/public', async (_req, res: Response): Promise<void> => {
                 // Feature flags
                 registrationEnabled: settingsRecord.registrationEnabled,
                 freeCreditsOnSignup: settingsRecord.freeCreditsOnSignup,
+                creditsPerStandardResult: settingsRecord.creditsPerStandardResult,
+                creditsPerEnrichedResult: settingsRecord.creditsPerEnrichedResult,
             },
             packages: packages.map(pkg => ({
                 id: pkg.id,
@@ -155,6 +157,8 @@ const updateSettingsSchema = z.object({
     // Feature flags
     registrationEnabled: z.boolean().optional(),
     freeCreditsOnSignup: z.number().int().min(0).optional(),
+    creditsPerStandardResult: z.number().int().min(1).optional(),
+    creditsPerEnrichedResult: z.number().int().min(1).optional(),
 });
 
 router.patch('/', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {

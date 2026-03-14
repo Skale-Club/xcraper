@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import * as dotenv from 'dotenv';
 import { db } from '../db/index.js';
-import { users, searchHistory, contacts, creditTransactions } from '../db/schema.js';
+import { users, searchHistory, contacts, creditTransactions, billingEvents, subscriptionPlans } from '../db/schema.js';
 import { eq, desc, and } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
 import {
@@ -11,23 +11,80 @@ import {
     getTaskResults,
     isApifyConfigured
 } from '../services/apify.js';
+import { creditRulesService } from '../services/creditRules.js';
+import { autoTopUpService } from '../services/autoTopUp.js';
+import { billingAlertService } from '../services/billingAlerts.js';
 
 dotenv.config();
 
 const router = Router();
 
-// Credits configuration
-const CREDITS_PER_SEARCH = parseInt(process.env.CREDITS_PER_SEARCH || '1');
-const CREDITS_PER_CONTACT = parseInt(process.env.CREDITS_PER_CONTACT || '1');
-
-// Validation schemas
 const startSearchSchema = z.object({
     query: z.string().min(2, 'Search query must be at least 2 characters'),
     location: z.string().min(2, 'Location must be at least 2 characters'),
     maxResults: z.number().int().min(1).max(500).optional().default(50),
+    requestEnrichment: z.boolean().optional().default(false),
 });
 
-// Start a new search
+function hasValidEmail(email?: string): boolean {
+    if (!email) return false;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+async function checkCreditsAndTopUp(
+    userId: string, 
+    estimatedCredits: number
+): Promise<{ sufficient: boolean; balance: number; topUpTriggered: boolean }> {
+    const balance = await creditRulesService.getUserCreditBalance(userId);
+    
+    if (balance.total >= estimatedCredits) {
+        return { sufficient: true, balance: balance.total, topUpTriggered: false };
+    }
+
+    const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+    if (!user || !user.autoTopUpEnabled) {
+        return { sufficient: false, balance: balance.total, topUpTriggered: false };
+    }
+
+    if (user.subscriptionPlanId) {
+        const [plan] = await db
+            .select()
+            .from(subscriptionPlans)
+            .where(eq(subscriptionPlans.id, user.subscriptionPlanId))
+            .limit(1);
+
+        if (!plan || !plan.allowAutoTopUp) {
+            return { sufficient: false, balance: balance.total, topUpTriggered: false };
+        }
+    }
+
+    const topUpResult = await autoTopUpService.checkAndTrigger(userId);
+    
+    if (topUpResult.success && topUpResult.creditsAdded) {
+        await billingAlertService.sendTopUpSuccessAlert(
+            userId, 
+            topUpResult.creditsAdded, 
+            topUpResult.amountCharged || 0
+        );
+        
+        const newBalance = await creditRulesService.getUserCreditBalance(userId);
+        return { 
+            sufficient: newBalance.total >= estimatedCredits, 
+            balance: newBalance.total, 
+            topUpTriggered: true 
+        };
+    }
+
+    return { sufficient: false, balance: balance.total, topUpTriggered: false };
+}
+
 router.post('/', requireAuth, async (req, res: Response): Promise<void> => {
     try {
         if (!req.user) {
@@ -47,9 +104,8 @@ router.post('/', requireAuth, async (req, res: Response): Promise<void> => {
             return;
         }
 
-        const { query, location, maxResults } = validationResult.data;
+        const { query, location, maxResults, requestEnrichment } = validationResult.data;
 
-        // Check if Apify is configured
         if (!isApifyConfigured()) {
             res.status(503).json({
                 error: 'Scraping service is not configured. Please contact administrator.'
@@ -57,7 +113,6 @@ router.post('/', requireAuth, async (req, res: Response): Promise<void> => {
             return;
         }
 
-        // Check user credits
         const [user] = await db.select()
             .from(users)
             .where(eq(users.id, userId))
@@ -68,54 +123,48 @@ router.post('/', requireAuth, async (req, res: Response): Promise<void> => {
             return;
         }
 
-        // Calculate required credits (search + estimated contacts)
-        const estimatedCredits = CREDITS_PER_SEARCH + (maxResults * CREDITS_PER_CONTACT);
+        if (user.accountRiskFlag === 'suspended' || user.accountRiskFlag === 'restricted') {
+            res.status(403).json({ error: 'Account is restricted' });
+            return;
+        }
 
-        if (user.credits < CREDITS_PER_SEARCH) {
+        const rules = await creditRulesService.getPricingRules();
+        const creditsPerLead = requestEnrichment
+            ? rules.creditsPerEnrichedResult
+            : rules.creditsPerStandardResult;
+        const estimatedCredits = maxResults * creditsPerLead;
+
+        const creditCheck = await checkCreditsAndTopUp(userId, estimatedCredits);
+
+        if (!creditCheck.sufficient) {
             res.status(402).json({
                 error: 'Insufficient credits',
-                required: CREDITS_PER_SEARCH,
-                available: user.credits,
+                required: estimatedCredits,
+                available: creditCheck.balance,
+                topUpTriggered: creditCheck.topUpTriggered,
             });
             return;
         }
 
-        // Deduct initial search credit
-        await db.update(users)
-            .set({
-                credits: user.credits - CREDITS_PER_SEARCH,
-                updatedAt: new Date()
-            })
-            .where(eq(users.id, userId));
-
-        // Create search history entry
         const [searchRecord] = await db.insert(searchHistory).values({
             userId,
             query,
             location,
             status: 'pending',
-            creditsUsed: CREDITS_PER_SEARCH,
+            creditsUsed: 0,
+            standardResultsCount: requestEnrichment ? null : 0,
+            enrichedResultsCount: requestEnrichment ? 0 : null,
         }).returning();
 
-        // Log credit transaction
-        await db.insert(creditTransactions).values({
-            userId,
-            amount: -CREDITS_PER_SEARCH,
-            type: 'usage',
-            description: `Search: "${query}" in ${location}`,
-            searchId: searchRecord.id,
-        });
-
-        // Start Apify task
         let apifyRunId: string;
         try {
             apifyRunId = await startScrapingTask({
                 search: query,
                 location,
                 maxResults,
+                extractEmails: requestEnrichment,
             });
 
-            // Update search record with Apify run ID
             await db.update(searchHistory)
                 .set({
                     apifyRunId,
@@ -124,14 +173,6 @@ router.post('/', requireAuth, async (req, res: Response): Promise<void> => {
                 .where(eq(searchHistory.id, searchRecord.id));
 
         } catch (apifyError) {
-            // Refund credits if Apify fails
-            await db.update(users)
-                .set({
-                    credits: user.credits,
-                    updatedAt: new Date()
-                })
-                .where(eq(users.id, userId));
-
             await db.update(searchHistory)
                 .set({ status: 'failed' })
                 .where(eq(searchHistory.id, searchRecord.id));
@@ -143,6 +184,10 @@ router.post('/', requireAuth, async (req, res: Response): Promise<void> => {
             message: 'Search started successfully',
             searchId: searchRecord.id,
             apifyRunId,
+            estimatedCredits,
+            creditsPerLead,
+            requestEnrichment,
+            topUpTriggered: creditCheck.topUpTriggered,
         });
     } catch (error) {
         console.error('Search error:', error);
@@ -153,7 +198,6 @@ router.post('/', requireAuth, async (req, res: Response): Promise<void> => {
     }
 });
 
-// Get search status
 router.get('/:searchId/status', requireAuth, async (req, res: Response): Promise<void> => {
     try {
         if (!req.user) {
@@ -164,7 +208,6 @@ router.get('/:searchId/status', requireAuth, async (req, res: Response): Promise
         const userId = req.user.id;
         const { searchId } = req.params;
 
-        // Get search record
         const [searchRecord] = await db.select()
             .from(searchHistory)
             .where(and(
@@ -178,16 +221,18 @@ router.get('/:searchId/status', requireAuth, async (req, res: Response): Promise
             return;
         }
 
-        // If still running, check Apify status
         if (searchRecord.status === 'running' && searchRecord.apifyRunId) {
             try {
                 const apifyStatus = await getTaskStatus(searchRecord.apifyRunId);
 
                 if (apifyStatus.status === 'SUCCEEDED') {
-                    // Fetch and store results
                     const results = await getTaskResults(searchRecord.apifyRunId);
+                    const requestEnrichment = searchRecord.standardResultsCount === null
+                        && searchRecord.enrichedResultsCount !== null;
+                    const eligibleResults = requestEnrichment
+                        ? results.filter((result) => hasValidEmail(result.email))
+                        : results;
 
-                    // Get user for credit check
                     const [user] = await db.select()
                         .from(users)
                         .where(eq(users.id, userId))
@@ -198,36 +243,92 @@ router.get('/:searchId/status', requireAuth, async (req, res: Response): Promise
                         return;
                     }
 
-                    // Calculate credits for contacts
-                    const contactCredits = results.length * CREDITS_PER_CONTACT;
-                    const totalCreditsNeeded = contactCredits;
+                    const creditResult = await creditRulesService.consumeCredits(
+                        userId,
+                        eligibleResults.map(r => ({
+                            placeId: r.placeId,
+                            title: r.title,
+                            email: r.email,
+                            phone: r.phone,
+                            address: r.address,
+                            website: r.website,
+                            category: r.category,
+                            rating: r.rating,
+                            reviewCount: r.reviewCount,
+                            latitude: r.latitude,
+                            longitude: r.longitude,
+                        })),
+                        searchRecord.id,
+                        requestEnrichment
+                    );
 
-                    // Deduct contact credits (or as many as user can afford)
-                    const creditsToDeduct = Math.min(totalCreditsNeeded, user.credits);
-                    const contactsToSave = Math.floor(creditsToDeduct / CREDITS_PER_CONTACT);
+                    if (creditResult.creditsCharged > 0) {
+                        let remainingCredits = creditResult.creditsCharged;
+                        let newMonthly = user.credits;
+                        let newRollover = user.rolloverCredits;
+                        let newPurchased = user.purchasedCredits;
 
-                    if (contactsToSave > 0) {
-                        // Update user credits
+                        if (newMonthly >= remainingCredits) {
+                            newMonthly -= remainingCredits;
+                            remainingCredits = 0;
+                        } else {
+                            remainingCredits -= newMonthly;
+                            newMonthly = 0;
+                        }
+
+                        if (remainingCredits > 0 && newRollover >= remainingCredits) {
+                            newRollover -= remainingCredits;
+                            remainingCredits = 0;
+                        } else if (remainingCredits > 0) {
+                            remainingCredits -= newRollover;
+                            newRollover = 0;
+                        }
+
+                        if (remainingCredits > 0) {
+                            newPurchased = Math.max(0, newPurchased - remainingCredits);
+                        }
+
                         await db.update(users)
                             .set({
-                                credits: user.credits - (contactsToSave * CREDITS_PER_CONTACT),
+                                credits: newMonthly,
+                                rolloverCredits: newRollover,
+                                purchasedCredits: newPurchased,
+                                monthlyCreditsUsed: user.monthlyCreditsUsed + creditResult.creditsCharged,
                                 updatedAt: new Date()
                             })
                             .where(eq(users.id, userId));
 
-                        // Log credit transaction
                         await db.insert(creditTransactions).values({
                             userId,
-                            amount: -(contactsToSave * CREDITS_PER_CONTACT),
+                            amount: -creditResult.creditsCharged,
                             type: 'usage',
-                            description: `Contacts from search: "${searchRecord.query}"`,
+                            description: `Search results: ${creditResult.standardResults} standard, ${creditResult.enrichedResults} enriched`,
                             searchId: searchRecord.id,
+                            metadata: {
+                                standardResults: creditResult.standardResults,
+                                enrichedResults: creditResult.enrichedResults,
+                                breakdown: creditResult.breakdown,
+                            },
                         });
+
+                        await db.insert(billingEvents).values({
+                            userId,
+                            eventType: 'consumption',
+                            creditDelta: -creditResult.creditsCharged,
+                            searchId: searchRecord.id,
+                            metadata: {
+                                standardResults: creditResult.standardResults,
+                                enrichedResults: creditResult.enrichedResults,
+                            },
+                        });
+
+                        await billingAlertService.checkCreditAlerts(userId);
                     }
 
-                    // Save contacts
-                    if (results.length > 0) {
-                        const contactsToInsert = results.slice(0, contactsToSave).map(place => ({
+                    if (eligibleResults.length > 0) {
+                        const contactsToInsert = eligibleResults
+                            .slice(0, creditResult.standardResults + creditResult.enrichedResults)
+                            .map(place => ({
                             searchId: searchRecord.id,
                             userId,
                             title: place.title,
@@ -243,27 +344,34 @@ router.get('/:searchId/status', requireAuth, async (req, res: Response): Promise
                             openingHours: place.openingHours,
                             imageUrl: place.imageUrl,
                             googleMapsUrl: place.googleMapsUrl,
+                            placeId: place.placeId,
                             rawData: place.rawData,
-                        }));
+                            isEnriched: !!place.email,
+                            enrichmentCreditsCharged: place.email ? creditResult.breakdown.enrichment : 0,
+                            }));
 
                         await db.insert(contacts).values(contactsToInsert);
                     }
 
-                    // Update search record
                     await db.update(searchHistory)
                         .set({
                             status: 'completed',
-                            totalResults: results.length,
-                            creditsUsed: searchRecord.creditsUsed + (contactsToSave * CREDITS_PER_CONTACT),
+                            totalResults: eligibleResults.length,
+                            standardResultsCount: creditResult.standardResults,
+                            enrichedResultsCount: creditResult.enrichedResults,
+                            creditsUsed: creditResult.creditsCharged,
                             completedAt: new Date(),
                         })
                         .where(eq(searchHistory.id, searchRecord.id));
 
                     res.json({
                         status: 'completed',
-                        totalResults: results.length,
-                        savedResults: contactsToSave,
-                        creditsUsed: searchRecord.creditsUsed + (contactsToSave * CREDITS_PER_CONTACT),
+                        totalResults: eligibleResults.length,
+                        savedResults: creditResult.standardResults + creditResult.enrichedResults,
+                        standardResults: creditResult.standardResults,
+                        enrichedResults: creditResult.enrichedResults,
+                        creditsUsed: creditResult.creditsCharged,
+                        duplicatesSkipped: creditResult.duplicatesSkipped,
                     });
                     return;
                 } else if (apifyStatus.status === 'FAILED' || apifyStatus.status === 'ABORTED') {
@@ -286,13 +394,14 @@ router.get('/:searchId/status', requireAuth, async (req, res: Response): Promise
                 return;
             } catch (apifyError) {
                 console.error('Error checking Apify status:', apifyError);
-                // Continue to return current status from DB
             }
         }
 
         res.json({
             status: searchRecord.status,
             totalResults: searchRecord.totalResults,
+            standardResults: searchRecord.standardResultsCount,
+            enrichedResults: searchRecord.enrichedResultsCount,
             creditsUsed: searchRecord.creditsUsed,
             completedAt: searchRecord.completedAt,
         });
@@ -302,7 +411,6 @@ router.get('/:searchId/status', requireAuth, async (req, res: Response): Promise
     }
 });
 
-// Get search history
 router.get('/history', requireAuth, async (req, res: Response): Promise<void> => {
     try {
         if (!req.user) {
@@ -328,7 +436,6 @@ router.get('/history', requireAuth, async (req, res: Response): Promise<void> =>
     }
 });
 
-// Get search details with contacts
 router.get('/:searchId', requireAuth, async (req, res: Response): Promise<void> => {
     try {
         if (!req.user) {
@@ -365,7 +472,6 @@ router.get('/:searchId', requireAuth, async (req, res: Response): Promise<void> 
     }
 });
 
-// Delete search and its contacts
 router.delete('/:searchId', requireAuth, async (req, res: Response): Promise<void> => {
     try {
         if (!req.user) {
@@ -388,11 +494,9 @@ router.delete('/:searchId', requireAuth, async (req, res: Response): Promise<voi
             return;
         }
 
-        // Delete contacts first (cascade should handle this, but being explicit)
         await db.delete(contacts)
             .where(eq(contacts.searchId, searchId));
 
-        // Delete search record
         await db.delete(searchHistory)
             .where(eq(searchHistory.id, searchId));
 

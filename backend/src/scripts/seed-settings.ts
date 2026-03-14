@@ -83,6 +83,8 @@ async function seedSettings() {
             ],
             registrationEnabled: true,
             freeCreditsOnSignup: 10,
+            creditsPerStandardResult: 1,
+            creditsPerEnrichedResult: 3,
         };
         await db.insert(settings).values(defaultSettings);
         console.log('✓ Default settings inserted');

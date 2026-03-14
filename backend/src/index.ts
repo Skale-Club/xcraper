@@ -13,6 +13,9 @@ import creditRoutes from './routes/credits.js';
 import settingsRoutes from './routes/settings.js';
 import paymentRoutes from './routes/payments.js';
 import onboardingRoutes from './routes/onboarding.js';
+import adminRoutes from './routes/admin.js';
+import subscriptionRoutes from './routes/subscriptions.js';
+import adminBillingRoutes from './routes/adminBilling.js';
 
 dotenv.config();
 
@@ -37,6 +40,7 @@ app.use(cors({
 
 // Body parsing (except for webhook route which needs raw body)
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/subscriptions/webhook', express.raw({ type: 'application/json' }));
 
 // Regular JSON parsing for other routes
 app.use(express.json({ limit: '10mb' }));
@@ -62,6 +66,9 @@ app.use('/api/credits', creditRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/onboarding', onboardingRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/admin/billing', adminBillingRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
