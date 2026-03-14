@@ -1,10 +1,10 @@
-# XCraper - AI Agent Development Guide
+# Xcraper - AI Agent Development Guide
 
-This document provides comprehensive context for AI agents (like Claude, GPT-4, etc.) working on the XCraper codebase.
+This document provides comprehensive context for AI agents (like Claude, GPT-4, etc.) working on the Xcraper codebase.
 
 ## Project Overview
 
-**XCraper** is a multi-user SaaS platform for scraping business contacts from Google Maps using Apify as the scraping engine. The system features a credit-based billing model, dynamic SEO/landing page configuration, and Supabase authentication.
+**Xcraper** is a multi-user SaaS platform for scraping business contacts from Google Maps using Apify as the scraping engine. The system features a credit-based billing model, dynamic SEO/landing page configuration, and Supabase authentication.
 
 ### Business Model
 - Credit-based billing system

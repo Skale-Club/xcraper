@@ -148,7 +148,7 @@ export default function AdminSettingsPage() {
                                                 id="brandName"
                                                 defaultValue={settings.brandName}
                                                 onBlur={(e) => handleSave({ brandName: e.target.value })}
-                                                placeholder="XCraper"
+                                                placeholder="Xcraper"
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -209,7 +209,7 @@ export default function AdminSettingsPage() {
                                             id="seoTitle"
                                             defaultValue={settings.seoTitle}
                                             onBlur={(e) => handleSave({ seoTitle: e.target.value })}
-                                            placeholder="XCraper - Google Maps Contact Scraper"
+                                            placeholder="Xcraper - Google Maps Contact Scraper"
                                         />
                                     </div>
                                     <div className="space-y-2">

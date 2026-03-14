@@ -1,8 +1,8 @@
-# XCraper - Google Maps Contact Scraper
+# Xcraper - Google Maps Contact Scraper
 
 A powerful multi-user contact scraping tool that extracts business information from Google Maps using Apify as the scraping engine. Built with modern web technologies and designed for scalability.
 
-![XCraper Banner](https://via.placeholder.com/1200x400/4F46E5/FFFFFF?text=XCraper+-+Google+Maps+Contact+Scraper)
+![Xcraper Banner](https://via.placeholder.com/1200x400/4F46E5/FFFFFF?text=Xcraper+-+Google+Maps+Contact+Scraper)
 
 ## 🚀 Features
 
@@ -363,4 +363,4 @@ For support, email support@xcraper.com or join our Discord channel.
 
 ---
 
-Built with ❤️ by the XCraper Team
+Built with ❤️ by the Xcraper Team

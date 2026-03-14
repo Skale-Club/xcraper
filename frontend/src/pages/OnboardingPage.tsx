@@ -87,7 +87,7 @@ export default function OnboardingPage() {
             await refreshUser();
             queryClient.invalidateQueries({ queryKey: ['onboarding-status'] });
             toast({
-                title: 'Welcome to XCraper!',
+                title: 'Welcome to Xcraper!',
                 description: 'Your account is set up and ready to go.',
             });
             navigate('/dashboard');
@@ -154,7 +154,7 @@ export default function OnboardingPage() {
                 <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Sparkles className="w-10 h-10 text-primary" />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to XCraper!</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Xcraper!</h2>
                 <p className="text-gray-600">
                     Let's get you set up in just a few quick steps.
                 </p>
@@ -248,7 +248,7 @@ export default function OnboardingPage() {
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Target className="w-8 h-8 text-primary" />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">How XCraper Works</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">How Xcraper Works</h2>
                 <p className="text-gray-600">
                     Extract business contacts in 3 simple steps
                 </p>
@@ -297,7 +297,7 @@ export default function OnboardingPage() {
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">Understanding Credits</h2>
                 <p className="text-gray-600">
-                    XCraper uses a simple credit-based system
+                    Xcraper uses a simple credit-based system
                 </p>
             </div>
             <div className="space-y-4">
@@ -331,7 +331,7 @@ export default function OnboardingPage() {
             <div className="w-full max-w-lg">
                 {/* Logo */}
                 <div className="text-center mb-6">
-                    <h1 className="text-3xl font-bold text-gray-900">XCraper</h1>
+                    <h1 className="text-3xl font-bold text-gray-900">Xcraper</h1>
                     <p className="text-gray-600">Google Maps Contact Extractor</p>
                 </div>
 

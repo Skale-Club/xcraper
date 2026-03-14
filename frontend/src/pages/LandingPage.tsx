@@ -76,10 +76,10 @@ export default function LandingPage() {
     });
 
     const settings: PublicSettings = data?.settings ?? {
-        brandName: 'XCraper',
+        brandName: 'Xcraper',
         brandTagline: 'Extract Business Contacts from Google Maps',
         brandDescription: 'The most powerful Google Maps scraping tool for lead generation.',
-        seoTitle: 'XCraper - Google Maps Contact Scraper',
+        seoTitle: 'Xcraper - Google Maps Contact Scraper',
         seoDescription: 'Extract business contacts, emails, phone numbers from Google Maps.',
         seoKeywords: 'google maps scraper, lead generation, business contacts',
         heroTitle: 'Extract Business Leads from Google Maps',
@@ -93,7 +93,7 @@ export default function LandingPage() {
         faqContent: [],
         testimonialsEnabled: false,
         testimonialsContent: [],
-        footerText: '© 2024 XCraper. All rights reserved.',
+        footerText: '© 2024 Xcraper. All rights reserved.',
         footerLinks: [],
         socialLinks: [],
         registrationEnabled: true,
@@ -198,8 +198,8 @@ export default function LandingPage() {
 
     const defaultFaqs = [
         {
-            question: 'How does XCraper work?',
-            answer: 'XCraper uses the Apify platform to scrape Google Maps for business listings. Simply enter your search query and location, and we\'ll extract all available contact information.',
+            question: 'How does Xcraper work?',
+            answer: 'Xcraper uses the Apify platform to scrape Google Maps for business listings. Simply enter your search query and location, and we\'ll extract all available contact information.',
         },
         {
             question: 'What data can I extract?',

@@ -79,14 +79,14 @@ export const settings = pgTable('settings', {
     id: text('id').primaryKey().default('default'),
 
     // Branding
-    brandName: text('brand_name').notNull().default('XCraper'),
+    brandName: text('brand_name').notNull().default('Xcraper'),
     brandTagline: text('brand_tagline').notNull().default('Extract Business Contacts from Google Maps'),
     brandDescription: text('brand_description').notNull().default('The most powerful Google Maps scraping tool for lead generation.'),
     logoUrl: text('logo_url'),
     faviconUrl: text('favicon_url'),
 
     // SEO Settings
-    seoTitle: text('seo_title').notNull().default('XCraper - Google Maps Contact Scraper'),
+    seoTitle: text('seo_title').notNull().default('Xcraper - Google Maps Contact Scraper'),
     seoDescription: text('seo_description').notNull().default('Extract business contacts, emails, phone numbers from Google Maps. Professional lead generation tool with credit-based pricing.'),
     seoKeywords: text('seo_keywords').notNull().default('google maps scraper, lead generation, business contacts, email extractor, phone extractor'),
     ogImageUrl: text('og_image_url'),
@@ -119,7 +119,7 @@ export const settings = pgTable('settings', {
     }[]>().default([]),
 
     // Footer
-    footerText: text('footer_text').notNull().default('© 2024 XCraper. All rights reserved.'),
+    footerText: text('footer_text').notNull().default('© 2024 Xcraper. All rights reserved.'),
     footerLinks: jsonb('footer_links').$type<{
         label: string;
         url: string;

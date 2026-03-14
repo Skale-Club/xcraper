@@ -64,12 +64,12 @@ CREATE TABLE IF NOT EXISTS "session" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "settings" (
 	"id" text PRIMARY KEY DEFAULT 'default' NOT NULL,
-	"brand_name" text DEFAULT 'XCraper' NOT NULL,
+	"brand_name" text DEFAULT 'Xcraper' NOT NULL,
 	"brand_tagline" text DEFAULT 'Extract Business Contacts from Google Maps' NOT NULL,
 	"brand_description" text DEFAULT 'The most powerful Google Maps scraping tool for lead generation.' NOT NULL,
 	"logo_url" text,
 	"favicon_url" text,
-	"seo_title" text DEFAULT 'XCraper - Google Maps Contact Scraper' NOT NULL,
+	"seo_title" text DEFAULT 'Xcraper - Google Maps Contact Scraper' NOT NULL,
 	"seo_description" text DEFAULT 'Extract business contacts, emails, phone numbers from Google Maps. Professional lead generation tool with credit-based pricing.' NOT NULL,
 	"seo_keywords" text DEFAULT 'google maps scraper, lead generation, business contacts, email extractor, phone extractor' NOT NULL,
 	"og_image_url" text,
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS "settings" (
 	"faq_content" jsonb DEFAULT '[]'::jsonb,
 	"testimonials_enabled" boolean DEFAULT true NOT NULL,
 	"testimonials_content" jsonb DEFAULT '[]'::jsonb,
-	"footer_text" text DEFAULT '© 2024 XCraper. All rights reserved.' NOT NULL,
+	"footer_text" text DEFAULT '© 2024 Xcraper. All rights reserved.' NOT NULL,
 	"footer_links" jsonb DEFAULT '[]'::jsonb,
 	"social_links" jsonb DEFAULT '[]'::jsonb,
 	"contact_email" text,

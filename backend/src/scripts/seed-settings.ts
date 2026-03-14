@@ -11,11 +11,11 @@ async function seedSettings() {
         // Insert default settings
         const defaultSettings: typeof settings.$inferInsert = {
             id: 'default',
-            brandName: 'XCraper',
+            brandName: 'Xcraper',
             brandTagline: 'Extract Business Contacts from Google Maps',
             brandDescription: 'The most powerful Google Maps scraping tool for lead generation. Extract phone numbers, emails, addresses, and more from millions of businesses worldwide.',
-            seoTitle: 'XCraper - Google Maps Contact Scraper | Lead Generation Tool',
-            seoDescription: 'Extract business contacts from Google Maps with XCraper. Get phone numbers, emails, addresses and more. Perfect for lead generation and sales teams.',
+            seoTitle: 'Xcraper - Google Maps Contact Scraper | Lead Generation Tool',
+            seoDescription: 'Extract business contacts from Google Maps with Xcraper. Get phone numbers, emails, addresses and more. Perfect for lead generation and sales teams.',
             seoKeywords: 'google maps scraper, lead generation, business contacts, email extractor, phone number scraper, b2b leads, sales leads',
             heroTitle: 'Extract Business Leads from Google Maps',
             heroSubtitle: 'Get phone numbers, emails, addresses, and social media links from millions of businesses worldwide. Start with 10 free credits.',
@@ -53,25 +53,25 @@ async function seedSettings() {
                     name: 'Sarah Johnson',
                     role: 'Sales Director',
                     company: 'TechCorp Inc.',
-                    content: 'XCraper has transformed our lead generation process. We went from spending hours manually searching for contacts to getting thousands of qualified leads in minutes.',
+                    content: 'Xcraper has transformed our lead generation process. We went from spending hours manually searching for contacts to getting thousands of qualified leads in minutes.',
                     avatar: undefined
                 },
                 {
                     name: 'Michael Chen',
                     role: 'Marketing Manager',
                     company: 'Growth Agency',
-                    content: 'The accuracy of the data is impressive. We\'ve seen a 40% increase in our outreach response rates since using XCraper.',
+                    content: 'The accuracy of the data is impressive. We\'ve seen a 40% increase in our outreach response rates since using Xcraper.',
                     avatar: undefined
                 },
                 {
                     name: 'Emily Rodriguez',
                     company: 'Local Services Co.',
                     role: 'Business Development',
-                    content: 'Simple, fast, and affordable. XCraper is exactly what we needed to scale our B2B outreach without breaking the bank.',
+                    content: 'Simple, fast, and affordable. Xcraper is exactly what we needed to scale our B2B outreach without breaking the bank.',
                     avatar: undefined
                 }
             ],
-            footerText: '© 2024 XCraper. All rights reserved.',
+            footerText: '© 2024 Xcraper. All rights reserved.',
             footerLinks: [
                 { label: 'Privacy Policy', url: '/privacy' },
                 { label: 'Terms of Service', url: '/terms' },

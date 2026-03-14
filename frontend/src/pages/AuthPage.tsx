@@ -209,7 +209,7 @@ export default function AuthPage() {
                                 <span className="text-2xl">🗺️</span>
                             </div>
                             <CardTitle className="text-2xl font-bold">
-                                {activeTab === 'forgot' ? 'Reset Password' : 'Welcome to XCraper'}
+                                {activeTab === 'forgot' ? 'Reset Password' : 'Welcome to Xcraper'}
                             </CardTitle>
                             <CardDescription>
                                 {activeTab === 'login' && 'Sign in to your account to continue'}
