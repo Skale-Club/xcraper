@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth } from '../middleware/auth';
-import { db } from '../db';
-import { users, creditPackages } from '../db/schema';
+import { requireAuth } from '../middleware/auth.js';
+import { db } from '../db/index.js';
+import { users, creditPackages } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { createCheckoutSession, handleSuccessfulPayment, verifyWebhookSignature, handleWebhookEvent, createPortalSession } from '../services/stripe';
+import { createCheckoutSession, handleSuccessfulPayment, verifyWebhookSignature, handleWebhookEvent, createPortalSession } from '../services/stripe.js';
 import { z } from 'zod';
 
 const router = Router();

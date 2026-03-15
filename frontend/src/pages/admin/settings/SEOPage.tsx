@@ -1,10 +1,27 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { FileUpload } from '@/components/ui/file-upload';
 import { useAdminSettings } from './useAdminSettings';
+import { uploadApi } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function SEOPage() {
     const { settings, saveSetting, optionalValue, isSaving } = useAdminSettings();
+    const { toast } = useToast();
+    const queryClient = useQueryClient();
+
+    const handleOgImageUpload = async (file: File) => {
+        try {
+            const result = await uploadApi.uploadOgImage(file);
+            saveSetting({ ogImageUrl: result.url });
+            queryClient.invalidateQueries({ queryKey: ['public-settings'] });
+            toast({ title: 'OG Image uploaded successfully!' });
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to upload OG image' });
+        }
+    };
 
     return (
         <Card>
@@ -43,15 +60,14 @@ export default function SEOPage() {
                         disabled={isSaving}
                     />
                 </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                     <div className="space-y-2">
-                        <Label htmlFor="ogImageUrl">Open Graph Image URL</Label>
-                        <Input
-                            id="ogImageUrl"
-                            type="url"
-                            defaultValue={settings.ogImageUrl || ''}
-                            onBlur={(e) => saveSetting({ ogImageUrl: optionalValue(e.target.value) })}
-                            placeholder="https://example.com/og-image.png"
+                        <Label>Open Graph Image</Label>
+                        <FileUpload
+                            currentUrl={settings.ogImageUrl}
+                            accept="image/png,image/jpeg,image/webp"
+                            maxSize={5 * 1024 * 1024}
+                            onUpload={handleOgImageUpload}
                             disabled={isSaving}
                         />
                     </div>

@@ -249,7 +249,7 @@ async function apiFetch<T>(
 
     if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new ApiError(error.error || 'Request failed', response.status);
+        throw new ApiError(error.message || error.error || 'Request failed', response.status);
     }
 
     return response.json();
@@ -741,6 +741,7 @@ export interface AdminTransaction {
     amount: number;
     type: string;
     description?: string;
+    subscriptionPlanName?: string | null;
     createdAt: string;
     user: {
         id: string;
@@ -836,7 +837,7 @@ async function uploadFile(endpoint: string, file: File, fieldName: string): Prom
 
     if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new ApiError(error.error || 'Upload failed', response.status);
+        throw new ApiError(error.message || error.error || 'Upload failed', response.status);
     }
 
     return response.json();
@@ -855,7 +856,7 @@ async function deleteUploadedFile(endpoint: string): Promise<{ message: string }
 
     if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new ApiError(error.error || 'Delete failed', response.status);
+        throw new ApiError(error.message || error.error || 'Delete failed', response.status);
     }
 
     return response.json();

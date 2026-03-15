@@ -1,9 +1,29 @@
 import { Link } from 'wouter';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2, Globe, Palette, DollarSign, Cpu, Settings as SettingsIcon } from 'lucide-react';
-import { useAdminSettings } from './useAdminSettings';
+import {
+    Activity,
+    Contact,
+    Cpu,
+    DollarSign,
+    Globe,
+    LayoutDashboard,
+    Palette,
+    Receipt,
+    Settings as SettingsIcon,
+    Users,
+} from 'lucide-react';
 
-type SettingsPage = 'branding' | 'seo' | 'content' | 'pricing' | 'advanced';
+type SettingsPage =
+    | 'overview'
+    | 'users'
+    | 'logs'
+    | 'contacts'
+    | 'transactions'
+    | 'branding'
+    | 'seo'
+    | 'content'
+    | 'pricing'
+    | 'advanced';
 
 interface SettingsLayoutProps {
     children: React.ReactNode;
@@ -11,6 +31,11 @@ interface SettingsLayoutProps {
 }
 
 const tabs: { id: SettingsPage; label: string; icon: typeof Globe; path: string }[] = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard, path: '/admin' },
+    { id: 'users', label: 'Users', icon: Users, path: '/admin/users' },
+    { id: 'logs', label: 'Logs', icon: Activity, path: '/admin/searches' },
+    { id: 'contacts', label: 'All Contacts', icon: Contact, path: '/admin/contacts' },
+    { id: 'transactions', label: 'Transactions', icon: Receipt, path: '/admin/transactions' },
     { id: 'branding', label: 'Branding', icon: Palette, path: '/admin/settings/branding' },
     { id: 'seo', label: 'SEO', icon: Globe, path: '/admin/settings/seo' },
     { id: 'content', label: 'Content', icon: SettingsIcon, path: '/admin/settings/content' },
@@ -19,20 +44,10 @@ const tabs: { id: SettingsPage; label: string; icon: typeof Globe; path: string 
 ];
 
 export function SettingsLayout({ children, currentPage }: SettingsLayoutProps) {
-    const { isLoading } = useAdminSettings();
-
-    if (isLoading) {
-        return (
-            <div className="flex min-h-[50vh] items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-        );
-    }
-
     return (
         <div className="w-full space-y-8">
             <div className="flex flex-col gap-8 lg:flex-row">
-                <div className="lg:w-64 lg:flex-shrink-0">
+                <div className="lg:w-56 lg:flex-shrink-0">
                     <Card className="border-border">
                         <CardContent className="p-2">
                             <nav className="space-y-1">

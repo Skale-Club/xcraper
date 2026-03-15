@@ -1,5 +1,5 @@
-import { db } from '../db';
-import { settings, creditPackages } from '../db/schema';
+import { db } from '../db/index.js';
+import { settings, creditPackages } from '../db/schema.js';
 
 async function seedSettings() {
     console.log('Seeding default settings...');

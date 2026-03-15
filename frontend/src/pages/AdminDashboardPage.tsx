@@ -149,7 +149,7 @@ export default function AdminDashboardPage() {
                             <span>View Transactions</span>
                         </a>
                         <a
-                            href="/admin/settings"
+                            href="/admin/settings/branding"
                             className="flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors"
                         >
                             <Activity className="h-4 w-4" />

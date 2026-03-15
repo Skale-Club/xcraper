@@ -1,7 +1,7 @@
-import { db } from '../db';
-import { users, subscriptionPlans, creditTransactions, billingEvents } from '../db/schema';
+import { db } from '../db/index.js';
+import { users, subscriptionPlans, creditTransactions, billingEvents } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { stripe } from './stripe';
+import { stripe } from './stripe.js';
 
 export interface TopUpResult {
     success: boolean;

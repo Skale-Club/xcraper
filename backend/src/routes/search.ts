@@ -32,6 +32,15 @@ const router = Router();
 
 type SearchStatusValue = 'pending' | 'running' | 'completed' | 'failed' | 'paused';
 
+type ErrorDetails = {
+    type?: string;
+    message?: string;
+    stack?: string;
+    apifyError?: any;
+    statusCode?: number;
+    timestamp?: string;
+};
+
 type SearchStatusPayload = {
     status: SearchStatusValue;
     requestedMaxResults?: number;
@@ -56,13 +65,29 @@ type SearchStatusPayload = {
     message?: string;
     duplicatesSkipped?: number;
     isAdmin?: boolean;
+    errorDetails?: ErrorDetails;  // Only included for admins
 };
+
+const MIN_STANDARD_RESULTS = 30;
+const MIN_ENRICHED_RESULTS = 15;
 
 const startSearchSchema = z.object({
     query: z.string().min(2, 'Search query must be at least 2 characters'),
     location: z.string().min(2, 'Location must be at least 2 characters'),
     maxResults: z.number().int().min(1).max(500).optional().default(50),
     requestEnrichment: z.boolean().optional().default(false),
+}).superRefine((data, ctx) => {
+    const minimumResults = data.requestEnrichment ? MIN_ENRICHED_RESULTS : MIN_STANDARD_RESULTS;
+
+    if (data.maxResults < minimumResults) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['maxResults'],
+            message: data.requestEnrichment
+                ? `Enriched searches require at least ${MIN_ENRICHED_RESULTS} results`
+                : `Standard searches require at least ${MIN_STANDARD_RESULTS} results`,
+        });
+    }
 });
 
 function hasValidEmail(email?: string): boolean {
@@ -80,8 +105,52 @@ function isEnrichmentSearch(searchRecord: SearchRecord): boolean {
     return searchRecord.requestEnrichment;
 }
 
-function buildSearchPayload(searchRecord: SearchRecord): SearchStatusPayload {
-    return {
+function buildErrorDetails(error: any): ErrorDetails {
+    const errorDetails: ErrorDetails = {
+        type: error?.constructor?.name || 'Error',
+        message: error?.message || 'Unknown error',
+        stack: error?.stack,
+        statusCode: error?.statusCode || error?.response?.status,
+        timestamp: new Date().toISOString(),
+    };
+
+    if (error?.apifyError || error?.response) {
+        errorDetails.apifyError = {
+            status: error?.response?.status,
+            statusText: error?.response?.statusText,
+            data: error?.response?.data,
+        };
+    }
+
+    return errorDetails;
+}
+
+async function saveSearchError(searchId: string, error: any, customMessage?: string): Promise<void> {
+    const errorDetails = buildErrorDetails(error);
+    const failedAt = new Date();
+
+    try {
+        await db.update(searchHistory)
+            .set({
+                status: 'failed',
+                apifyStatusMessage: customMessage || error?.message || 'Search failed',
+                errorMessage: customMessage || error?.message || 'Search failed',
+                errorCode: error?.code || error?.name || null,
+                errorDetails,
+                failedAt,
+                apifyInput: sql`COALESCE(${searchHistory.apifyInput}, '{}'::jsonb) || ${JSON.stringify({ errorDetails })}::jsonb`,
+                completedAt: failedAt,
+            })
+            .where(eq(searchHistory.id, searchId));
+
+        console.error(`❌ Search ${searchId} failed:`, errorDetails);
+    } catch (updateError) {
+        console.error(`Failed to save error for search ${searchId}:`, updateError);
+    }
+}
+
+function buildSearchPayload(searchRecord: SearchRecord, isAdmin: boolean = false): SearchStatusPayload {
+    const payload: SearchStatusPayload = {
         status: searchRecord.status as SearchStatusValue,
         requestedMaxResults: searchRecord.requestedMaxResults,
         requestEnrichment: searchRecord.requestEnrichment,
@@ -101,6 +170,16 @@ function buildSearchPayload(searchRecord: SearchRecord): SearchStatusPayload {
         apifyStartedAt: searchRecord.apifyStartedAt,
         apifyFinishedAt: searchRecord.apifyFinishedAt,
     };
+
+    // Include error details only for admins
+    if (isAdmin && searchRecord.apifyInput) {
+        const apifyInput = searchRecord.apifyInput as any;
+        if (apifyInput.errorDetails) {
+            payload.errorDetails = apifyInput.errorDetails;
+        }
+    }
+
+    return payload;
 }
 
 function buildApifyTrackingUpdate(task: Pick<StartedTask, 'datasetId' | 'containerUrl' | 'startedAt' | 'usageTotalUsd' | 'statusMessage'>): Record<string, unknown> {
@@ -185,15 +264,19 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
     }
 
     if (isTerminalStatus(currentSearchRecord.status)) {
-        return buildSearchPayload(currentSearchRecord);
+        const [user] = await db.select()
+            .from(users)
+            .where(eq(users.id, userId))
+            .limit(1);
+
+        const isAdmin = user?.role === 'admin';
+        return buildSearchPayload(currentSearchRecord, isAdmin);
     }
 
     const results = await getTaskResults(currentSearchRecord.apifyRunId!);
     const requestEnrichment = isEnrichmentSearch(currentSearchRecord);
     const cappedResults = results.slice(0, currentSearchRecord.requestedMaxResults);
-    const eligibleResults = requestEnrichment
-        ? cappedResults.filter((result) => hasValidEmail(result.email))
-        : cappedResults;
+    const eligibleResults = cappedResults;
 
     const [user] = await db.select()
         .from(users)
@@ -205,20 +288,6 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
     }
 
     const isAdmin = user.role === 'admin';
-    const creditableResults = eligibleResults.map((result) => ({
-        placeId: result.placeId,
-        title: result.title,
-        email: result.email,
-        phone: result.phone,
-        address: result.address,
-        website: result.website,
-        category: result.category,
-        rating: result.rating,
-        reviewCount: result.reviewCount,
-        latitude: result.latitude,
-        longitude: result.longitude,
-    }));
-
     const creditResult = isAdmin
         ? {
             creditsCharged: 0,
@@ -226,13 +295,16 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
             standardResults: requestEnrichment ? 0 : eligibleResults.length,
             enrichedResults: requestEnrichment ? eligibleResults.length : 0,
             duplicatesSkipped: 0,
+            acceptedResults: eligibleResults,
         }
         : await creditRulesService.consumeCredits(
             userId,
-            creditableResults,
+            eligibleResults,
             currentSearchRecord.id,
             requestEnrichment,
         );
+
+    const resultsToSave = isAdmin ? eligibleResults : creditResult.acceptedResults;
 
     if (creditResult.creditsCharged > 0 && !isAdmin) {
         let remainingCredits = creditResult.creditsCharged;
@@ -297,11 +369,10 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
         await billingAlertService.checkCreditAlerts(userId);
     }
 
-    const savedResults = creditResult.standardResults + creditResult.enrichedResults;
+    const savedResults = resultsToSave.length;
 
     if (savedResults > 0) {
-        const contactsToInsert = eligibleResults
-            .slice(0, savedResults)
+        const contactsToInsert = resultsToSave
             .map((place) => ({
                 searchId: currentSearchRecord.id,
                 userId,
@@ -363,9 +434,9 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
     };
 }
 
-async function syncSearchRecordState(searchRecord: SearchRecord, userId: string): Promise<SearchStatusPayload> {
+async function syncSearchRecordState(searchRecord: SearchRecord, userId: string, isAdmin: boolean = false): Promise<SearchStatusPayload> {
     if (isTerminalStatus(searchRecord.status) || !searchRecord.apifyRunId) {
-        return buildSearchPayload(searchRecord);
+        return buildSearchPayload(searchRecord, isAdmin);
     }
 
     try {
@@ -394,10 +465,28 @@ async function syncSearchRecordState(searchRecord: SearchRecord, userId: string)
         if (apifyStatus.status === 'FAILED') {
             const completedAt = new Date();
 
+            // Save error details for admin debugging
+            const errorDetails: ErrorDetails = {
+                type: 'ApifyTaskFailed',
+                message: apifyStatus.statusMessage || 'Apify task failed',
+                apifyError: {
+                    status: apifyStatus.status,
+                    statusMessage: apifyStatus.statusMessage,
+                    datasetId: apifyStatus.datasetId,
+                    exitCode: apifyStatus.exitCode,
+                },
+                timestamp: completedAt.toISOString(),
+            };
+
             await db.update(searchHistory)
                 .set({
                     status: 'failed',
+                    errorMessage: apifyStatus.statusMessage || 'Apify task failed',
+                    errorCode: apifyStatus.exitCode ? String(apifyStatus.exitCode) : 'APIFY_TASK_FAILED',
+                    errorDetails,
+                    failedAt: completedAt,
                     completedAt,
+                    apifyInput: sql`COALESCE(${searchHistory.apifyInput}, '{}'::jsonb) || ${JSON.stringify({ errorDetails })}::jsonb`,
                     ...trackingUpdate,
                 })
                 .where(eq(searchHistory.id, searchRecord.id));
@@ -415,7 +504,7 @@ async function syncSearchRecordState(searchRecord: SearchRecord, userId: string)
                     apifyContainerUrl: apifyStatus.containerUrl ?? searchRecord.apifyContainerUrl,
                     apifyStartedAt: apifyStatus.startedAt ?? searchRecord.apifyStartedAt,
                     apifyFinishedAt: apifyStatus.finishedAt ?? completedAt,
-                }),
+                }, isAdmin),
                 message: 'Scraping task failed',
             };
         }
@@ -444,7 +533,7 @@ async function syncSearchRecordState(searchRecord: SearchRecord, userId: string)
                     apifyContainerUrl: apifyStatus.containerUrl ?? searchRecord.apifyContainerUrl,
                     apifyStartedAt: apifyStatus.startedAt ?? searchRecord.apifyStartedAt,
                     apifyFinishedAt: apifyStatus.finishedAt ?? completedAt,
-                }),
+                }, isAdmin),
                 message: 'Scraping task paused',
             };
         }
@@ -472,18 +561,21 @@ async function syncSearchRecordState(searchRecord: SearchRecord, userId: string)
                 apifyContainerUrl: apifyStatus.containerUrl ?? searchRecord.apifyContainerUrl,
                 apifyStartedAt: apifyStatus.startedAt ?? searchRecord.apifyStartedAt,
                 apifyFinishedAt: apifyStatus.finishedAt ?? searchRecord.apifyFinishedAt,
-            }),
+            }, isAdmin),
             status: nextStatus,
             progress: apifyStatus.progress,
             itemsCount: apifyStatus.itemsCount,
         };
     } catch (error) {
         console.error(`Error syncing Apify status for search ${searchRecord.id}:`, error);
-        return buildSearchPayload(searchRecord);
+        return buildSearchPayload(searchRecord, isAdmin);
     }
 }
 
 router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response): Promise<void> => {
+    let createdSearchId: string | null = null;
+    let searchErrorSaved = false;
+
     try {
         if (!req.user) {
             res.status(401).json({ error: 'User not authenticated' });
@@ -494,9 +586,18 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
         const validationResult = startSearchSchema.safeParse(req.body);
 
         if (!validationResult.success) {
+            const flattened = validationResult.error.flatten();
+            const message =
+                flattened.formErrors[0]
+                || flattened.fieldErrors.maxResults?.[0]
+                || flattened.fieldErrors.query?.[0]
+                || flattened.fieldErrors.location?.[0]
+                || 'Validation failed';
+
             res.status(400).json({
                 error: 'Validation failed',
-                details: validationResult.error.flatten(),
+                message,
+                details: flattened,
             });
             return;
         }
@@ -559,6 +660,7 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             standardResultsCount: requestEnrichment ? null : 0,
             enrichedResultsCount: requestEnrichment ? 0 : null,
         }).returning();
+        createdSearchId = searchRecord.id;
 
         let startedTask!: StartedTask;
 
@@ -577,6 +679,10 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
                     apifyActorName: startedTask.actorName,
                     apifyInput: startedTask.input,
                     status: 'running',
+                    errorMessage: null,
+                    errorCode: null,
+                    errorDetails: null,
+                    failedAt: null,
                     ...buildApifyTrackingUpdate(startedTask),
                 })
                 .where(eq(searchHistory.id, searchRecord.id));
@@ -584,13 +690,8 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             // Increment concurrent search counter
             incrementUserSearchCount(userId);
         } catch (apifyError) {
-            await db.update(searchHistory)
-                .set({
-                    status: 'failed',
-                    completedAt: new Date(),
-                })
-                .where(eq(searchHistory.id, searchRecord.id));
-
+            await saveSearchError(searchRecord.id, apifyError, 'Failed to start search');
+            searchErrorSaved = true;
             throw apifyError;
         }
 
@@ -606,9 +707,15 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
         });
     } catch (error) {
         console.error('Search error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+        if (createdSearchId && !searchErrorSaved) {
+            await saveSearchError(createdSearchId, error, 'Failed to start search');
+        }
+
         res.status(500).json({
             error: 'Failed to start search',
-            message: error instanceof Error ? error.message : 'Unknown error',
+            message: errorMessage,
         });
     }
 });
@@ -627,7 +734,8 @@ router.get('/:searchId/status', requireAuth, async (req, res: Response): Promise
             return;
         }
 
-        const payload = await syncSearchRecordState(searchRecord, req.user.id);
+        const isAdmin = req.user.role === 'admin';
+        const payload = await syncSearchRecordState(searchRecord, req.user.id, isAdmin);
         res.json(payload);
     } catch (error) {
         console.error('Status check error:', error);
@@ -685,32 +793,17 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
                 // Filter and process partial results
                 const requestEnrichment = isEnrichmentSearch(searchRecord);
                 const cappedResults = partialResults.slice(0, searchRecord.requestedMaxResults);
-                const eligibleResults = requestEnrichment
-                    ? cappedResults.filter((result) => hasValidEmail(result.email))
-                    : cappedResults;
+                const eligibleResults = cappedResults;
 
                 if (eligibleResults.length > 0 && !isAdmin) {
                     // Calculate and charge credits for partial results
-                    const creditableResults = eligibleResults.map((result) => ({
-                        placeId: result.placeId,
-                        title: result.title,
-                        email: result.email,
-                        phone: result.phone,
-                        address: result.address,
-                        website: result.website,
-                        category: result.category,
-                        rating: result.rating,
-                        reviewCount: result.reviewCount,
-                        latitude: result.latitude,
-                        longitude: result.longitude,
-                    }));
-
                     const creditResult = await creditRulesService.consumeCredits(
                         userId,
-                        creditableResults,
+                        eligibleResults,
                         searchRecord.id,
                         requestEnrichment,
                     );
+                    const resultsToSave = creditResult.acceptedResults;
 
                     // Debit credits from user balance
                     let remainingCredits = creditResult.creditsCharged;
@@ -775,12 +868,11 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
                         },
                     });
 
-                    partialLeadsSaved = creditResult.standardResults + creditResult.enrichedResults;
+                    partialLeadsSaved = resultsToSave.length;
                     creditsCharged = creditResult.creditsCharged;
 
                     // Save partial contacts
-                    const contactsToInsert = eligibleResults
-                        .slice(0, partialLeadsSaved)
+                    const contactsToInsert = resultsToSave
                         .map((place) => ({
                             searchId: searchRecord.id,
                             userId,
@@ -895,11 +987,12 @@ router.get('/history', requireAuth, async (req, res: Response): Promise<void> =>
             .from(searchHistory)
             .where(eq(searchHistory.userId, req.user.id));
 
+        const isAdmin = req.user.role === 'admin';
         const syncedHistory: SearchRecord[] = [];
 
         for (const searchRecord of history) {
             if (searchRecord.status === 'running' || searchRecord.status === 'pending') {
-                await syncSearchRecordState(searchRecord, req.user.id);
+                await syncSearchRecordState(searchRecord, req.user.id, isAdmin);
                 const refreshedRecord = await getOwnedSearch(searchRecord.id, req.user.id);
                 syncedHistory.push(refreshedRecord ?? searchRecord);
             } else {
@@ -1017,6 +1110,62 @@ router.delete('/:searchId', requireAuth, async (req, res: Response): Promise<voi
         res.json({ message: 'Search deleted successfully' });
     } catch (error) {
         console.error('Delete search error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Admin-only endpoint to get detailed error information for any search
+router.get('/:searchId/error-details', requireAuth, async (req, res: Response): Promise<void> => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ error: 'User not authenticated' });
+            return;
+        }
+
+        // Only allow admins to access error details
+        if (req.user.role !== 'admin') {
+            res.status(403).json({ error: 'Forbidden: Admin access required' });
+            return;
+        }
+
+        const [searchRecord] = await db.select()
+            .from(searchHistory)
+            .where(eq(searchHistory.id, req.params.searchId))
+            .limit(1);
+
+        if (!searchRecord) {
+            res.status(404).json({ error: 'Search not found' });
+            return;
+        }
+
+        // Extract error details from dedicated columns first, then legacy apifyInput storage
+        const apifyInput = searchRecord.apifyInput as any;
+        const errorDetails = searchRecord.errorDetails || apifyInput?.errorDetails || (
+            searchRecord.errorMessage
+                ? {
+                    type: searchRecord.errorCode || 'SearchError',
+                    message: searchRecord.errorMessage,
+                    timestamp: searchRecord.failedAt ? searchRecord.failedAt.toISOString() : undefined,
+                }
+                : null
+        );
+
+        res.json({
+            searchId: searchRecord.id,
+            status: searchRecord.status,
+            query: searchRecord.query,
+            location: searchRecord.location,
+            userId: searchRecord.userId,
+            apifyRunId: searchRecord.apifyRunId,
+            apifyStatusMessage: searchRecord.apifyStatusMessage,
+            errorMessage: searchRecord.errorMessage,
+            completedAt: searchRecord.completedAt,
+            errorDetails,
+            // Include full apify input for debugging
+            apifyInput: searchRecord.apifyInput,
+        });
+    } catch (error) {
+        console.error('Get error details error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

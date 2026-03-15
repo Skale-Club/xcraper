@@ -14,7 +14,7 @@ const supabase: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
     },
 });
 
-export type StorageBucket = 'logos' | 'avatars' | 'exports' | 'og-images';
+export type StorageBucket = 'logos' | 'avatars' | 'exports' | 'og-images' | 'testimonials';
 
 export interface UploadResult {
     url: string;

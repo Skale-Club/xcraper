@@ -45,7 +45,7 @@ export default function AppShell({ children }: AppShellProps) {
             <aside
                 className={cn(
                     'fixed inset-y-0 left-0 z-40 hidden transition-[width] duration-300 lg:block',
-                    sidebarCollapsed ? 'w-24' : 'w-72',
+                    sidebarCollapsed ? 'w-24' : 'w-64',
                 )}
             >
                 <AppSidebar
@@ -65,7 +65,7 @@ export default function AppShell({ children }: AppShellProps) {
                         className="absolute inset-0 bg-slate-950/50"
                         onClick={closeSidebar}
                     />
-                    <aside className="relative h-full w-72 max-w-[85vw]">
+                    <aside className="relative h-full w-64 max-w-[80vw]">
                         <AppSidebar
                             user={user}
                             onLogout={handleLogout}
@@ -75,7 +75,7 @@ export default function AppShell({ children }: AppShellProps) {
                 </div>
             )}
 
-            <div className={cn('transition-[padding] duration-300', sidebarCollapsed ? 'lg:pl-24' : 'lg:pl-72')}>
+            <div className={cn('transition-[padding] duration-300', sidebarCollapsed ? 'lg:pl-24' : 'lg:pl-64')}>
                 <AppTopbar
                     location={location}
                     onOpenSidebar={() => setMobileSidebarOpen(true)}

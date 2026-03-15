@@ -3,10 +3,11 @@ import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { searchApi, contactsApi, ApiError, type SearchHistory } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
+import { searchApi, contactsApi, settingsApi, ApiError, type SearchHistory } from '@/lib/api';
 import {
     Search,
     Star,
@@ -25,11 +26,14 @@ import {
     AlertCircle,
     PlayCircle,
     PauseCircle,
+    Map,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { ContactsMapDialog } from '@/components/ContactsMapDialog';
 
 export default function SearchesPage() {
     const { toast } = useToast();
+    const { user } = useAuth();
     const queryClient = useQueryClient();
     const [, setLocation] = useLocation();
     const requestedSearchId = new URLSearchParams(window.location.search).get('searchId');
@@ -38,6 +42,7 @@ export default function SearchesPage() {
     const [selectedSearch, setSelectedSearch] = useState<SearchHistory | null>(null);
     const [historyPage, setHistoryPage] = useState(1);
     const [contactsPage, setContactsPage] = useState(1);
+    const [isMapDialogOpen, setIsMapDialogOpen] = useState(false);
 
     // Query for Search History
     const { data: historyData, isLoading: isHistoryLoading } = useQuery({
@@ -72,6 +77,11 @@ export default function SearchesPage() {
         enabled: !!selectedSearch && (selectedSearch.status === 'running' || selectedSearch.status === 'pending'),
         refetchInterval: 5000,
         refetchOnWindowFocus: false,
+    });
+
+    const { data: settingsData } = useQuery({
+        queryKey: ['public-settings'],
+        queryFn: () => settingsApi.getPublic(),
     });
 
     const toggleFavoriteMutation = useMutation({
@@ -151,6 +161,25 @@ export default function SearchesPage() {
     };
 
     const isSearchActive = (status: string) => status === 'running' || status === 'pending';
+    const isAdmin = user?.role === 'admin';
+    const creditsPerStandardLead = settingsData?.settings.creditsPerStandardResult ?? 1;
+    const creditsPerEnrichedLead = settingsData?.settings.creditsPerEnrichedResult ?? 3;
+    const getDisplayedSearchCredits = (search: SearchHistory) => {
+        if (isAdmin) {
+            return 0;
+        }
+
+        if (search.creditsUsed > 0) {
+            return search.creditsUsed;
+        }
+
+        if ((search.status === 'completed' || search.status === 'paused') && (search.savedResults ?? 0) > 0) {
+            const searchCreditsPerLead = search.requestEnrichment ? creditsPerEnrichedLead : creditsPerStandardLead;
+            return (search.savedResults ?? 0) * searchCreditsPerLead;
+        }
+
+        return 0;
+    };
 
     const handlePauseSearch = (searchId: string) => {
         pauseSearchMutation.mutate(searchId);
@@ -208,38 +237,52 @@ export default function SearchesPage() {
                                     setSelectedSearch(search);
                                     setLocation(`/searches?searchId=${search.id}`);
                                 }}
-                                className="group flex cursor-pointer items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/40"
+                                className="group flex cursor-pointer items-start gap-3 px-4 py-3.5 sm:px-5 sm:py-4 sm:items-center transition-colors hover:bg-muted/40"
                             >
                                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/40 transition-colors group-hover:border-primary/20 group-hover:bg-primary/5">
                                     {getStatusIcon(search.status)}
                                 </div>
 
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-semibold text-foreground capitalize">
-                                        {search.query}
-                                    </p>
-                                    <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                                        <span className="flex items-center gap-1">
-                                            <MapPin className="h-3 w-3" />
-                                            <span className="truncate">{search.location}</span>
-                                        </span>
+                                <div className="min-w-0 flex-1 space-y-2">
+                                    <div>
+                                        <p className="truncate text-sm font-semibold text-foreground capitalize">
+                                            {search.query}
+                                        </p>
+                                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                                            <span className="flex items-center gap-1 truncate max-w-[200px]">
+                                                <MapPin className="h-3 w-3 shrink-0" />
+                                                <span className="truncate">{search.location}</span>
+                                            </span>
+                                            <span className="opacity-40 hidden xs:inline">·</span>
+                                            <span className="shrink-0">{format(new Date(search.createdAt), 'MMM d, yyyy')}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-3 text-xs text-muted-foreground sm:hidden">
+                                        <div className="flex items-center gap-1">
+                                            <span className="tabular-nums text-sm font-semibold text-foreground">{search.savedResults || 0}</span>
+                                            <span>contacts</span>
+                                        </div>
                                         <span className="opacity-40">·</span>
-                                        <span>{format(new Date(search.createdAt), 'MMM d, yyyy')}</span>
+                                        <div className="flex items-center gap-1">
+                                            <span className="tabular-nums text-sm font-semibold text-foreground">{getDisplayedSearchCredits(search)}</span>
+                                            <span>credits</span>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="hidden items-center gap-5 text-right text-xs text-muted-foreground sm:flex">
+                                <div className="hidden sm:flex items-center gap-5 text-right text-xs text-muted-foreground">
                                     <div>
                                         <p className="tabular-nums text-sm font-semibold text-foreground">{search.savedResults || 0}</p>
                                         <p>contacts</p>
                                     </div>
                                     <div>
-                                        <p className="tabular-nums text-sm font-semibold text-foreground">{search.creditsUsed}</p>
+                                        <p className="tabular-nums text-sm font-semibold text-foreground">{getDisplayedSearchCredits(search)}</p>
                                         <p>credits</p>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 shrink-0">
                                     {getStatusBadge(search.status)}
                                     {isSearchActive(search.status) && (
                                         <Button
@@ -259,7 +302,7 @@ export default function SearchesPage() {
                                             )}
                                         </Button>
                                     )}
-                                    <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                                    <ChevronRight className="h-4 w-4 text-muted-foreground/50 hidden sm:block" />
                                 </div>
                             </motion.div>
                         ))}
@@ -346,6 +389,14 @@ export default function SearchesPage() {
                                 Pause
                             </Button>
                         )}
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsMapDialogOpen(true)}
+                            disabled={contacts.length === 0}
+                        >
+                            <Map className="mr-2 h-4 w-4" />
+                            View Map
+                        </Button>
                         <Button variant="outline" onClick={() => handleExportCsv(selectedSearch.id)}>
                             <Download className="mr-2 h-4 w-4" />
                             Export CSV
@@ -369,119 +420,146 @@ export default function SearchesPage() {
                     </div>
                 </Card>
             ) : (
-                <div className="space-y-4">
-                    {contacts.map((contact, index) => (
-                        <motion.div
-                            key={contact.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.05 }}
-                        >
-                            <Card className="hover:shadow-sm transition-shadow border-border rounded-[28px]">
-                                <CardContent className="p-5">
-                                    <div className="flex items-start gap-4">
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-start justify-between gap-4">
-                                                <div>
-                                                    <h3 className="flex items-center gap-2 font-bold text-lg text-foreground leading-tight">
-                                                        {contact.title}
-                                                        {contact.isFavorite && (
-                                                            <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                                                        )}
-                                                    </h3>
-                                                    {contact.category && (
-                                                        <p className="text-sm text-muted-foreground mt-0.5">{contact.category}</p>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-9 w-9 rounded-xl hover:bg-muted"
-                                                        onClick={() => toggleFavoriteMutation.mutate(contact.id)}
-                                                    >
-                                                        <Star
-                                                            className={`h-4.5 w-4.5 ${contact.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`}
-                                                        />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                            <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm md:grid-cols-2 lg:grid-cols-3">
-                                                {contact.address && (
-                                                    <div className="flex items-center gap-2.5 text-muted-foreground">
-                                                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/50">
-                                                            <MapPin className="h-3.5 w-3.5" />
-                                                        </div>
-                                                        <span className="truncate">{contact.address}</span>
-                                                    </div>
+                <Card className="overflow-hidden rounded-[28px] border-border">
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="border-b border-border bg-muted/30">
+                                <tr>
+                                    <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                        <div className="flex items-center gap-1.5">
+                                            <Star className="h-3.5 w-3.5" />
+                                        </div>
+                                    </th>
+                                    <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Business</th>
+                                    <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contact</th>
+                                    <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Location</th>
+                                    <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rating</th>
+                                    <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Links</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                                {contacts.map((contact, index) => (
+                                    <motion.tr
+                                        key={contact.id}
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ delay: index * 0.02 }}
+                                        className="group hover:bg-muted/20 transition-colors"
+                                    >
+                                        {/* Favorite */}
+                                        <td className="px-4 py-4 align-top">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 rounded-lg hover:bg-muted"
+                                                onClick={() => toggleFavoriteMutation.mutate(contact.id)}
+                                            >
+                                                <Star
+                                                    className={`h-4 w-4 ${contact.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`}
+                                                />
+                                            </Button>
+                                        </td>
+
+                                        {/* Business Name & Category */}
+                                        <td className="px-4 py-4 align-top">
+                                            <div className="max-w-xs">
+                                                <p className="font-semibold text-foreground leading-tight">{contact.title}</p>
+                                                {contact.category && (
+                                                    <p className="mt-1 text-xs text-muted-foreground truncate">{contact.category}</p>
                                                 )}
+                                            </div>
+                                        </td>
+
+                                        {/* Contact Info */}
+                                        <td className="px-4 py-4 align-top">
+                                            <div className="space-y-1.5 text-sm max-w-xs">
                                                 {contact.phone && (
-                                                    <div className="flex items-center gap-2.5 text-muted-foreground">
-                                                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/50">
-                                                            <Phone className="h-3.5 w-3.5" />
-                                                        </div>
-                                                        <a href={`tel:${contact.phone}`} className="hover:text-primary transition-colors">
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <Phone className="h-3.5 w-3.5 shrink-0" />
+                                                        <a href={`tel:${contact.phone}`} className="hover:text-primary transition-colors truncate">
                                                             {contact.phone}
                                                         </a>
                                                     </div>
                                                 )}
-                                                {contact.email && (
-                                                    <div className="flex items-center gap-2.5 text-muted-foreground">
-                                                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/50">
-                                                            <Mail className="h-3.5 w-3.5" />
-                                                        </div>
-                                                        <a
-                                                            href={`mailto:${contact.email}`}
-                                                            className="truncate hover:text-primary transition-colors"
-                                                        >
-                                                            {contact.email}
-                                                        </a>
+                                                {(selectedSearch.requestEnrichment || contact.email) && (
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <Mail className="h-3.5 w-3.5 shrink-0" />
+                                                        {contact.email ? (
+                                                            <a
+                                                                href={`mailto:${contact.email}`}
+                                                                className="hover:text-primary transition-colors truncate"
+                                                            >
+                                                                {contact.email}
+                                                            </a>
+                                                        ) : (
+                                                            <span className="truncate">-</span>
+                                                        )}
                                                     </div>
                                                 )}
                                                 {contact.website && (
-                                                    <div className="flex items-center gap-2.5 text-muted-foreground">
-                                                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/50">
-                                                            <Globe className="h-3.5 w-3.5" />
-                                                        </div>
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <Globe className="h-3.5 w-3.5 shrink-0" />
                                                         <a
                                                             href={contact.website}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="truncate hover:text-primary transition-colors"
+                                                            className="hover:text-primary transition-colors truncate"
                                                         >
                                                             {contact.website.replace(/^https?:\/\//, '')}
                                                         </a>
                                                     </div>
                                                 )}
-                                                {contact.rating && (
-                                                    <div className="flex items-center gap-2.5 text-muted-foreground">
-                                                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/50">
-                                                            <Star className="h-3.5 w-3.5 fill-yellow-500 text-yellow-500" />
-                                                        </div>
-                                                        <span>{contact.rating} ({contact.reviewCount} reviews)</span>
-                                                    </div>
-                                                )}
-                                                {contact.googleMapsUrl && (
-                                                    <div className="flex items-center gap-2.5">
-                                                        <a
-                                                            href={contact.googleMapsUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="flex items-center gap-2 text-primary hover:underline font-medium"
-                                                        >
-                                                            <ExternalLink className="h-4 w-4" />
-                                                            View on Maps
-                                                        </a>
-                                                    </div>
+                                                {!contact.phone && !contact.email && !contact.website && (
+                                                    <span className="text-xs text-muted-foreground/50">No contact info</span>
                                                 )}
                                             </div>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </motion.div>
-                    ))}
-                </div>
+                                        </td>
+
+                                        {/* Address */}
+                                        <td className="px-4 py-4 align-top">
+                                            {contact.address ? (
+                                                <div className="flex items-start gap-2 text-sm text-muted-foreground max-w-xs">
+                                                    <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                                                    <span className="line-clamp-2 leading-tight">{contact.address}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground/50">No address</span>
+                                            )}
+                                        </td>
+
+                                        {/* Rating */}
+                                        <td className="px-4 py-4 align-top">
+                                            {contact.rating ? (
+                                                <div className="flex items-center gap-1.5 text-sm">
+                                                    <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                                                    <span className="font-medium text-foreground">{contact.rating}</span>
+                                                    <span className="text-xs text-muted-foreground">({contact.reviewCount})</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground/50">No rating</span>
+                                            )}
+                                        </td>
+
+                                        {/* Actions */}
+                                        <td className="px-4 py-4 align-top">
+                                            {contact.googleMapsUrl && (
+                                                <a
+                                                    href={contact.googleMapsUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline font-medium"
+                                                >
+                                                    <ExternalLink className="h-3.5 w-3.5" />
+                                                    View
+                                                </a>
+                                            )}
+                                        </td>
+                                    </motion.tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
             )}
 
             {totalPages > 1 && (
@@ -503,6 +581,15 @@ export default function SearchesPage() {
                     </Button>
                 </div>
             )}
+
+            {/* Map Dialog */}
+            <ContactsMapDialog
+                open={isMapDialogOpen}
+                onOpenChange={setIsMapDialogOpen}
+                contacts={contacts}
+                searchQuery={selectedSearch.query}
+                searchLocation={selectedSearch.location}
+            />
         </div>
     );
 }

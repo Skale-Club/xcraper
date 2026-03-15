@@ -4,8 +4,7 @@ import { uploadFile, deleteFile } from '../services/storage.js';
 import { db } from '../db/index.js';
 import { settings, users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const multer = require('multer');
+import multer from 'multer';
 
 const router = Router();
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { adminApi } from '@/lib/api';
+import { adminApi, type AdminTransaction } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,12 +15,17 @@ import {
     RefreshCw
 } from 'lucide-react';
 
+function formatTransactionDate(value: string) {
+    return new Date(value).toLocaleString();
+}
+
 function TransactionRow({ transaction }: {
     transaction: {
         id: string;
         amount: number;
         type: string;
         description?: string;
+        subscriptionPlanName?: string | null;
         createdAt: string;
         user: { id: string; name: string; email: string };
     }
@@ -41,6 +46,10 @@ function TransactionRow({ transaction }: {
     };
 
     const getTypeLabel = () => {
+        if (transaction.type === 'monthly_grant' && transaction.subscriptionPlanName) {
+            return <span className="text-amber-600">{transaction.subscriptionPlanName}</span>;
+        }
+
         switch (transaction.type) {
             case 'purchase':
                 return <span className="text-green-600">Purchase</span>;
@@ -81,10 +90,46 @@ function TransactionRow({ transaction }: {
             </td>
             <td className="py-3 px-4">
                 <span className="text-sm text-muted-foreground">
-                    {new Date(transaction.createdAt).toLocaleString()}
+                    {formatTransactionDate(transaction.createdAt)}
                 </span>
             </td>
         </tr>
+    );
+}
+
+function TransactionCard({ transaction }: { transaction: AdminTransaction }) {
+    const amountClassName = transaction.amount >= 0 ? 'text-green-600' : 'text-red-600';
+
+    return (
+        <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-foreground">
+                            {transaction.type === 'monthly_grant' && transaction.subscriptionPlanName
+                                ? transaction.subscriptionPlanName
+                                : transaction.type}
+                        </span>
+                    </div>
+                    <p className="mt-1 text-sm font-medium text-foreground">{transaction.user.name}</p>
+                    <p className="text-sm text-muted-foreground break-all">{transaction.user.email}</p>
+                </div>
+                <span className={`text-base font-semibold ${amountClassName}`}>
+                    {transaction.amount >= 0 ? '+' : ''}{transaction.amount}
+                </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</p>
+                    <p className="mt-1 text-sm text-foreground">{transaction.description || '-'}</p>
+                </div>
+                <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Date</p>
+                    <p className="mt-1 text-sm text-foreground">{formatTransactionDate(transaction.createdAt)}</p>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -98,10 +143,11 @@ export default function AdminTransactionsPage() {
     });
 
     // Filter transactions by search query
-    const filteredTransactions = data?.transactions.filter(transaction =>
+    const filteredTransactions = data?.transactions.filter((transaction: AdminTransaction) =>
         transaction.user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         transaction.user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
         transaction.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        transaction.subscriptionPlanName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         transaction.description?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
@@ -109,20 +155,20 @@ export default function AdminTransactionsPage() {
         <div className="space-y-6">
             <Card>
                 <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <CardTitle>Transactions</CardTitle>
                             <CardDescription>
                                 {data?.pagination.total ?? 0} total transactions
                             </CardDescription>
                         </div>
-                        <div className="relative">
+                        <div className="relative w-full lg:w-64">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                                 placeholder="Search transactions..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 w-64"
+                                className="w-full pl-9"
                             />
                         </div>
                     </div>
@@ -136,8 +182,14 @@ export default function AdminTransactionsPage() {
                         </div>
                     ) : (
                         <>
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
+                            <div className="space-y-3 md:hidden">
+                                {filteredTransactions?.map(transaction => (
+                                    <TransactionCard key={transaction.id} transaction={transaction} />
+                                ))}
+                            </div>
+
+                            <div className="hidden overflow-x-auto md:block">
+                                <table className="w-full min-w-[720px]">
                                     <thead>
                                         <tr className="border-b">
                                             <th className="text-left py-3 px-4 font-medium text-muted-foreground">Type</th>
@@ -163,11 +215,11 @@ export default function AdminTransactionsPage() {
 
                             {/* Pagination */}
                             {data && data.pagination.totalPages > 1 && (
-                                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                                <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
                                     <p className="text-sm text-muted-foreground">
                                         Page {data.pagination.page} of {data.pagination.totalPages}
                                     </p>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 self-start sm:self-auto">
                                         <Button
                                             variant="outline"
                                             size="sm"

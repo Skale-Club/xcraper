@@ -1,5 +1,5 @@
-import { db } from '../db';
-import { billingEvents, users } from '../db/schema';
+import { db } from '../db/index.js';
+import { billingEvents, users } from '../db/schema.js';
 import { eq, desc, and, gte, lte } from 'drizzle-orm';
 
 export interface AuditEntry {

@@ -5,16 +5,11 @@ import {
     Coins,
     LayoutDashboard,
     LogOut,
-    Settings,
-    Users,
-    Contact,
-    Receipt,
     Shield,
     History,
     CreditCard,
     Moon,
     Sun,
-    Activity,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -34,12 +29,7 @@ const baseNavItems: NavItem[] = [
 ];
 
 const adminNavItems: NavItem[] = [
-    { href: '/admin', label: 'Admin Dashboard', icon: Shield },
-    { href: '/admin/users', label: 'Users', icon: Users },
-    { href: '/admin/searches', label: 'Search Logs', icon: Activity },
-    { href: '/admin/contacts', label: 'All Contacts', icon: Contact },
-    { href: '/admin/transactions', label: 'Transactions', icon: Receipt },
-    { href: '/admin/settings/branding', label: 'Settings', icon: Settings },
+    { href: '/admin', label: 'Admin Panel', icon: Shield },
 ];
 
 interface AppSidebarProps {
@@ -125,59 +115,54 @@ export default function AppSidebar({
 
             {/* Navigation */}
             <div className="flex-1 overflow-y-auto px-3 py-2 scrollbar-thin scrollbar-thumb-muted dark:scrollbar-thumb-slate-800 scrollbar-track-transparent">
-                <nav className="space-y-1">
-                    {!collapsed && (
-                        <div className="px-3 pb-2 pt-2">
-                            <p className="text-xs font-semibold tracking-wider text-muted-foreground dark:text-slate-500 uppercase">Menu</p>
-                        </div>
-                    )}
-                    
-                    {navItems.map((item) => {
-                        const Icon = item.icon;
-                        const isActive = location === item.href;
+                <nav className="flex min-h-full flex-col">
+                    <div className="space-y-1">
+                        {!collapsed && (
+                            <div className="px-3 pb-2 pt-2">
+                                <p className="text-xs font-semibold tracking-wider text-muted-foreground dark:text-slate-500 uppercase">Menu</p>
+                            </div>
+                        )}
 
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                onClick={onNavigate}
-                                title={collapsed ? item.label : undefined}
-                                className={cn(
-                                    'group flex items-center rounded-xl text-sm font-medium transition-all duration-200',
-                                    collapsed ? 'justify-center p-3 my-1' : 'gap-3 px-3 py-2.5',
-                                    isActive
-                                        ? 'bg-blue-100 dark:bg-blue-600/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20'
-                                        : 'text-muted-foreground dark:text-slate-400 hover:bg-muted dark:hover:bg-slate-800/50 hover:text-foreground dark:hover:text-slate-100 border border-transparent'
-                                )}
-                            >
-                                <Icon className={cn("shrink-0 transition-colors", collapsed ? "h-5 w-5" : "h-4 w-4", isActive ? "text-blue-700 dark:text-blue-400" : "text-muted-foreground dark:text-slate-500 group-hover:text-foreground dark:group-hover:text-slate-300")} />
-                                {!collapsed && <span>{item.label}</span>}
-                                {isActive && !collapsed && (
-                                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]"></div>
-                                )}
-                            </Link>
-                        );
-                    })}
+                        {navItems.map((item) => {
+                            const Icon = item.icon;
+                            const isActive = location === item.href;
 
-                    {/* Admin Section */}
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    onClick={onNavigate}
+                                    title={collapsed ? item.label : undefined}
+                                    className={cn(
+                                        'group flex items-center rounded-xl text-sm font-medium transition-all duration-200',
+                                        collapsed ? 'justify-center p-3 my-1' : 'gap-3 px-3 py-2.5',
+                                        isActive
+                                            ? 'bg-blue-100 dark:bg-blue-600/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20'
+                                            : 'text-muted-foreground dark:text-slate-400 hover:bg-muted dark:hover:bg-slate-800/50 hover:text-foreground dark:hover:text-slate-100 border border-transparent'
+                                    )}
+                                >
+                                    <Icon className={cn("shrink-0 transition-colors", collapsed ? "h-5 w-5" : "h-4 w-4", isActive ? "text-blue-700 dark:text-blue-400" : "text-muted-foreground dark:text-slate-500 group-hover:text-foreground dark:group-hover:text-slate-300")} />
+                                    {!collapsed && <span>{item.label}</span>}
+                                    {isActive && !collapsed && (
+                                        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]"></div>
+                                    )}
+                                </Link>
+                            );
+                        })}
+                    </div>
+
                     {isAdmin && (
-                        <div className="mt-6">
-                            {!collapsed && (
-                                <div className="px-3 pb-2 pt-4">
-                                    <p className="text-xs font-semibold tracking-wider text-muted-foreground dark:text-slate-500 uppercase flex items-center gap-1.5">
-                                        <Shield className="h-3 w-3" />
-                                        Administration
-                                    </p>
-                                </div>
-                            )}
+                        <div className="mt-auto pt-6">
                             {collapsed && (
                                 <div className="mx-auto my-4 h-px w-8 bg-border dark:bg-slate-800" />
                             )}
-                            
+
                             <div className="space-y-1">
                                 {adminNavItems.map((item) => {
                                     const Icon = item.icon;
-                                    const isActive = location === item.href;
+                                    const isActive = item.href === '/admin'
+                                        ? location === '/admin' || location.startsWith('/admin/')
+                                        : location === item.href;
 
                                     return (
                                         <Link

@@ -31,8 +31,10 @@ import {
     Activity,
     TrendingUp,
     TrendingDown,
-    Minus
+    Minus,
+    AlertCircle
 } from 'lucide-react';
+import { ErrorDetailsDialog } from '@/components/ErrorDetailsDialog';
 
 interface TimelineData {
     id: string;
@@ -267,6 +269,8 @@ export default function AdminSearchesPage() {
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+    const [selectedSearchId, setSelectedSearchId] = useState<string | null>(null);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -294,7 +298,7 @@ export default function AdminSearchesPage() {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold">Search Logs</h1>
+                        <h1 className="text-2xl font-bold">Logs</h1>
                         <p className="text-muted-foreground">Monitor all search activities and errors</p>
                     </div>
                 </div>
@@ -405,6 +409,7 @@ export default function AdminSearchesPage() {
                                                 <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Results</th>
                                                 <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Credits</th>
                                                 <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Date</th>
+                                                <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -469,6 +474,22 @@ export default function AdminSearchesPage() {
                                                             </p>
                                                         </div>
                                                     </td>
+                                                    <td className="py-3 px-4">
+                                                        {search.status === 'failed' && (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="gap-2"
+                                                                onClick={() => {
+                                                                    setSelectedSearchId(search.id);
+                                                                    setErrorDialogOpen(true);
+                                                                }}
+                                                            >
+                                                                <AlertCircle className="h-4 w-4" />
+                                                                View Error
+                                                            </Button>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -500,6 +521,14 @@ export default function AdminSearchesPage() {
                         )}
                     </CardContent>
                 </Card>
+
+                {selectedSearchId && (
+                    <ErrorDetailsDialog
+                        searchId={selectedSearchId}
+                        open={errorDialogOpen}
+                        onOpenChange={setErrorDialogOpen}
+                    />
+                )}
             </div>
         </TooltipProvider>
     );

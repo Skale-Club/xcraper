@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import Stripe from 'stripe';
-import { db } from '../db';
-import { users, creditTransactions, creditPackages } from '../db/schema';
+import { db } from '../db/index.js';
+import { users, creditTransactions, creditPackages } from '../db/schema.js';
 import { and, eq } from 'drizzle-orm';
 
 // Initialize Stripe

@@ -406,7 +406,7 @@ export default function LandingPage() {
                             </p>
                         </div>
 
-                        <div className={`grid grid-cols-1 md:grid-cols-${Math.min(displayPlans.length, 3)} lg:grid-cols-${Math.min(displayPlans.length, 4)} gap-6 ${displayPlans.length === 1 ? 'max-w-sm mx-auto' : ''}`}>
+                        <div className={`grid grid-cols-1 md:grid-cols-${Math.min(displayPlans.length, 3)} lg:grid-cols-${Math.min(displayPlans.length, 4)} gap-8 ${displayPlans.length === 1 ? 'max-w-md mx-auto' : ''}`}>
                             {displayPlans.map((plan, index) => (
                                 <motion.div
                                     key={plan.id}
@@ -414,54 +414,87 @@ export default function LandingPage() {
                                     whileInView={{ opacity: 1, y: 0 }}
                                     viewport={{ once: true }}
                                     transition={{ delay: index * 0.1 }}
-                                    className={`relative p-6 rounded-xl transition-shadow hover:shadow-xl ${
-                                        plan.isPopular || displayPlans.length === 1 
-                                            ? 'bg-primary text-white shadow-lg shadow-primary/25' 
-                                            : 'bg-slate-800 shadow'
-                                    }`}
+                                    className="relative group"
                                 >
+                                    {/* Glow effect for popular plans */}
                                     {(plan.isPopular || displayPlans.length === 1) && (
-                                        <span className="absolute -top-3 right-4 bg-white text-primary text-xs font-bold px-3 py-1 rounded-full shadow">
-                                            Popular
-                                        </span>
+                                        <div className="absolute -inset-px bg-gradient-to-br from-primary via-indigo-500 to-primary rounded-[2rem] opacity-75 blur-sm group-hover:opacity-100 transition-opacity"></div>
                                     )}
-                                    
-                                    <div className="mb-6">
-                                        <h3 className={`text-sm font-medium mb-2 ${plan.isPopular || displayPlans.length === 1 ? 'text-white/80' : 'text-slate-400'}`}>{plan.name}</h3>
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-4xl font-bold">${plan.price}</span>
-                                            <span className={`text-sm ${plan.isPopular || displayPlans.length === 1 ? 'text-white/70' : 'text-slate-400'}`}>/month</span>
+
+                                    <div className={`relative h-full p-8 rounded-[2rem] border transition-all duration-300 ${
+                                        plan.isPopular || displayPlans.length === 1
+                                            ? 'bg-slate-800/90 border-primary/20 backdrop-blur-sm'
+                                            : 'bg-slate-800/50 border-slate-700 hover:border-slate-600 hover:bg-slate-800/80'
+                                    }`}>
+                                        {/* Popular Badge */}
+                                        {(plan.isPopular || displayPlans.length === 1) && (
+                                            <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                                                <div className="bg-gradient-to-r from-primary to-indigo-500 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg">
+                                                    ✨ Popular
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Plan Name */}
+                                        <div className="mb-8">
+                                            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">{plan.name}</h3>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-5xl font-black text-white tracking-tight">${plan.price}</span>
+                                                <span className="text-lg text-slate-400 font-medium">/month</span>
+                                            </div>
                                         </div>
+
+                                        {/* Credits Badge */}
+                                        <div className={`relative overflow-hidden rounded-2xl p-4 mb-8 ${
+                                            plan.isPopular || displayPlans.length === 1
+                                                ? 'bg-gradient-to-br from-primary/20 to-indigo-500/20 border border-primary/30'
+                                                : 'bg-slate-700/50 border border-slate-600/50'
+                                        }`}>
+                                            <div className="relative z-10">
+                                                <div className="text-3xl font-black text-white mb-1">{plan.monthlyCredits}</div>
+                                                <div className="text-sm text-slate-300 font-medium">credits included</div>
+                                            </div>
+                                            {(plan.isPopular || displayPlans.length === 1) && (
+                                                <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 rounded-full blur-2xl"></div>
+                                            )}
+                                        </div>
+
+                                        {/* Features List */}
+                                        <ul className="space-y-4 mb-8">
+                                            {[
+                                                `${plan.monthlyCredits} verified leads`,
+                                                'Email enrichment',
+                                                'Social profiles',
+                                                'Unlimited exports',
+                                                'Priority support',
+                                            ].map((feature, i) => (
+                                                <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
+                                                    <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5 ${
+                                                        plan.isPopular || displayPlans.length === 1
+                                                            ? 'bg-primary/20 text-primary'
+                                                            : 'bg-slate-700 text-slate-400'
+                                                    }`}>
+                                                        <CheckCircle className="w-3 h-3" />
+                                                    </div>
+                                                    <span className="leading-tight">{feature}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+
+                                        {/* CTA Button */}
+                                        <Link href="/login" className="block">
+                                            <Button
+                                                className={`w-full h-12 text-base font-bold rounded-xl transition-all ${
+                                                    plan.isPopular || displayPlans.length === 1
+                                                        ? 'bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 hover:scale-[1.02]'
+                                                        : 'bg-slate-700 hover:bg-slate-600 text-white'
+                                                }`}
+                                                variant="ghost"
+                                            >
+                                                Get Started
+                                            </Button>
+                                        </Link>
                                     </div>
-                                    
-                                     <div className={`py-3 px-4 rounded-lg mb-6 ${plan.isPopular || displayPlans.length === 1 ? 'bg-white/20' : 'bg-slate-700'}`}>
-                                        <span className="text-xl font-bold">{plan.monthlyCredits}</span>
-                                        <span className={`text-sm ${plan.isPopular || displayPlans.length === 1 ? 'text-white/80' : 'text-slate-400'}`}> credits included</span>
-                                    </div>
-                                    
-                                    <ul className="space-y-3 mb-6">
-                                        {[
-                                            `${plan.monthlyCredits} verified leads`,
-                                            'Email enrichment',
-                                            'Social profiles',
-                                            'Unlimited exports',
-                                            'Priority support',
-                                        ].map((feature, i) => (
-                                            <li key={i} className="flex items-center gap-2 text-sm">
-                                                <CheckCircle className="w-4 h-4 shrink-0" />
-                                                {feature}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    
-                                    <Link href="/login" className="block">
-                                        <Button 
-                                            className="w-full"
-                                            variant={plan.isPopular || displayPlans.length === 1 ? 'secondary' : 'default'}
-                                        >
-                                            Get Started
-                                        </Button>
-                                    </Link>
                                 </motion.div>
                             ))}
                         </div>

@@ -1,5 +1,5 @@
-import { db } from '../db';
-import { users, billingAlerts, subscriptionPlans } from '../db/schema';
+import { db } from '../db/index.js';
+import { users, billingAlerts, subscriptionPlans } from '../db/schema.js';
 import { eq, and, gte, desc } from 'drizzle-orm';
 
 export type AlertType = 

@@ -192,6 +192,19 @@ export const searchHistory = pgTable('search_history', {
     apifyFinishedAt: timestamp('apify_finished_at'),
     apifyInput: jsonb('apify_input').$type<Record<string, unknown>>(),
 
+    // Error tracking
+    errorMessage: text('error_message'),                    // User-friendly error message
+    errorCode: text('error_code'),                          // Error code (e.g., 'APIFY_TIMEOUT', 'INSUFFICIENT_CREDITS')
+    errorDetails: jsonb('error_details').$type<{
+        type?: string;
+        message?: string;
+        stack?: string;
+        apifyError?: any;
+        statusCode?: number;
+        timestamp?: string;
+    }>(),
+    failedAt: timestamp('failed_at'),
+
     // Credit tracking
     creditsUsed: integer('credits_used').notNull().default(0),
     standardResultsCount: integer('standard_results_count').default(0),

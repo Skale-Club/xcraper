@@ -1,4 +1,5 @@
 import { ApifyClient } from 'apify-client';
+import type { ActorStartOptions, WebhookEventType } from 'apify-client';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -16,6 +17,7 @@ export const apifyClient = APIFY_API_TOKEN
 // Retry configuration
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000; // 2 seconds
+const APIFY_MIN_RUN_CHARGE_USD = 0.5;
 
 type ActorType = 'standard' | 'enriched';
 
@@ -28,7 +30,7 @@ interface ActorConfig {
     fixedStartCostUsd: number;
     creditsPerResult: number;
     buildInput: (params: Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>>) => Record<string, unknown>;
-    buildStartOptions: (params: Required<Pick<SearchParams, 'maxResults'>>) => Record<string, unknown>;
+    buildStartOptions: (params: Required<Pick<SearchParams, 'maxResults'>>) => ActorStartOptions;
 }
 
 const baseSearchInput = (params: Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>>) => ({
@@ -37,9 +39,12 @@ const baseSearchInput = (params: Required<Pick<SearchParams, 'search' | 'locatio
     countryCode: params.countryCode,
     language: params.language,
     maxCrawledPlacesPerSearch: params.maxResults,
-    maxImages: 0,
+    maxImages: 0, // 0 para não consumir recursos extras
     maxReviews: 0,
     skipClosedPlaces: false,
+    proxyConfig: {
+        useApifyProxy: true,
+    },
 });
 
 const ACTOR_CONFIGS: Record<ActorType, ActorConfig> = {
@@ -53,25 +58,13 @@ const ACTOR_CONFIGS: Record<ActorType, ActorConfig> = {
         creditsPerResult: 1,
         buildInput: (params) => ({
             ...baseSearchInput(params),
-            searchMatching: 'all',
-            scrapeContacts: false,
-            scrapeImages: false,
-            scrapeImageAuthors: false,
-            scrapeImageCrops: false,
-            scrapeImageLocation: false,
-            scrapeOpeningHours: false,
-            scrapePeopleAlsoSearch: false,
-            scrapeQuestions: false,
-            scrapeRatingHistogram: false,
-            scrapeReviews: false,
-            scrapeReviewsPersonalData: false,
-            scrapeWebResults: false,
         }),
         buildStartOptions: (params) => ({
-            maxTotalChargeUsd: Number((0.02 + 0.007 + (params.maxResults * 0.004)).toFixed(3)),
-            // CRITICAL: Explicitly disable images and reviews to prevent unexpected charges
-            maxImages: 0,
-            maxReviews: 0,
+            memory: 2048, // Use 2GB de memória (mínimo necessário)
+            maxTotalChargeUsd: Number(Math.max(
+                APIFY_MIN_RUN_CHARGE_USD,
+                0.02 + 0.007 + (params.maxResults * 0.004),
+            ).toFixed(3)),
         }),
     },
     enriched: {
@@ -83,14 +76,19 @@ const ACTOR_CONFIGS: Record<ActorType, ActorConfig> = {
         fixedStartCostUsd: 0,
         creditsPerResult: 3,
         buildInput: (params) => ({
-            ...baseSearchInput(params),
-            maxItems: params.maxResults,
+            searchStringsArray: [params.search.trim()],
+            locationQuery: params.location.trim(),
+            countryCode: params.countryCode,
+            language: params.language,
+            maxCrawledPlacesPerSearch: params.maxResults,
+            skipClosedPlaces: false,
         }),
         buildStartOptions: (params) => ({
-            maxItems: params.maxResults,
-            // CRITICAL: Explicitly disable images and reviews to prevent unexpected charges
-            maxImages: 0,
-            maxReviews: 0,
+            memory: 2048, // Use 2GB de memória (mínimo necessário)
+            maxTotalChargeUsd: Number(Math.max(
+                APIFY_MIN_RUN_CHARGE_USD,
+                0.02 + (params.maxResults * 0.009),
+            ).toFixed(3)),
         }),
     },
 };
@@ -110,7 +108,7 @@ export interface StartedTask {
     actorName: string;
     actorType: ActorType;
     input: Record<string, unknown>;
-    startOptions: Record<string, unknown>;
+    startOptions: ActorStartOptions;
     datasetId?: string;
     containerUrl?: string;
     startedAt?: Date;
@@ -127,6 +125,7 @@ export interface TaskStatus {
     containerUrl?: string;
     usageTotalUsd?: number;
     statusMessage?: string;
+    exitCode?: string | number;
     startedAt?: Date;
     finishedAt?: Date;
 }
@@ -147,6 +146,27 @@ export interface ScrapedPlace {
     googleMapsUrl?: string;
     placeId?: string;
     rawData?: Record<string, unknown>;
+    [key: string]: unknown;
+}
+
+function getFirstString(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : undefined;
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            if (typeof item === 'string') {
+                const trimmed = item.trim();
+                if (trimmed.length > 0) {
+                    return trimmed;
+                }
+            }
+        }
+    }
+
+    return undefined;
 }
 
 function getConfig(extractEmails: boolean): ActorConfig {
@@ -159,7 +179,7 @@ function normalizeSearchParams(params: SearchParams): Required<Pick<SearchParams
         location: params.location.trim(),
         maxResults: params.maxResults || 50,
         language: params.language || 'en',
-        countryCode: params.countryCode || 'US',
+        countryCode: params.countryCode?.toLowerCase() || 'us',
     };
 }
 
@@ -211,12 +231,16 @@ export async function startScrapingTask(params: SearchParams): Promise<StartedTa
     const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
     const webhookUrl = `${backendUrl}/api/webhooks/apify`;
 
-    const startOptions = {
+    const webhookEventTypes: WebhookEventType[] = [
+        'ACTOR.RUN.SUCCEEDED',
+        'ACTOR.RUN.FAILED',
+        'ACTOR.RUN.ABORTED',
+        'ACTOR.RUN.TIMED_OUT',
+    ];
+
+    const startOptions: ActorStartOptions = {
         ...baseStartOptions,
-        webhooks: [{
-            eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED', 'ACTOR.RUN.ABORTED', 'ACTOR.RUN.TIMED_OUT'],
-            requestUrl: webhookUrl,
-        }],
+        // Remover webhooks por enquanto - eles serão configurados separadamente
     };
 
     try {
@@ -258,6 +282,7 @@ export async function getTaskStatus(runId: string): Promise<TaskStatus> {
 
     try {
         const run = await apifyClient.run(runId).get();
+        const runRecord = run as unknown as Record<string, unknown>;
 
         if (!run) {
             throw new Error('Run not found');
@@ -279,6 +304,9 @@ export async function getTaskStatus(runId: string): Promise<TaskStatus> {
             containerUrl: run.containerUrl,
             usageTotalUsd: run.usageTotalUsd,
             statusMessage: run.statusMessage,
+            exitCode: typeof runRecord.exitCode === 'string' || typeof runRecord.exitCode === 'number'
+                ? runRecord.exitCode
+                : undefined,
             startedAt: run.startedAt,
             finishedAt: run.finishedAt,
         };
@@ -334,9 +362,9 @@ export async function getTaskResults(runId: string): Promise<ScrapedPlace[]> {
                 title: String(item.title || item.name || ''),
                 category: String(item.categoryName || item.category || ''),
                 address: String(item.address || ''),
-                phone: item.phone || item.phoneNumber ? String(item.phone || item.phoneNumber) : undefined,
+                phone: getFirstString(item.phone) || getFirstString(item.phoneNumber) || getFirstString(item.phones),
                 website: item.website || item.url ? String(item.website || item.url) : undefined,
-                email: item.email ? String(item.email) : undefined,
+                email: getFirstString(item.email) || getFirstString(item.emails),
                 rating: typeof item.totalScore === 'number'
                     ? item.totalScore
                     : typeof item.rating === 'number'

@@ -1,5 +1,5 @@
-import { db } from '../db';
-import { users, subscriptionPlans, creditTransactions, billingEvents, searchHistory } from '../db/schema';
+import { db } from '../db/index.js';
+import { users, subscriptionPlans, creditTransactions, billingEvents, searchHistory } from '../db/schema.js';
 import { eq, and, gte, lte, sql, desc } from 'drizzle-orm';
 
 export interface RevenueOverview {

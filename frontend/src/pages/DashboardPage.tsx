@@ -31,6 +31,13 @@ import {
     Trash2,
 } from 'lucide-react';
 
+const MIN_STANDARD_RESULTS = 30;
+const MIN_ENRICHED_RESULTS = 15;
+
+function getMinimumResults(requestEnrichment: boolean | null) {
+    return requestEnrichment ? MIN_ENRICHED_RESULTS : MIN_STANDARD_RESULTS;
+}
+
 export default function DashboardPage() {
     const { toast } = useToast();
     const { user } = useAuth();
@@ -39,7 +46,7 @@ export default function DashboardPage() {
 
     const [query, setQuery] = useState('');
     const [location, setLocation] = useState('');
-    const [maxResults, setMaxResults] = useState(20);
+    const [maxResults, setMaxResults] = useState(MIN_STANDARD_RESULTS);
     const [requestEnrichment, setRequestEnrichment] = useState<boolean | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
@@ -150,7 +157,7 @@ export default function DashboardPage() {
         setSurveyStep(0);
         setQuery('');
         setLocation('');
-        setMaxResults(20);
+        setMaxResults(MIN_STANDARD_RESULTS);
         setRequestEnrichment(null);
     };
 
@@ -178,7 +185,7 @@ export default function DashboardPage() {
         if (!hasDraft) {
             setQuery('');
             setLocation('');
-            setMaxResults(20);
+            setMaxResults(MIN_STANDARD_RESULTS);
             setRequestEnrichment(null);
             setSurveyStep(0);
         }
@@ -212,7 +219,7 @@ export default function DashboardPage() {
             setSurveyStep(0);
             setQuery('');
             setLocation('');
-            setMaxResults(20);
+            setMaxResults(MIN_STANDARD_RESULTS);
             setRequestEnrichment(null);
         } catch (error) {
             const message = error instanceof ApiError ? error.message : 'Failed to start search';
@@ -229,17 +236,43 @@ export default function DashboardPage() {
     const searchHistory = historyData?.history ?? [];
     const creditsPerStandardLead = settingsData?.settings.creditsPerStandardResult ?? 1;
     const creditsPerEnrichedLead = settingsData?.settings.creditsPerEnrichedResult ?? 3;
+    const isAdmin = user?.role === 'admin';
     const userCredits = user?.credits ?? 0;
     const creditsPerLead = requestEnrichment ? creditsPerEnrichedLead : creditsPerStandardLead;
-    const maxAffordable = Math.min(500, Math.floor(userCredits / creditsPerLead));
+    const minimumResults = getMinimumResults(requestEnrichment);
+    const maxSelectableResults = isAdmin ? 500 : Math.min(500, Math.floor(userCredits / creditsPerLead));
+    const canAffordMinimumSearch = isAdmin || maxSelectableResults >= minimumResults;
+    const sliderMax = canAffordMinimumSearch ? maxSelectableResults : minimumResults;
     const totalSurveySteps = 4;
+    const getDisplayedSearchCredits = (search: SearchHistory) => {
+        if (isAdmin) {
+            return 0;
+        }
+
+        if (search.creditsUsed > 0) {
+            return search.creditsUsed;
+        }
+
+        if ((search.status === 'completed' || search.status === 'paused') && (search.savedResults ?? 0) > 0) {
+            const searchCreditsPerLead = search.requestEnrichment ? creditsPerEnrichedLead : creditsPerStandardLead;
+            return (search.savedResults ?? 0) * searchCreditsPerLead;
+        }
+
+        return 0;
+    };
     const canMoveForward = surveyStep === 0
         ? requestEnrichment !== null
         : surveyStep === 1
             ? Boolean(query.trim())
             : surveyStep === 2
                 ? Boolean(location.trim())
-                : maxResults >= 1 && maxResults <= maxAffordable;
+                : canAffordMinimumSearch && maxResults >= minimumResults && maxResults <= sliderMax;
+
+    useEffect(() => {
+        if (requestEnrichment === null) return;
+
+        setMaxResults((current) => Math.max(current, getMinimumResults(requestEnrichment)));
+    }, [requestEnrichment]);
 
     const handleSurveyNext = async () => {
         if (!canMoveForward) {
@@ -252,7 +285,9 @@ export default function DashboardPage() {
                         ? 'Enter what you want to search for.'
                         : surveyStep === 2
                             ? 'Enter the location to search in.'
-                            : 'Choose a result limit between 1 and 500.',
+                            : canAffordMinimumSearch
+                                ? `Choose a result limit between ${minimumResults} and ${sliderMax}.`
+                                : `You need at least ${minimumResults * creditsPerLead} credits to run this search.`,
             });
             return;
         }
@@ -268,6 +303,7 @@ export default function DashboardPage() {
     const handleLeadTypeSelect = (needsEmail: boolean) => {
         if (isLoading) return;
         setRequestEnrichment(needsEmail);
+        setMaxResults(getMinimumResults(needsEmail));
         setSurveyStep(1);
     };
 
@@ -345,10 +381,10 @@ export default function DashboardPage() {
                 </motion.div>
             )}
 
-            <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+            <div className="flex flex-col lg:flex-row gap-8">
                 {/* Left Column: Search CTA */}
                 <motion.div
-                    className="lg:col-span-1"
+                    className="w-full lg:w-80 shrink-0"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
@@ -413,12 +449,12 @@ export default function DashboardPage() {
 
                 {/* Right Column: Recent Searches */}
                 <motion.div
-                    className="lg:col-span-2 flex flex-col"
+                    className="flex-1 min-w-0"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4 }}
                 >
-                    <Card className="flex-1 shadow-sm bg-card text-card-foreground rounded-[28px] border border-blue-200/80 dark:border-blue-500/20 overflow-hidden">
+                    <Card className="min-h-[285px] shadow-sm bg-card text-card-foreground rounded-[28px] border border-blue-200/80 dark:border-blue-500/20 overflow-hidden">
                         <CardHeader className="border-b border-border bg-muted/30 pb-4 rounded-t-[28px]">
                             <div className="flex items-center justify-between">
                                 <CardTitle className="flex items-center gap-2 text-foreground">
@@ -441,7 +477,7 @@ export default function DashboardPage() {
                                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                                 </div>
                             ) : searchHistory.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-16 text-center">
+                                <div className="flex flex-col items-center justify-center py-16 text-center px-4">
                                     <div className="rounded-full bg-muted p-4 mb-4">
                                         <Search className="h-10 w-10 text-muted-foreground" />
                                     </div>
@@ -455,38 +491,52 @@ export default function DashboardPage() {
                                     {searchHistory.map((search: SearchHistory) => (
                                         <div
                                             key={search.id}
-                                            className="group flex cursor-pointer items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/40"
+                                            className="group flex cursor-pointer items-start gap-3 px-4 py-3.5 sm:px-5 sm:py-4 sm:items-center transition-colors hover:bg-muted/40"
                                             onClick={() => setNavLocation(`/searches?searchId=${search.id}`)}
                                         >
                                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/40 transition-colors group-hover:border-primary/20 group-hover:bg-primary/5">
                                                 {getStatusIcon(search.status)}
                                             </div>
 
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate text-sm font-semibold text-foreground">{search.query}</p>
-                                                <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                                                    <span className="flex items-center gap-1">
-                                                        <MapPin className="h-3 w-3" />
-                                                        <span className="truncate">{search.location}</span>
-                                                    </span>
+                                            <div className="min-w-0 flex-1 space-y-2">
+                                                <div>
+                                                    <p className="truncate text-sm font-semibold text-foreground">{search.query}</p>
+                                                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                                                        <span className="flex items-center gap-1 truncate max-w-[200px]">
+                                                            <MapPin className="h-3 w-3 shrink-0" />
+                                                            <span className="truncate">{search.location}</span>
+                                                        </span>
+                                                        <span className="opacity-40 hidden xs:inline">·</span>
+                                                        <span className="shrink-0">{new Date(search.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-3 text-xs text-muted-foreground sm:hidden">
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="tabular-nums text-sm font-semibold text-foreground">{search.totalResults ?? 0}</span>
+                                                        <span>results</span>
+                                                    </div>
                                                     <span className="opacity-40">·</span>
-                                                    <span>{new Date(search.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="tabular-nums text-sm font-semibold text-foreground">{getDisplayedSearchCredits(search)}</span>
+                                                        <span>credits</span>
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            <div className="hidden items-center gap-4 text-right text-xs text-muted-foreground sm:flex">
+                                            <div className="hidden sm:flex items-center gap-4 text-right text-xs text-muted-foreground">
                                                 <div>
                                                     <p className="tabular-nums text-sm font-semibold text-foreground">{search.totalResults ?? 0}</p>
                                                     <p>results</p>
                                                 </div>
                                                 <div>
-                                                    <p className="tabular-nums text-sm font-semibold text-foreground">{search.creditsUsed}</p>
+                                                    <p className="tabular-nums text-sm font-semibold text-foreground">{getDisplayedSearchCredits(search)}</p>
                                                     <p>credits</p>
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-2">
-                                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${getStatusColor(search.status)}`}>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${getStatusColor(search.status)}`}>
                                                     {search.status.charAt(0).toUpperCase() + search.status.slice(1)}
                                                 </span>
                                                 {isSearchActive(search.status) && (
@@ -507,7 +557,7 @@ export default function DashboardPage() {
                                                         )}
                                                     </Button>
                                                 )}
-                                                <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                                                <ChevronRight className="h-4 w-4 text-muted-foreground/50 hidden sm:block" />
                                             </div>
                                         </div>
                                     ))}
@@ -522,7 +572,7 @@ export default function DashboardPage() {
                 <AnimatePresence>
                     {isSearchSurveyOpen && (
                         <motion.div
-                            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+                            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 px-4 py-6 backdrop-blur-sm sm:items-center sm:p-6"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
@@ -536,7 +586,7 @@ export default function DashboardPage() {
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 24, scale: 0.96 }}
                             transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
-                            className="w-full max-w-2xl overflow-visible rounded-[28px] border border-border bg-background shadow-2xl"
+                            className="flex w-full max-w-2xl flex-col overflow-visible rounded-[28px] border border-border bg-background shadow-2xl"
                             onClick={(e) => e.stopPropagation()}
                         >
                             {/* Header */}
@@ -642,7 +692,7 @@ export default function DashboardPage() {
                                                             variant="outline"
                                                             className="w-fit rounded-full border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
                                                         >
-                                                            {creditsPerStandardLead} credit{creditsPerStandardLead === 1 ? '' : 's'}/lead
+                                                            {creditsPerStandardLead} credit{creditsPerStandardLead === 1 ? '' : 's'}/result
                                                         </Badge>
                                                     </div>
                                                 </button>
@@ -672,15 +722,18 @@ export default function DashboardPage() {
                                                         <div>
                                                             <p className="text-base font-semibold text-foreground">+ Email</p>
                                                             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                                                                Everything from All Leads, plus the business email address.
+                                                                We try to find a public business email. Not guaranteed.
                                                             </p>
                                                         </div>
                                                         <Badge
                                                             variant="outline"
                                                             className="w-fit rounded-full border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
                                                         >
-                                                            {creditsPerEnrichedLead} credit{creditsPerEnrichedLead === 1 ? '' : 's'}/lead
+                                                            {creditsPerEnrichedLead} credit{creditsPerEnrichedLead === 1 ? '' : 's'}/result
                                                         </Badge>
+                                                        <p className="text-[11px] leading-relaxed text-muted-foreground">
+                                                            Why more expensive? We try to find contact details, but some results will not include an email.
+                                                        </p>
                                                     </div>
                                                 </button>
                                             </div>
@@ -772,6 +825,9 @@ export default function DashboardPage() {
                                                 </h2>
                                                 <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
                                                     Choose the maximum number of businesses to process for this search.
+                                                    {requestEnrichment
+                                                        ? ` Minimum ${MIN_ENRICHED_RESULTS} results per enriched run.`
+                                                        : ` Minimum ${MIN_STANDARD_RESULTS} results per standard run.`}
                                                 </p>
                                             </div>
                                             <div className="space-y-5">
@@ -784,33 +840,44 @@ export default function DashboardPage() {
                                                             {maxResults}
                                                         </span>
                                                         <span className="text-xs text-muted-foreground">
-                                                            / {maxAffordable} leads
+                                                            / {sliderMax} leads
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <input
                                                     id="maxResults"
                                                     type="range"
-                                                    min={1}
-                                                    max={maxAffordable}
+                                                    min={minimumResults}
+                                                    max={sliderMax}
                                                     step={1}
-                                                    value={Math.min(maxResults, maxAffordable)}
+                                                    value={Math.min(Math.max(maxResults, minimumResults), sliderMax)}
                                                     onChange={(event) => setMaxResults(parseInt(event.target.value, 10))}
-                                                    disabled={isLoading || maxAffordable < 1}
-                                                    className="w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:shadow-md"
+                                                    disabled={isLoading || !canAffordMinimumSearch}
+                                                    className="w-full cursor-pointer appearance-none bg-transparent outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:shadow-md"
                                                 />
                                                 <div className="flex justify-between text-xs text-muted-foreground">
-                                                    <span>1</span>
-                                                    {maxAffordable >= 50 && <span>50</span>}
-                                                    {maxAffordable >= 100 && <span>100</span>}
-                                                    {maxAffordable >= 200 && <span>200</span>}
-                                                    {maxAffordable >= 300 && <span>300</span>}
-                                                    {maxAffordable >= 400 && <span>400</span>}
-                                                    <span>{maxAffordable}</span>
+                                                    <span>{minimumResults}</span>
+                                                    {sliderMax >= 50 && minimumResults < 50 && <span>50</span>}
+                                                    {sliderMax >= 100 && minimumResults < 100 && <span>100</span>}
+                                                    {sliderMax >= 200 && minimumResults < 200 && <span>200</span>}
+                                                    {sliderMax >= 300 && minimumResults < 300 && <span>300</span>}
+                                                    {sliderMax >= 400 && minimumResults < 400 && <span>400</span>}
+                                                    <span>{sliderMax}</span>
                                                 </div>
                                                 <p className="text-xs text-muted-foreground">
-                                                    You have <span className="font-semibold text-foreground">{userCredits}</span> credits
-                                                    {' '}({creditsPerLead} credit{creditsPerLead === 1 ? '' : 's'}/lead)
+                                                    {isAdmin ? (
+                                                        <>Admin mode: this search is not limited by your credit balance.</>
+                                                    ) : !canAffordMinimumSearch ? (
+                                                        <>
+                                                            You need <span className="font-semibold text-foreground">{minimumResults * creditsPerLead}</span> credits
+                                                            {' '}to run the minimum {minimumResults}-lead search.
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            You have <span className="font-semibold text-foreground">{userCredits}</span> credits
+                                                            {' '}({creditsPerLead} credit{creditsPerLead === 1 ? '' : 's'}/result)
+                                                        </>
+                                                    )}
                                                 </p>
                                             </div>
 
@@ -829,8 +896,8 @@ export default function DashboardPage() {
                                                         </div>
                                                         <span className="text-foreground">
                                                             {requestEnrichment
-                                                                ? `+ Email (${creditsPerEnrichedLead} credits/lead)`
-                                                                : `All Leads (${creditsPerStandardLead} credit${creditsPerStandardLead === 1 ? '' : 's'}/lead)`}
+                                                                ? `+ Email (${creditsPerEnrichedLead} credits/result)`
+                                                                : `All Leads (${creditsPerStandardLead} credit${creditsPerStandardLead === 1 ? '' : 's'}/result)`}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-3 text-sm">

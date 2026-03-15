@@ -1,5 +1,5 @@
-import { db } from '../db';
-import { creditPackages } from '../db/schema';
+import { db } from '../db/index.js';
+import { creditPackages } from '../db/schema.js';
 
 const defaultPackages = [
     {

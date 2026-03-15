@@ -87,6 +87,10 @@ ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_container_url" text
 ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_started_at" timestamp;
 ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_finished_at" timestamp;
 ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "apify_input" jsonb;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "error_message" text;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "error_code" text;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "error_details" jsonb;
+ALTER TABLE "search_history" ADD COLUMN IF NOT EXISTS "failed_at" timestamp;
 
 -- Update contacts table
 ALTER TABLE "contacts" ADD COLUMN IF NOT EXISTS "place_id" text;

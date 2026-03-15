@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { Router, Request, Response } from 'express';
-import { db } from '../db';
-import { subscriptionPlans, users, creditTransactions, settings } from '../db/schema';
+import { db } from '../db/index.js';
+import { subscriptionPlans, users, creditTransactions, settings } from '../db/schema.js';
 import { eq, desc, sql, and, gte, lte } from 'drizzle-orm';
-import { requireAuth, requireAdmin } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { z } from 'zod';
 import Stripe from 'stripe';
 import { createPortalSession, stripe } from '../services/stripe.js';

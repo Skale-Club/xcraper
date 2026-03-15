@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { db } from '../db';
-import { subscriptionPlans, creditPackages, settings } from '../db/schema';
+import { db } from '../db/index.js';
+import { subscriptionPlans, creditPackages, settings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 
 async function seedSubscriptionPlans() {

@@ -1,5 +1,5 @@
-import { db } from '../db';
-import { settings, contacts, users } from '../db/schema';
+import { db } from '../db/index.js';
+import { settings, contacts, users } from '../db/schema.js';
 import { eq, and, gte, inArray } from 'drizzle-orm';
 
 export interface CreditPricingRules {
@@ -22,6 +22,10 @@ export interface ScrapingResult {
     reviewCount?: number;
     latitude?: number;
     longitude?: number;
+    openingHours?: string;
+    imageUrl?: string;
+    googleMapsUrl?: string;
+    rawData?: Record<string, unknown>;
     [key: string]: unknown;
 }
 
@@ -34,6 +38,7 @@ export interface CreditConsumptionResult {
     standardResults: number;
     enrichedResults: number;
     duplicatesSkipped: number;
+    acceptedResults: ScrapingResult[];
 }
 
 export interface CreditEstimate {
@@ -112,9 +117,7 @@ class CreditRulesService {
         let enrichmentCredits = 0;
 
         for (const result of results) {
-            const hasEmail = this.hasValidEmail(result);
-            
-            if (hasEmail && requestEnrichment) {
+            if (requestEnrichment) {
                 enrichedResults++;
                 if (rules.enrichmentPricingMode === 'base_plus_enrichment') {
                     standardCredits += rules.creditsPerStandardResult;
@@ -191,10 +194,7 @@ class CreditRulesService {
                 continue;
             }
 
-            const hasEmail = this.hasValidEmail(result);
-            const shouldEnrich = hasEmail && requestEnrichment;
-
-            if (shouldEnrich) {
+            if (requestEnrichment) {
                 const creditCost = rules.enrichmentPricingMode === 'base_plus_enrichment'
                     ? rules.creditsPerEnrichedResult
                     : rules.creditsPerEnrichedResult;
@@ -235,6 +235,7 @@ class CreditRulesService {
             standardResults,
             enrichedResults,
             duplicatesSkipped,
+            acceptedResults: validResults,
         };
     }
 

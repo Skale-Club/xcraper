@@ -267,6 +267,22 @@ async function runMigrations() {
         const searchColumnsToAdd = [
             { name: 'standard_results_count', sql: 'ADD COLUMN IF NOT EXISTS standard_results_count INTEGER DEFAULT 0' },
             { name: 'enriched_results_count', sql: 'ADD COLUMN IF NOT EXISTS enriched_results_count INTEGER DEFAULT 0' },
+            { name: 'saved_results', sql: 'ADD COLUMN IF NOT EXISTS saved_results INTEGER DEFAULT 0' },
+            { name: 'requested_max_results', sql: 'ADD COLUMN IF NOT EXISTS requested_max_results INTEGER NOT NULL DEFAULT 50' },
+            { name: 'request_enrichment', sql: 'ADD COLUMN IF NOT EXISTS request_enrichment BOOLEAN NOT NULL DEFAULT false' },
+            { name: 'apify_actor_id', sql: 'ADD COLUMN IF NOT EXISTS apify_actor_id TEXT' },
+            { name: 'apify_actor_name', sql: 'ADD COLUMN IF NOT EXISTS apify_actor_name TEXT' },
+            { name: 'apify_dataset_id', sql: 'ADD COLUMN IF NOT EXISTS apify_dataset_id TEXT' },
+            { name: 'apify_status_message', sql: 'ADD COLUMN IF NOT EXISTS apify_status_message TEXT' },
+            { name: 'apify_usage_usd', sql: 'ADD COLUMN IF NOT EXISTS apify_usage_usd NUMERIC(10, 4)' },
+            { name: 'apify_container_url', sql: 'ADD COLUMN IF NOT EXISTS apify_container_url TEXT' },
+            { name: 'apify_started_at', sql: 'ADD COLUMN IF NOT EXISTS apify_started_at TIMESTAMP' },
+            { name: 'apify_finished_at', sql: 'ADD COLUMN IF NOT EXISTS apify_finished_at TIMESTAMP' },
+            { name: 'apify_input', sql: 'ADD COLUMN IF NOT EXISTS apify_input JSONB' },
+            { name: 'error_message', sql: 'ADD COLUMN IF NOT EXISTS error_message TEXT' },
+            { name: 'error_code', sql: 'ADD COLUMN IF NOT EXISTS error_code TEXT' },
+            { name: 'error_details', sql: 'ADD COLUMN IF NOT EXISTS error_details JSONB' },
+            { name: 'failed_at', sql: 'ADD COLUMN IF NOT EXISTS failed_at TIMESTAMP' },
         ];
 
         for (const col of searchColumnsToAdd) {

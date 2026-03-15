@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { Router, Request, Response } from 'express';
-import { db } from '../db';
-import { users, contacts, searchHistory, creditTransactions, creditPackages } from '../db/schema';
+import { db } from '../db/index.js';
+import { users, contacts, searchHistory, creditTransactions, creditPackages, subscriptionPlans } from '../db/schema.js';
 import { eq, desc, sql, count, sum } from 'drizzle-orm';
-import { requireAuth, requireAdmin } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { z } from 'zod';
 
 const router = Router();
@@ -431,6 +431,7 @@ router.get('/transactions', async (req: Request, res: Response) => {
                 amount: creditTransactions.amount,
                 type: creditTransactions.type,
                 description: creditTransactions.description,
+                subscriptionPlanName: subscriptionPlans.name,
                 createdAt: creditTransactions.createdAt,
                 user: {
                     id: users.id,
@@ -440,6 +441,7 @@ router.get('/transactions', async (req: Request, res: Response) => {
             })
             .from(creditTransactions)
             .innerJoin(users, eq(creditTransactions.userId, users.id))
+            .leftJoin(subscriptionPlans, eq(creditTransactions.subscriptionPlanId, subscriptionPlans.id))
             .orderBy(desc(creditTransactions.createdAt))
             .limit(limit)
             .offset(offset);

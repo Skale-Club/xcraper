@@ -1,5 +1,5 @@
 
-import { pool } from '../db';
+import { pool } from '../db/index.js';
 
 async function promote() {
     try {

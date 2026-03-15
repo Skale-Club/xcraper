@@ -19,7 +19,6 @@ const SearchesPage = lazy(() => import('@/pages/SearchesPage'));
 const BillingPage = lazy(() => import('@/pages/BillingPage'));
 const SubscriptionPage = lazy(() => import('@/pages/SubscriptionPage'));
 const BillingHistoryPage = lazy(() => import('@/pages/BillingHistoryPage'));
-const AdminSettingsPage = lazy(() => import('@/pages/AdminSettingsPage'));
 const AdminDashboardPage = lazy(() => import('@/pages/AdminDashboardPage'));
 const AdminUsersPage = lazy(() => import('@/pages/AdminUsersPage'));
 const AdminContactsPage = lazy(() => import('@/pages/AdminContactsPage'));
@@ -110,7 +109,17 @@ function AdminRoute({ children }: { children: ReactNode }) {
     );
 }
 
-type SettingsPage = 'branding' | 'seo' | 'content' | 'pricing' | 'advanced';
+type SettingsPage =
+    | 'overview'
+    | 'users'
+    | 'logs'
+    | 'contacts'
+    | 'transactions'
+    | 'branding'
+    | 'seo'
+    | 'content'
+    | 'pricing'
+    | 'advanced';
 
 function SettingsLayoutWrapper({ page, children }: { page: SettingsPage; children: ReactNode }) {
     return (
@@ -233,39 +242,43 @@ function AppRoutes() {
                 </ProtectedRoute>
             </Route>
 
-            <Route path="/admin/settings">
-                <AdminRoute>
-                    <AdminSettingsPage />
-                </AdminRoute>
-            </Route>
-
             <Route path="/admin">
                 <AdminRoute>
-                    <AdminDashboardPage />
+                    <SettingsLayoutWrapper page="overview">
+                        <AdminDashboardPage />
+                    </SettingsLayoutWrapper>
                 </AdminRoute>
             </Route>
 
             <Route path="/admin/users">
                 <AdminRoute>
-                    <AdminUsersPage />
+                    <SettingsLayoutWrapper page="users">
+                        <AdminUsersPage />
+                    </SettingsLayoutWrapper>
                 </AdminRoute>
             </Route>
 
             <Route path="/admin/contacts">
                 <AdminRoute>
-                    <AdminContactsPage />
+                    <SettingsLayoutWrapper page="contacts">
+                        <AdminContactsPage />
+                    </SettingsLayoutWrapper>
                 </AdminRoute>
             </Route>
 
             <Route path="/admin/transactions">
                 <AdminRoute>
-                    <AdminTransactionsPage />
+                    <SettingsLayoutWrapper page="transactions">
+                        <AdminTransactionsPage />
+                    </SettingsLayoutWrapper>
                 </AdminRoute>
             </Route>
 
             <Route path="/admin/searches">
                 <AdminRoute>
-                    <AdminSearchesPage />
+                    <SettingsLayoutWrapper page="logs">
+                        <AdminSearchesPage />
+                    </SettingsLayoutWrapper>
                 </AdminRoute>
             </Route>
 
