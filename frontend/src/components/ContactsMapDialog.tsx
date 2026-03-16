@@ -9,8 +9,8 @@ interface Contact {
     phone?: string;
     email?: string;
     website?: string;
-    latitude?: number;
-    longitude?: number;
+    latitude?: number | string;
+    longitude?: number | string;
     rating?: number;
     reviewCount?: number;
 }
@@ -142,9 +142,16 @@ export function ContactsMapDialog({
 
     // Stable reference — only recalculates when contacts array identity changes
     const contactsWithCoords = useMemo(
-        () => contacts.filter(
-            c => typeof c.latitude === 'number' && typeof c.longitude === 'number' && !isNaN(c.latitude) && !isNaN(c.longitude)
-        ),
+        () => contacts
+            .map(c => ({
+                ...c,
+                latitude: c.latitude != null ? Number(c.latitude) : undefined,
+                longitude: c.longitude != null ? Number(c.longitude) : undefined,
+            }))
+            .filter((c): c is typeof c & { latitude: number; longitude: number } =>
+                typeof c.latitude === 'number' && !isNaN(c.latitude) &&
+                typeof c.longitude === 'number' && !isNaN(c.longitude)
+            ),
         [contacts]
     );
     const hasValidContacts = contactsWithCoords.length > 0;
