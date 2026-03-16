@@ -1,16 +1,12 @@
 import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
-import { AnimatePresence, motion } from 'framer-motion';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlacesAutocompleteInput } from '@/components/app/PlacesAutocompleteInput';
-import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { searchApi, settingsApi, ApiError, SearchHistory, SearchStatus } from '@/lib/api';
+import { useSearchSurvey } from '@/hooks/useSearchSurvey';
+import { searchApi, settingsApi, type SearchHistory } from '@/lib/api';
 import {
     Search,
     MapPin,
@@ -19,40 +15,58 @@ import {
     Plus,
     CheckCircle,
     XCircle,
-    X,
     AlertCircle,
     ChevronRight,
     PauseCircle,
-    Users,
-    Mail,
-    Compass,
-    Check,
-    Hash,
     Trash2,
 } from 'lucide-react';
 
-const MIN_STANDARD_RESULTS = 30;
-const MIN_ENRICHED_RESULTS = 15;
-
-function getMinimumResults(requestEnrichment: boolean | null) {
-    return requestEnrichment ? MIN_ENRICHED_RESULTS : MIN_STANDARD_RESULTS;
-}
+const SEARCH_TIPS = [
+    'Grab a coffee, our bots got this',
+    'Teaching our robots to read Google Maps',
+    'Convincing Google we are not a robot',
+    'Our hamsters are running extra fast today',
+    'Plot twist: the data is almost ready',
+    'Scraping so you don\'t have to',
+    'If this were manual, you\'d still be on page 1',
+    'Fun fact: you just saved yourself hours of work',
+    'Our bots never take lunch breaks',
+    'Turning Google Maps into your personal CRM',
+    'Meanwhile, your competitors are still googling',
+    'Sit tight, magic takes a minute',
+    'No robots were harmed in this search',
+    'Finding needles in the Google Maps haystack',
+    'BRB, collecting business cards at scale',
+    'Your future clients don\'t know it yet',
+    'Data is loading, greatness is brewing',
+    'Almost there, just double-checking everything',
+    'Doing the boring stuff so you don\'t have to',
+    'This beats cold calling, right?',
+];
 
 export default function DashboardPage() {
-    const { toast } = useToast();
     const { user } = useAuth();
-    const queryClient = useQueryClient();
     const [, setNavLocation] = useLocation();
+    const [tipIndex, setTipIndex] = useState(0);
+    const {
+        activeSearchId,
+        searchStatus,
+        openSearchSurvey,
+        cancelSearchSurvey,
+        hasDraft,
+        isLoading,
+        pauseSearch,
+        isPausePending,
+        pausePendingSearchId,
+    } = useSearchSurvey();
 
-    const [query, setQuery] = useState('');
-    const [location, setLocation] = useState('');
-    const [maxResults, setMaxResults] = useState(MIN_STANDARD_RESULTS);
-    const [requestEnrichment, setRequestEnrichment] = useState<boolean | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
-    const [searchStatus, setSearchStatus] = useState<SearchStatus | null>(null);
-    const [isSearchSurveyOpen, setIsSearchSurveyOpen] = useState(false);
-    const [surveyStep, setSurveyStep] = useState(0);
+    useEffect(() => {
+        if (!activeSearchId) return;
+        const interval = setInterval(() => {
+            setTipIndex((prev) => (prev + 1) % SEARCH_TIPS.length);
+        }, 6000);
+        return () => clearInterval(interval);
+    }, [activeSearchId]);
 
     const { data: historyData, isLoading: historyLoading } = useQuery({
         queryKey: ['search-history'],
@@ -73,177 +87,10 @@ export default function DashboardPage() {
         queryFn: () => settingsApi.getPublic(),
     });
 
-    useEffect(() => {
-        if (!activeSearchId) return;
-
-        const pollInterval = setInterval(async () => {
-            try {
-                const status = await searchApi.getStatus(activeSearchId);
-                setSearchStatus(status);
-
-                if (status.status === 'completed' || status.status === 'failed' || status.status === 'paused') {
-                    clearInterval(pollInterval);
-                    setActiveSearchId(null);
-                    setSearchStatus(null);
-
-                    queryClient.invalidateQueries({ queryKey: ['search-history'] });
-
-                    if (status.status === 'completed') {
-                        toast({
-                            title: 'Search Completed!',
-                            description: `Found ${status.totalResults} results, saved ${status.savedResults} contacts.`,
-                        });
-                    } else if (status.status === 'paused') {
-                        toast({
-                            title: 'Search Paused',
-                            description: 'The scraping task was paused in Apify.',
-                        });
-                    } else {
-                        toast({
-                            variant: 'destructive',
-                            title: 'Search Failed',
-                            description: 'The scraping task failed. Please try again.',
-                        });
-                    }
-                }
-            } catch (error) {
-                console.error('Error polling status:', error);
-            }
-        }, 5000);
-
-        return () => clearInterval(pollInterval);
-    }, [activeSearchId, queryClient, toast]);
-
-    const pauseSearchMutation = useMutation({
-        mutationFn: (searchId: string) => searchApi.pause(searchId),
-        onSuccess: (_data, searchId) => {
-            if (activeSearchId === searchId) {
-                setActiveSearchId(null);
-                setSearchStatus(null);
-            }
-
-            queryClient.invalidateQueries({ queryKey: ['search-history'] });
-
-            toast({
-                title: 'Search Paused',
-                description: 'The scraping task was paused successfully.',
-            });
-        },
-        onError: (error) => {
-            const message = error instanceof ApiError ? error.message : 'Failed to pause search';
-            toast({
-                variant: 'destructive',
-                title: 'Error',
-                description: message,
-            });
-        },
-    });
-
-    const hasDraft = !isSearchSurveyOpen && (
-        query.trim() !== '' ||
-        location.trim() !== '' ||
-        requestEnrichment !== null ||
-        surveyStep > 0
-    );
-
-    const dismissSearchSurvey = () => {
-        if (isLoading) return;
-        setIsSearchSurveyOpen(false);
-    };
-
-    const cancelSearchSurvey = () => {
-        if (isLoading) return;
-        setIsSearchSurveyOpen(false);
-        setSurveyStep(0);
-        setQuery('');
-        setLocation('');
-        setMaxResults(MIN_STANDARD_RESULTS);
-        setRequestEnrichment(null);
-    };
-
-    useEffect(() => {
-        if (!isSearchSurveyOpen) return;
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape' && !isLoading) {
-                dismissSearchSurvey();
-            }
-        };
-
-        const previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        window.addEventListener('keydown', handleKeyDown);
-
-        return () => {
-            document.body.style.overflow = previousOverflow;
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [isSearchSurveyOpen, isLoading]);
-
-    const openSearchSurvey = () => {
-        if (activeSearchId) return;
-        if (!hasDraft) {
-            setQuery('');
-            setLocation('');
-            setMaxResults(MIN_STANDARD_RESULTS);
-            setRequestEnrichment(null);
-            setSurveyStep(0);
-        }
-        setIsSearchSurveyOpen(true);
-    };
-
-    const handleSearch = async () => {
-        if (requestEnrichment === null || !query.trim() || !location.trim()) {
-            toast({
-                variant: 'destructive',
-                title: 'Error',
-                description: 'Complete every search step before starting.',
-            });
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            const response = await searchApi.start(query, location, maxResults, requestEnrichment);
-            setActiveSearchId(response.searchId);
-            setSearchStatus({ status: 'running' });
-
-            queryClient.invalidateQueries({ queryKey: ['search-history'] });
-
-            toast({
-                title: 'Search Started',
-                description: 'Your scraping task has been initiated...',
-            });
-
-            setIsSearchSurveyOpen(false);
-            setSurveyStep(0);
-            setQuery('');
-            setLocation('');
-            setMaxResults(MIN_STANDARD_RESULTS);
-            setRequestEnrichment(null);
-        } catch (error) {
-            const message = error instanceof ApiError ? error.message : 'Failed to start search';
-            toast({
-                variant: 'destructive',
-                title: 'Error',
-                description: message,
-            });
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     const searchHistory = historyData?.history ?? [];
     const creditsPerStandardLead = settingsData?.settings.creditsPerStandardResult ?? 1;
     const creditsPerEnrichedLead = settingsData?.settings.creditsPerEnrichedResult ?? 3;
     const isAdmin = user?.role === 'admin';
-    const userCredits = user?.credits ?? 0;
-    const creditsPerLead = requestEnrichment ? creditsPerEnrichedLead : creditsPerStandardLead;
-    const minimumResults = getMinimumResults(requestEnrichment);
-    const maxSelectableResults = isAdmin ? 500 : Math.min(500, Math.floor(userCredits / creditsPerLead));
-    const canAffordMinimumSearch = isAdmin || maxSelectableResults >= minimumResults;
-    const sliderMax = canAffordMinimumSearch ? maxSelectableResults : minimumResults;
-    const totalSurveySteps = 4;
     const getDisplayedSearchCredits = (search: SearchHistory) => {
         if (isAdmin) {
             return 0;
@@ -260,57 +107,11 @@ export default function DashboardPage() {
 
         return 0;
     };
-    const canMoveForward = surveyStep === 0
-        ? requestEnrichment !== null
-        : surveyStep === 1
-            ? Boolean(query.trim())
-            : surveyStep === 2
-                ? Boolean(location.trim())
-                : canAffordMinimumSearch && maxResults >= minimumResults && maxResults <= sliderMax;
-
-    useEffect(() => {
-        if (requestEnrichment === null) return;
-
-        setMaxResults((current) => Math.max(current, getMinimumResults(requestEnrichment)));
-    }, [requestEnrichment]);
-
-    const handleSurveyNext = async () => {
-        if (!canMoveForward) {
-            toast({
-                variant: 'destructive',
-                title: 'Missing answer',
-                description: surveyStep === 0
-                    ? 'Choose your lead type before continuing.'
-                    : surveyStep === 1
-                        ? 'Enter what you want to search for.'
-                        : surveyStep === 2
-                            ? 'Enter the location to search in.'
-                            : canAffordMinimumSearch
-                                ? `Choose a result limit between ${minimumResults} and ${sliderMax}.`
-                                : `You need at least ${minimumResults * creditsPerLead} credits to run this search.`,
-            });
-            return;
-        }
-
-        if (surveyStep === totalSurveySteps - 1) {
-            await handleSearch();
-            return;
-        }
-
-        setSurveyStep((current) => current + 1);
-    };
-
-    const handleLeadTypeSelect = (needsEmail: boolean) => {
-        if (isLoading) return;
-        setRequestEnrichment(needsEmail);
-        setMaxResults(getMinimumResults(needsEmail));
-        setSurveyStep(1);
-    };
 
     const isSearchActive = (status: string) => status === 'running' || status === 'pending';
 
     const handlePauseSearch = (searchId: string) => {
-        pauseSearchMutation.mutate(searchId);
+        pauseSearch(searchId);
     };
 
     const getStatusIcon = (status: string) => {
@@ -353,22 +154,39 @@ export default function DashboardPage() {
                                 <div className="rounded-full bg-amber-100 dark:bg-amber-500/10 p-2">
                                     <Loader2 className="h-6 w-6 animate-spin text-amber-600 dark:text-amber-500" />
                                 </div>
-                                <div className="flex-1">
-                                    <p className="font-semibold text-amber-900 dark:text-foreground">Search in Progress</p>
-                                    <p className="text-sm font-medium text-amber-700 dark:text-muted-foreground mt-0.5">
-                                        {searchStatus.itemsCount
-                                            ? `Found ${searchStatus.itemsCount} results so far...`
-                                            : 'Starting the scraping task...'}
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-amber-900 dark:text-foreground">
+                                        Search in Progress
+                                        {searchStatus.itemsCount ? ` — ${searchStatus.itemsCount} results found` : ''}
                                     </p>
+                                    <div className="h-5 mt-0.5 overflow-hidden relative">
+                                        <AnimatePresence mode="wait">
+                                            <motion.p
+                                                key={tipIndex}
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: -10 }}
+                                                transition={{ duration: 0.4 }}
+                                                className="text-sm font-medium text-amber-700 dark:text-muted-foreground absolute"
+                                            >
+                                                {SEARCH_TIPS[tipIndex]}
+                                                <span className="inline-flex w-6 ml-0.5">
+                                                    <span className="animate-[dotPulse_1.4s_infinite] [animation-delay:0s]">.</span>
+                                                    <span className="animate-[dotPulse_1.4s_infinite] [animation-delay:0.2s]">.</span>
+                                                    <span className="animate-[dotPulse_1.4s_infinite] [animation-delay:0.4s]">.</span>
+                                                </span>
+                                            </motion.p>
+                                        </AnimatePresence>
+                                    </div>
                                 </div>
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     className="border-amber-200 bg-background/80 text-amber-900 hover:bg-amber-100 hover:text-amber-900 dark:border-amber-500/20 dark:text-amber-200 dark:hover:bg-amber-500/10"
                                     onClick={() => handlePauseSearch(activeSearchId)}
-                                    disabled={pauseSearchMutation.isPending}
+                                    disabled={isPausePending}
                                 >
-                                    {pauseSearchMutation.isPending && pauseSearchMutation.variables === activeSearchId ? (
+                                    {isPausePending && pausePendingSearchId === activeSearchId ? (
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     ) : (
                                         <PauseCircle className="mr-2 h-4 w-4" />
@@ -494,13 +312,31 @@ export default function DashboardPage() {
                                             className="group flex cursor-pointer items-start gap-3 px-4 py-3.5 sm:px-5 sm:py-4 sm:items-center transition-colors hover:bg-muted/40"
                                             onClick={() => setNavLocation(`/searches?searchId=${search.id}`)}
                                         >
-                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/40 transition-colors group-hover:border-primary/20 group-hover:bg-primary/5">
-                                                {getStatusIcon(search.status)}
-                                            </div>
+                                            {isSearchActive(search.status) ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handlePauseSearch(search.id);
+                                                    }}
+                                                    disabled={isPausePending}
+                                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/40 transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:opacity-50"
+                                                >
+                                                    {isPausePending && pausePendingSearchId === search.id ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                                    ) : (
+                                                        getStatusIcon(search.status)
+                                                    )}
+                                                </button>
+                                            ) : (
+                                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/40 transition-colors group-hover:border-primary/20 group-hover:bg-primary/5">
+                                                    {getStatusIcon(search.status)}
+                                                </div>
+                                            )}
 
                                             <div className="min-w-0 flex-1 space-y-2">
                                                 <div>
-                                                    <p className="truncate text-sm font-semibold text-foreground">{search.query}</p>
+                                                    <p className="truncate text-sm font-semibold text-foreground capitalize">{search.query}</p>
                                                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                                                         <span className="flex items-center gap-1 truncate max-w-[200px]">
                                                             <MapPin className="h-3 w-3 shrink-0" />
@@ -516,47 +352,35 @@ export default function DashboardPage() {
                                                         <span className="tabular-nums text-sm font-semibold text-foreground">{search.totalResults ?? 0}</span>
                                                         <span>results</span>
                                                     </div>
-                                                    <span className="opacity-40">·</span>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="tabular-nums text-sm font-semibold text-foreground">{getDisplayedSearchCredits(search)}</span>
-                                                        <span>credits</span>
-                                                    </div>
+                                                    {!isAdmin && (
+                                                        <>
+                                                            <span className="opacity-40">·</span>
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="tabular-nums text-sm font-semibold text-foreground">{getDisplayedSearchCredits(search)}</span>
+                                                                <span>credits</span>
+                                                            </div>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
 
-                                            <div className="hidden sm:flex items-center gap-4 text-right text-xs text-muted-foreground">
-                                                <div>
+                                            <div className="hidden sm:flex items-center gap-8 text-xs text-muted-foreground">
+                                                <div className="text-center min-w-[60px]">
                                                     <p className="tabular-nums text-sm font-semibold text-foreground">{search.totalResults ?? 0}</p>
-                                                    <p>results</p>
+                                                    <p className="text-xs">results</p>
                                                 </div>
-                                                <div>
-                                                    <p className="tabular-nums text-sm font-semibold text-foreground">{getDisplayedSearchCredits(search)}</p>
-                                                    <p>credits</p>
-                                                </div>
+                                                {!isAdmin && (
+                                                    <div className="text-center min-w-[60px]">
+                                                        <p className="tabular-nums text-sm font-semibold text-foreground">{getDisplayedSearchCredits(search)}</p>
+                                                        <p className="text-xs">credits</p>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             <div className="flex items-center gap-2 shrink-0">
-                                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${getStatusColor(search.status)}`}>
+                                                <span className={`inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap min-w-[90px] ${getStatusColor(search.status)}`}>
                                                     {search.status.charAt(0).toUpperCase() + search.status.slice(1)}
                                                 </span>
-                                                {isSearchActive(search.status) && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-7 w-7 shrink-0"
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            handlePauseSearch(search.id);
-                                                        }}
-                                                        disabled={pauseSearchMutation.isPending}
-                                                    >
-                                                        {pauseSearchMutation.isPending && pauseSearchMutation.variables === search.id ? (
-                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                        ) : (
-                                                            <PauseCircle className="h-3.5 w-3.5" />
-                                                        )}
-                                                    </Button>
-                                                )}
                                                 <ChevronRight className="h-4 w-4 text-muted-foreground/50 hidden sm:block" />
                                             </div>
                                         </div>
@@ -567,405 +391,6 @@ export default function DashboardPage() {
                     </Card>
                 </motion.div>
             </div>
-
-            {createPortal(
-                <AnimatePresence>
-                    {isSearchSurveyOpen && (
-                        <motion.div
-                            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 px-4 py-6 backdrop-blur-sm sm:items-center sm:p-6"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={dismissSearchSurvey}
-                        >
-                        <motion.div
-                            role="dialog"
-                            aria-modal="true"
-                            aria-labelledby="search-survey-title"
-                            initial={{ opacity: 0, y: 24, scale: 0.96 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 24, scale: 0.96 }}
-                            transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
-                            className="flex w-full max-w-2xl flex-col overflow-visible rounded-[28px] border border-border bg-background shadow-2xl"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            {/* Header */}
-                            <div className="border-b border-border bg-muted/20 px-6 py-5">
-                                <div className="flex items-center justify-between gap-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                                            <Compass className="h-4 w-4 text-primary" />
-                                        </div>
-                                        <div className="flex items-center gap-2.5">
-                                            <p className="text-sm font-semibold text-foreground">
-                                                Guided Search
-                                            </p>
-                                            <span className="text-xs text-muted-foreground">
-                                                Step {surveyStep + 1} of {totalSurveySteps}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
-                                        onClick={dismissSearchSurvey}
-                                        disabled={isLoading}
-                                        aria-label="Close guided search"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                                <div className="mt-4 flex gap-1.5">
-                                    {Array.from({ length: totalSurveySteps }).map((_, index) => (
-                                        <div
-                                            key={index}
-                                            className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                                                index < surveyStep
-                                                    ? 'bg-primary'
-                                                    : index === surveyStep
-                                                        ? 'bg-primary/70'
-                                                        : 'bg-muted'
-                                            }`}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Content */}
-                            <form
-                                onSubmit={async (event) => {
-                                    event.preventDefault();
-                                    await handleSurveyNext();
-                                }}
-                                className="overflow-visible px-6 py-6"
-                            >
-                                <AnimatePresence mode="wait">
-                                    {surveyStep === 0 && (
-                                        <motion.div
-                                            key="email-mode-step"
-                                            initial={{ opacity: 0, x: 18 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            exit={{ opacity: 0, x: -18 }}
-                                            transition={{ duration: 0.2 }}
-                                        >
-                                            <div className="mb-5">
-                                                <h2 id="search-survey-title" className="text-xl font-semibold tracking-tight text-foreground">
-                                                    Choose lead type
-                                                </h2>
-                                                <p className="mt-1.5 text-sm text-muted-foreground">
-                                                    Select the type of data you want to collect from Google Maps.
-                                                </p>
-                                            </div>
-
-                                            <div className="grid gap-3 md:grid-cols-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleLeadTypeSelect(false)}
-                                                    className={`group relative rounded-2xl border-2 px-5 py-5 text-left transition-all duration-200 ${
-                                                        requestEnrichment === false
-                                                            ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
-                                                            : 'border-border bg-background hover:border-primary/30 hover:bg-muted/30 hover:shadow-sm'
-                                                    }`}
-                                                >
-                                                    {requestEnrichment === false && (
-                                                        <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                                                            <Check className="h-3 w-3 text-primary-foreground" />
-                                                        </div>
-                                                    )}
-                                                    <div className="flex flex-col gap-3">
-                                                        <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
-                                                            requestEnrichment === false
-                                                                ? 'bg-primary/15 text-primary'
-                                                                : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
-                                                        }`}>
-                                                            <Users className="h-5 w-5" />
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-base font-semibold text-foreground">All Leads</p>
-                                                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                                                                Business name, phone number, address, website, ratings and all available data.
-                                                            </p>
-                                                        </div>
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="w-fit rounded-full border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
-                                                        >
-                                                            {creditsPerStandardLead} credit{creditsPerStandardLead === 1 ? '' : 's'}/result
-                                                        </Badge>
-                                                    </div>
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleLeadTypeSelect(true)}
-                                                    className={`group relative rounded-2xl border-2 px-5 py-5 text-left transition-all duration-200 ${
-                                                        requestEnrichment === true
-                                                            ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
-                                                            : 'border-border bg-background hover:border-primary/30 hover:bg-muted/30 hover:shadow-sm'
-                                                    }`}
-                                                >
-                                                    {requestEnrichment === true && (
-                                                        <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                                                            <Check className="h-3 w-3 text-primary-foreground" />
-                                                        </div>
-                                                    )}
-                                                    <div className="flex flex-col gap-3">
-                                                        <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
-                                                            requestEnrichment === true
-                                                                ? 'bg-primary/15 text-primary'
-                                                                : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
-                                                        }`}>
-                                                            <Mail className="h-5 w-5" />
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-base font-semibold text-foreground">+ Email</p>
-                                                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                                                                We try to find a public business email. Not guaranteed.
-                                                            </p>
-                                                        </div>
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="w-fit rounded-full border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
-                                                        >
-                                                            {creditsPerEnrichedLead} credit{creditsPerEnrichedLead === 1 ? '' : 's'}/result
-                                                        </Badge>
-                                                        <p className="text-[11px] leading-relaxed text-muted-foreground">
-                                                            Why more expensive? We try to find contact details, but some results will not include an email.
-                                                        </p>
-                                                    </div>
-                                                </button>
-                                            </div>
-                                        </motion.div>
-                                    )}
-
-                                    {surveyStep === 1 && (
-                                        <motion.div
-                                            key="query-step"
-                                            initial={{ opacity: 0, x: 18 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            exit={{ opacity: 0, x: -18 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="space-y-6 overflow-visible"
-                                        >
-                                            <div className="space-y-2">
-                                                <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                                                    What are you looking for?
-                                                </h2>
-                                                <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-                                                    Enter the business type or niche you want to scrape, like restaurants, dentists, gyms, or plumbers.
-                                                </p>
-                                            </div>
-                                            <div className="space-y-2.5">
-                                                <Label htmlFor="query" className="text-sm font-semibold text-foreground">
-                                                    Search term
-                                                </Label>
-                                                <PlacesAutocompleteInput
-                                                    id="query"
-                                                    mode="query"
-                                                    autoFocus
-                                                    placeholder="e.g., Restaurants, Dentists, Gyms"
-                                                    value={query}
-                                                    onValueChange={setQuery}
-                                                    icon={Search}
-                                                    disabled={isLoading}
-                                                />
-                                            </div>
-                                        </motion.div>
-                                    )}
-
-                                    {surveyStep === 2 && (
-                                        <motion.div
-                                            key="location-step"
-                                            initial={{ opacity: 0, x: 18 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            exit={{ opacity: 0, x: -18 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="space-y-6 overflow-visible"
-                                        >
-                                            <div className="space-y-2">
-                                                <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                                                    Where should we search?
-                                                </h2>
-                                                <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-                                                    Enter the city, region, or area you want to target.
-                                                </p>
-                                            </div>
-                                            <div className="space-y-2.5">
-                                                <Label htmlFor="location" className="text-sm font-semibold text-foreground">
-                                                    Location
-                                                </Label>
-                                                <PlacesAutocompleteInput
-                                                    id="location"
-                                                    mode="location"
-                                                    autoFocus
-                                                    placeholder="e.g., New York, NY"
-                                                    value={location}
-                                                    onValueChange={setLocation}
-                                                    icon={MapPin}
-                                                    disabled={isLoading}
-                                                />
-                                            </div>
-                                        </motion.div>
-                                    )}
-
-                                    {surveyStep === 3 && (
-                                        <motion.div
-                                            key="max-results-step"
-                                            initial={{ opacity: 0, x: 18 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            exit={{ opacity: 0, x: -18 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="space-y-6"
-                                        >
-                                            <div className="space-y-2">
-                                                <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                                                    How many results do you want?
-                                                </h2>
-                                                <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-                                                    Choose the maximum number of businesses to process for this search.
-                                                    {requestEnrichment
-                                                        ? ` Minimum ${MIN_ENRICHED_RESULTS} results per enriched run.`
-                                                        : ` Minimum ${MIN_STANDARD_RESULTS} results per standard run.`}
-                                                </p>
-                                            </div>
-                                            <div className="space-y-5">
-                                                <div className="flex items-center justify-between">
-                                                    <Label htmlFor="maxResults" className="text-sm font-semibold text-foreground">
-                                                        Maximum results
-                                                    </Label>
-                                                    <div className="flex items-baseline gap-1.5">
-                                                        <span className="text-2xl font-bold tabular-nums text-primary">
-                                                            {maxResults}
-                                                        </span>
-                                                        <span className="text-xs text-muted-foreground">
-                                                            / {sliderMax} leads
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <input
-                                                    id="maxResults"
-                                                    type="range"
-                                                    min={minimumResults}
-                                                    max={sliderMax}
-                                                    step={1}
-                                                    value={Math.min(Math.max(maxResults, minimumResults), sliderMax)}
-                                                    onChange={(event) => setMaxResults(parseInt(event.target.value, 10))}
-                                                    disabled={isLoading || !canAffordMinimumSearch}
-                                                    className="w-full cursor-pointer appearance-none bg-transparent outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:shadow-md"
-                                                />
-                                                <div className="flex justify-between text-xs text-muted-foreground">
-                                                    <span>{minimumResults}</span>
-                                                    {sliderMax >= 50 && minimumResults < 50 && <span>50</span>}
-                                                    {sliderMax >= 100 && minimumResults < 100 && <span>100</span>}
-                                                    {sliderMax >= 200 && minimumResults < 200 && <span>200</span>}
-                                                    {sliderMax >= 300 && minimumResults < 300 && <span>300</span>}
-                                                    {sliderMax >= 400 && minimumResults < 400 && <span>400</span>}
-                                                    <span>{sliderMax}</span>
-                                                </div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {isAdmin ? (
-                                                        <>Admin mode: this search is not limited by your credit balance.</>
-                                                    ) : !canAffordMinimumSearch ? (
-                                                        <>
-                                                            You need <span className="font-semibold text-foreground">{minimumResults * creditsPerLead}</span> credits
-                                                            {' '}to run the minimum {minimumResults}-lead search.
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            You have <span className="font-semibold text-foreground">{userCredits}</span> credits
-                                                            {' '}({creditsPerLead} credit{creditsPerLead === 1 ? '' : 's'}/result)
-                                                        </>
-                                                    )}
-                                                </p>
-                                            </div>
-
-                                            <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                                                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                                    Search summary
-                                                </p>
-                                                <div className="space-y-2.5">
-                                                    <div className="flex items-center gap-3 text-sm">
-                                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                            {requestEnrichment ? (
-                                                                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            ) : (
-                                                                <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            )}
-                                                        </div>
-                                                        <span className="text-foreground">
-                                                            {requestEnrichment
-                                                                ? `+ Email (${creditsPerEnrichedLead} credits/result)`
-                                                                : `All Leads (${creditsPerStandardLead} credit${creditsPerStandardLead === 1 ? '' : 's'}/result)`}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-3 text-sm">
-                                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                            <Search className="h-3.5 w-3.5 text-muted-foreground" />
-                                                        </div>
-                                                        <span className="text-foreground">{query}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-3 text-sm">
-                                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                            <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                                                        </div>
-                                                        <span className="text-foreground">{location}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-3 text-sm">
-                                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                            <Hash className="h-3.5 w-3.5 text-muted-foreground" />
-                                                        </div>
-                                                        <span className="text-foreground">{maxResults} results max</span>
-                                                    </div>
-                                                </div>
-                                                <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">
-                                                    <span className="text-muted-foreground">Estimated cost</span>
-                                                    <span className="font-semibold text-foreground">{maxResults * creditsPerLead} credits</span>
-                                                </div>
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-
-                                {/* Footer */}
-                                {surveyStep > 0 && (
-                                    <div className="mt-8 flex items-center justify-between">
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={() => setSurveyStep((current) => Math.max(current - 1, 0))}
-                                            disabled={isLoading}
-                                        >
-                                            Back
-                                        </Button>
-                                        <Button type="submit" disabled={!canMoveForward || isLoading}>
-                                            {isLoading ? (
-                                                <>
-                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                    Starting...
-                                                </>
-                                            ) : surveyStep === totalSurveySteps - 1 ? (
-                                                <>
-                                                    <Search className="mr-2 h-4 w-4" />
-                                                    Start Scraping
-                                                </>
-                                            ) : (
-                                                <>
-                                                    Continue
-                                                    <ChevronRight className="ml-1 h-4 w-4" />
-                                                </>
-                                            )}
-                                        </Button>
-                                    </div>
-                                )}
-                            </form>
-                        </motion.div>
-                    </motion.div>
-                    )}
-                </AnimatePresence>,
-                document.body,
-            )}
         </div>
     );
 }

@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import AppShell from '@/components/app/AppShell';
 import { Toaster } from '@/components/ui/toaster';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { SearchSurveyProvider } from '@/hooks/useSearchSurvey';
 import { SettingsLayout } from '@/pages/admin/settings';
 
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
@@ -340,8 +341,10 @@ function App() {
         <ThemeProvider defaultTheme="system" storageKey="xcraper-theme">
             <QueryClientProvider client={queryClient}>
                 <AuthProvider>
-                    <AppRoutes />
-                    <Toaster />
+                    <SearchSurveyProvider>
+                        <AppRoutes />
+                        <Toaster />
+                    </SearchSurveyProvider>
                 </AuthProvider>
                 {ReactQueryDevtools ? (
                     <Suspense fallback={null}>

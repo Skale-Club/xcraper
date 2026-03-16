@@ -246,6 +246,15 @@ export const contacts = pgTable('contacts', {
     placeId: text('place_id'),  // Google Place ID for deduplication
     rawData: jsonb('raw_data'),
 
+    // Social media (extracted from rawData for easy access)
+    facebook: text('facebook'),
+    instagram: text('instagram'),
+    twitter: text('twitter'),
+    linkedin: text('linkedin'),
+    youtube: text('youtube'),
+    tiktok: text('tiktok'),
+    pinterest: text('pinterest'),
+
     // Enrichment tracking
     isEnriched: boolean('is_enriched').notNull().default(false),
     enrichmentCreditsCharged: integer('enrichment_credits_charged').default(0),

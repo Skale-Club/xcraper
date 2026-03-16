@@ -11,7 +11,7 @@ import {
     subscriptionPlans,
     type SearchHistory as SearchRecord,
 } from '../db/schema.js';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, asc, sql } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
 import { limitConcurrentSearches, incrementUserSearchCount } from '../middleware/userRateLimit.js';
 import {
@@ -25,12 +25,14 @@ import {
 import { creditRulesService } from '../services/creditRules.js';
 import { autoTopUpService } from '../services/autoTopUp.js';
 import { billingAlertService } from '../services/billingAlerts.js';
+import { extractSocialMediaFromRawData } from '../utils/socialMedia.js';
 
 dotenv.config();
 
 const router = Router();
 
 type SearchStatusValue = 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+type SearchResultsSortBy = 'business' | 'contact' | 'location';
 
 type ErrorDetails = {
     type?: string;
@@ -373,31 +375,42 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
 
     if (savedResults > 0) {
         const contactsToInsert = resultsToSave
-            .map((place) => ({
-                searchId: currentSearchRecord.id,
-                userId,
-                title: place.title,
-                category: place.category,
-                address: place.address,
-                phone: place.phone,
-                website: place.website,
-                email: place.email,
-                rating: place.rating?.toString(),
-                reviewCount: place.reviewCount,
-                latitude: place.latitude?.toString(),
-                longitude: place.longitude?.toString(),
-                openingHours: place.openingHours,
-                imageUrl: place.imageUrl,
-                googleMapsUrl: place.googleMapsUrl,
-                placeId: place.placeId,
-                rawData: place.rawData,
-                isEnriched: !!place.email,
-                enrichmentCreditsCharged: isAdmin
-                    ? 0
-                    : place.email
-                        ? creditResult.breakdown.enrichment
-                        : 0,
-            }));
+            .map((place) => {
+                const socialMedia = extractSocialMediaFromRawData(place.rawData);
+                return {
+                    searchId: currentSearchRecord.id,
+                    userId,
+                    title: place.title,
+                    category: place.category,
+                    address: place.address,
+                    phone: place.phone,
+                    website: place.website,
+                    email: place.email,
+                    rating: place.rating?.toString(),
+                    reviewCount: place.reviewCount,
+                    latitude: place.latitude?.toString(),
+                    longitude: place.longitude?.toString(),
+                    openingHours: place.openingHours,
+                    imageUrl: place.imageUrl,
+                    googleMapsUrl: place.googleMapsUrl,
+                    placeId: place.placeId,
+                    rawData: place.rawData,
+                    isEnriched: !!place.email,
+                    enrichmentCreditsCharged: isAdmin
+                        ? 0
+                        : place.email
+                            ? creditResult.breakdown.enrichment
+                            : 0,
+                    // Social media
+                    facebook: socialMedia.facebook,
+                    instagram: socialMedia.instagram,
+                    twitter: socialMedia.twitter,
+                    linkedin: socialMedia.linkedin,
+                    youtube: socialMedia.youtube,
+                    tiktok: socialMedia.tiktok,
+                    pinterest: socialMedia.pinterest,
+                };
+            });
 
         await db.insert(contacts).values(contactsToInsert);
     }
@@ -873,7 +886,49 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
 
                     // Save partial contacts
                     const contactsToInsert = resultsToSave
-                        .map((place) => ({
+                        .map((place) => {
+                            const socialMedia = extractSocialMediaFromRawData(place.rawData);
+                            return {
+                                searchId: searchRecord.id,
+                                userId,
+                                title: place.title,
+                                category: place.category,
+                                address: place.address,
+                                phone: place.phone,
+                                website: place.website,
+                                email: place.email,
+                                rating: place.rating?.toString(),
+                                reviewCount: place.reviewCount,
+                                latitude: place.latitude?.toString(),
+                                longitude: place.longitude?.toString(),
+                                openingHours: place.openingHours,
+                                imageUrl: place.imageUrl,
+                                googleMapsUrl: place.googleMapsUrl,
+                                placeId: place.placeId,
+                                rawData: place.rawData,
+                                isEnriched: !!place.email,
+                                enrichmentCreditsCharged: place.email ? creditResult.breakdown.enrichment : 0,
+                                // Social media
+                                facebook: socialMedia.facebook,
+                                instagram: socialMedia.instagram,
+                                twitter: socialMedia.twitter,
+                                linkedin: socialMedia.linkedin,
+                                youtube: socialMedia.youtube,
+                                tiktok: socialMedia.tiktok,
+                                pinterest: socialMedia.pinterest,
+                            };
+                        });
+
+                    if (contactsToInsert.length > 0) {
+                        await db.insert(contacts).values(contactsToInsert);
+                    }
+
+                    console.log(`✅ Saved ${partialLeadsSaved} partial leads, charged ${creditsCharged} credits`);
+                } else if (isAdmin && eligibleResults.length > 0) {
+                    // Admin: Save contacts but don't charge
+                    const contactsToInsert = eligibleResults.map((place) => {
+                        const socialMedia = extractSocialMediaFromRawData(place.rawData);
+                        return {
                             searchId: searchRecord.id,
                             userId,
                             title: place.title,
@@ -892,37 +947,17 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
                             placeId: place.placeId,
                             rawData: place.rawData,
                             isEnriched: !!place.email,
-                            enrichmentCreditsCharged: place.email ? creditResult.breakdown.enrichment : 0,
-                        }));
-
-                    if (contactsToInsert.length > 0) {
-                        await db.insert(contacts).values(contactsToInsert);
-                    }
-
-                    console.log(`✅ Saved ${partialLeadsSaved} partial leads, charged ${creditsCharged} credits`);
-                } else if (isAdmin && eligibleResults.length > 0) {
-                    // Admin: Save contacts but don't charge
-                    const contactsToInsert = eligibleResults.map((place) => ({
-                        searchId: searchRecord.id,
-                        userId,
-                        title: place.title,
-                        category: place.category,
-                        address: place.address,
-                        phone: place.phone,
-                        website: place.website,
-                        email: place.email,
-                        rating: place.rating?.toString(),
-                        reviewCount: place.reviewCount,
-                        latitude: place.latitude?.toString(),
-                        longitude: place.longitude?.toString(),
-                        openingHours: place.openingHours,
-                        imageUrl: place.imageUrl,
-                        googleMapsUrl: place.googleMapsUrl,
-                        placeId: place.placeId,
-                        rawData: place.rawData,
-                        isEnriched: !!place.email,
-                        enrichmentCreditsCharged: 0,
-                    }));
+                            enrichmentCreditsCharged: 0,
+                            // Social media
+                            facebook: socialMedia.facebook,
+                            instagram: socialMedia.instagram,
+                            twitter: socialMedia.twitter,
+                            linkedin: socialMedia.linkedin,
+                            youtube: socialMedia.youtube,
+                            tiktok: socialMedia.tiktok,
+                            pinterest: socialMedia.pinterest,
+                        };
+                    });
 
                     await db.insert(contacts).values(contactsToInsert);
                     partialLeadsSaved = contactsToInsert.length;
@@ -1030,12 +1065,30 @@ router.get('/:searchId/results', requireAuth, async (req, res: Response): Promis
 
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 20;
+        const favoriteOnly = req.query.favorite === 'true';
+        const requestedSortBy = req.query.sortBy as SearchResultsSortBy | undefined;
+        const sortBy: SearchResultsSortBy | undefined =
+            requestedSortBy === 'business' || requestedSortBy === 'contact' || requestedSortBy === 'location'
+                ? requestedSortBy
+                : undefined;
+        const sortDirection = req.query.sortDirection === 'desc' ? 'desc' : 'asc';
         const offset = (page - 1) * limit;
+        const whereClause = favoriteOnly
+            ? and(eq(contacts.searchId, req.params.searchId), eq(contacts.isFavorite, true))
+            : eq(contacts.searchId, req.params.searchId);
+        const sortExpressions = {
+            business: sql<string>`lower(coalesce(${contacts.title}, ''))`,
+            contact: sql<string>`lower(coalesce(${contacts.email}, ${contacts.phone}, ${contacts.website}, ''))`,
+            location: sql<string>`lower(coalesce(${contacts.address}, ''))`,
+        } satisfies Record<SearchResultsSortBy, ReturnType<typeof sql<string>>>;
+        const orderClause = sortBy
+            ? (sortDirection === 'desc' ? desc(sortExpressions[sortBy]) : asc(sortExpressions[sortBy]))
+            : desc(contacts.createdAt);
 
         const results = await db.select()
             .from(contacts)
-            .where(eq(contacts.searchId, req.params.searchId))
-            .orderBy(desc(contacts.createdAt))
+            .where(whereClause)
+            .orderBy(orderClause, desc(contacts.createdAt))
             .limit(limit)
             .offset(offset);
 
@@ -1043,7 +1096,7 @@ router.get('/:searchId/results', requireAuth, async (req, res: Response): Promis
             count: sql<number>`count(*)::int`,
         })
             .from(contacts)
-            .where(eq(contacts.searchId, req.params.searchId));
+            .where(whereClause);
 
         const total = countResult?.count ?? 0;
 

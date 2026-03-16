@@ -156,6 +156,14 @@ export interface Contact {
     googleMapsUrl?: string;
     isFavorite: boolean;
     rawData?: Record<string, unknown>;
+    // Social media
+    facebook?: string;
+    instagram?: string;
+    twitter?: string;
+    linkedin?: string;
+    youtube?: string;
+    tiktok?: string;
+    pinterest?: string;
     createdAt: string;
 }
 
@@ -168,6 +176,9 @@ export interface PaginatedContactsResponse {
         totalPages: number;
     };
 }
+
+export type SearchResultsSortBy = 'business' | 'contact' | 'location';
+export type SortDirection = 'asc' | 'desc';
 
 export interface CreditTransaction {
     id: string;
@@ -322,10 +333,28 @@ export const searchApi = {
             method: 'POST',
         }),
 
-    getResults: (searchId: string, page = 1, limit = 50) =>
-        apiFetch<{ results: Contact[]; total: number; page: number; totalPages: number }>(
-            `/search/${searchId}/results?page=${page}&limit=${limit}`
-        ),
+    getResults: (
+        searchId: string,
+        page = 1,
+        limit = 50,
+        favoritesOnly = false,
+        sortBy?: SearchResultsSortBy,
+        sortDirection: SortDirection = 'asc'
+    ) => {
+        const params = new URLSearchParams({
+            page: String(page),
+            limit: String(limit),
+        });
+        if (favoritesOnly) params.append('favorite', 'true');
+        if (sortBy) {
+            params.append('sortBy', sortBy);
+            params.append('sortDirection', sortDirection);
+        }
+
+        return apiFetch<{ results: Contact[]; total: number; page: number; totalPages: number }>(
+            `/search/${searchId}/results?${params.toString()}`
+        );
+    },
 
     getHistory: (page = 1, limit = 20) =>
         apiFetch<{ history: SearchHistory[]; total: number; page: number; totalPages: number }>(

@@ -1,4 +1,5 @@
-import { Menu } from 'lucide-react';
+import { Menu, Plus } from 'lucide-react';
+import { useSearchSurvey } from '@/hooks/useSearchSurvey';
 
 const pageMetadata: Record<string, { title: string; description: string }> = {
     '/dashboard': {
@@ -30,10 +31,16 @@ interface AppTopbarProps {
 
 export default function AppTopbar({ location, onOpenSidebar }: AppTopbarProps) {
     const currentPage = pageMetadata[location] ?? pageMetadata['/dashboard'];
+    const { openSearchSurvey } = useSearchSurvey();
+    const showNewSearchButton = !location.startsWith('/admin');
+
+    const handleNewSearch = () => {
+        openSearchSurvey();
+    };
 
     return (
         <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
-            <div className="flex items-start justify-between gap-4 px-4 py-4 sm:px-6 lg:px-10">
+            <div className="flex items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-10">
                 <div className="flex min-w-0 items-center gap-4">
                     <button
                         type="button"
@@ -55,6 +62,17 @@ export default function AppTopbar({ location, onOpenSidebar }: AppTopbarProps) {
                         </p>
                     </div>
                 </div>
+
+                {showNewSearchButton && (
+                    <button
+                        type="button"
+                        onClick={handleNewSearch}
+                        className="group flex shrink-0 items-center gap-2 rounded-2xl border border-border bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-5 py-3 text-white shadow-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-xl dark:from-slate-950 dark:via-slate-900 dark:to-slate-950"
+                    >
+                        <Plus className="h-5 w-5 text-blue-400 transition-transform duration-200 group-hover:rotate-90" />
+                        <span className="text-sm font-semibold tracking-tight">New Search</span>
+                    </button>
+                )}
             </div>
         </header>
     );
