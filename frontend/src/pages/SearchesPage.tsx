@@ -32,6 +32,8 @@ import {
     Linkedin,
     Youtube,
     ArrowUpDown,
+    Archive,
+    ArchiveRestore,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ContactsMapDialog } from '@/components/ContactsMapDialog';
@@ -51,6 +53,7 @@ export default function SearchesPage() {
     const [sortBy, setSortBy] = useState<SearchResultsSortBy | undefined>(undefined);
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [isMapDialogOpen, setIsMapDialogOpen] = useState(false);
+    const [showArchived, setShowArchived] = useState(false);
 
     // Query for Search History
     const { data: historyData, isLoading: isHistoryLoading } = useQuery({
@@ -74,8 +77,8 @@ export default function SearchesPage() {
 
     // Query for Contacts of a specific search
     const { data: contactsData, isLoading: isContactsLoading } = useQuery({
-        queryKey: ['search-results', selectedSearch?.id, contactsPage, favoritesOnly, sortBy, sortDirection],
-        queryFn: () => searchApi.getResults(selectedSearch!.id, contactsPage, 20, favoritesOnly, sortBy, sortDirection),
+        queryKey: ['search-results', selectedSearch?.id, contactsPage, favoritesOnly, sortBy, sortDirection, showArchived],
+        queryFn: () => searchApi.getResults(selectedSearch!.id, contactsPage, 20, favoritesOnly, sortBy, sortDirection, showArchived),
         enabled: !!selectedSearch,
     });
 
@@ -99,6 +102,17 @@ export default function SearchesPage() {
         },
         onError: (error) => {
             const message = error instanceof ApiError ? error.message : 'Failed to update favorite';
+            toast({ variant: 'destructive', title: 'Error', description: message });
+        },
+    });
+
+    const toggleArchiveMutation = useMutation({
+        mutationFn: (contactId: string) => contactsApi.toggleArchive(contactId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['search-results'] });
+        },
+        onError: (error) => {
+            const message = error instanceof ApiError ? error.message : 'Failed to archive contact';
             toast({ variant: 'destructive', title: 'Error', description: message });
         },
     });
@@ -154,7 +168,7 @@ export default function SearchesPage() {
 
     useEffect(() => {
         setContactsPage(1);
-    }, [favoritesOnly, selectedSearch?.id, sortBy, sortDirection]);
+    }, [favoritesOnly, showArchived, selectedSearch?.id, sortBy, sortDirection]);
 
     const handleExportCsv = async (searchId?: string) => {
         try {
@@ -368,6 +382,7 @@ export default function SearchesPage() {
     const contacts = contactsData?.results ?? [];
     const totalContacts = contactsData?.total ?? 0;
     const totalPages = contactsData?.totalPages ?? 1;
+    const archivedCount = contactsData?.archivedCount ?? 0;
 
     return (
         <div className="w-full space-y-8">
@@ -378,6 +393,7 @@ export default function SearchesPage() {
                     onClick={() => {
                         setSelectedSearch(null);
                         setFavoritesOnly(false);
+                        setShowArchived(false);
                         setLocation('/searches');
                     }}
                 >
@@ -525,21 +541,44 @@ export default function SearchesPage() {
                                     </th>
                                     <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rating</th>
                                     <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Links</th>
+                                    <th className="w-10 px-2 py-3.5 text-right">
+                                        {archivedCount > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowArchived((current) => !current)}
+                                                className={`relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-muted ml-auto ${showArchived ? 'text-foreground' : 'text-muted-foreground/40'}`}
+                                                title={showArchived ? 'Hide archived contacts' : `Show ${archivedCount} archived contacts`}
+                                            >
+                                                <Archive className="h-3.5 w-3.5" />
+                                                {!showArchived && (
+                                                    <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-muted-foreground/20 text-[9px] font-medium text-muted-foreground px-0.5">
+                                                        {archivedCount}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        )}
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
                                 {contacts.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-4 py-16 text-center">
+                                        <td colSpan={7} className="px-4 py-16 text-center">
                                             <div className="flex flex-col items-center justify-center text-center">
                                                 <Search className="mb-4 h-16 w-16 text-muted-foreground/30" />
                                                 <h3 className="text-xl font-semibold">
-                                                    {favoritesOnly ? 'No favorite contacts in this search' : 'No contacts found for this search'}
+                                                    {showArchived && !favoritesOnly
+                                                        ? 'No archived contacts'
+                                                        : favoritesOnly
+                                                            ? 'No favorite contacts in this search'
+                                                            : 'No contacts found for this search'}
                                                 </h3>
                                                 <p className="mt-2 max-w-sm text-muted-foreground">
-                                                    {favoritesOnly
-                                                        ? 'Click the star in the first column to show all contacts again.'
-                                                        : 'Try launching a new search with different keywords or location.'}
+                                                    {showArchived && !favoritesOnly
+                                                        ? 'Archived contacts will appear here when you hide leads from the main list.'
+                                                        : favoritesOnly
+                                                            ? 'Click the star in the first column to show all contacts again.'
+                                                            : 'Try launching a new search with different keywords or location.'}
                                                 </p>
                                             </div>
                                         </td>
@@ -549,9 +588,9 @@ export default function SearchesPage() {
                                     <motion.tr
                                         key={contact.id}
                                         initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
+                                        animate={{ opacity: contact.isArchived ? 0.45 : 1 }}
                                         transition={{ delay: index * 0.02 }}
-                                        className="group hover:bg-muted/20 transition-colors"
+                                        className={`group hover:bg-muted/20 transition-colors ${contact.isArchived ? 'opacity-45' : ''}`}
                                     >
                                         {/* Favorite */}
                                         <td className="w-14 px-4 py-4 align-middle">
@@ -753,6 +792,26 @@ export default function SearchesPage() {
                                                     <span className="text-xs text-muted-foreground/50">No links</span>
                                                 )}
                                             </div>
+                                        </td>
+
+                                        {/* Archive */}
+                                        <td className="w-10 px-2 py-4 align-middle">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className={`h-7 w-7 rounded-lg transition-all ${
+                                                    contact.isArchived
+                                                        ? 'text-muted-foreground hover:text-foreground opacity-100'
+                                                        : 'text-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:text-muted-foreground'
+                                                }`}
+                                                onClick={() => toggleArchiveMutation.mutate(contact.id)}
+                                                title={contact.isArchived ? 'Unarchive contact' : 'Archive contact'}
+                                            >
+                                                {contact.isArchived
+                                                    ? <ArchiveRestore className="h-3.5 w-3.5" />
+                                                    : <Archive className="h-3.5 w-3.5" />
+                                                }
+                                            </Button>
                                         </td>
                                     </motion.tr>
                                 )))}

@@ -155,6 +155,7 @@ export interface Contact {
     imageUrl?: string;
     googleMapsUrl?: string;
     isFavorite: boolean;
+    isArchived: boolean;
     rawData?: Record<string, unknown>;
     // Social media
     facebook?: string;
@@ -339,19 +340,21 @@ export const searchApi = {
         limit = 50,
         favoritesOnly = false,
         sortBy?: SearchResultsSortBy,
-        sortDirection: SortDirection = 'asc'
+        sortDirection: SortDirection = 'asc',
+        showArchived = false
     ) => {
         const params = new URLSearchParams({
             page: String(page),
             limit: String(limit),
         });
         if (favoritesOnly) params.append('favorite', 'true');
+        if (showArchived) params.append('showArchived', 'true');
         if (sortBy) {
             params.append('sortBy', sortBy);
             params.append('sortDirection', sortDirection);
         }
 
-        return apiFetch<{ results: Contact[]; total: number; page: number; totalPages: number }>(
+        return apiFetch<{ results: Contact[]; total: number; page: number; totalPages: number; archivedCount: number }>(
             `/search/${searchId}/results?${params.toString()}`
         );
     },
@@ -403,6 +406,11 @@ export const contactsApi = {
 
     toggleFavorite: (contactId: string) =>
         apiFetch<{ message: string; contact: Contact }>(`/contacts/${contactId}/favorite`, {
+            method: 'PATCH',
+        }),
+
+    toggleArchive: (contactId: string) =>
+        apiFetch<{ message: string; contact: Contact }>(`/contacts/${contactId}/archive`, {
             method: 'PATCH',
         }),
 

@@ -70,7 +70,7 @@ export default function DashboardPage() {
 
     const { data: historyData, isLoading: historyLoading } = useQuery({
         queryKey: ['search-history'],
-        queryFn: () => searchApi.getHistory(1, 5),
+        queryFn: () => searchApi.getHistory(1, 8),
         refetchInterval: (query) => {
             if (activeSearchId) return false;
 

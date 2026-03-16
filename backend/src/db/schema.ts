@@ -261,6 +261,7 @@ export const contacts = pgTable('contacts', {
 
     // User actions
     isFavorite: boolean('is_favorite').notNull().default(false),
+    isArchived: boolean('is_archived').notNull().default(false),
 
     // Timestamps
     createdAt: timestamp('created_at').notNull().defaultNow(),

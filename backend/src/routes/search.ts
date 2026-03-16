@@ -1066,6 +1066,7 @@ router.get('/:searchId/results', requireAuth, async (req, res: Response): Promis
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 20;
         const favoriteOnly = req.query.favorite === 'true';
+        const showArchived = req.query.showArchived === 'true';
         const requestedSortBy = req.query.sortBy as SearchResultsSortBy | undefined;
         const sortBy: SearchResultsSortBy | undefined =
             requestedSortBy === 'business' || requestedSortBy === 'contact' || requestedSortBy === 'location'
@@ -1073,9 +1074,11 @@ router.get('/:searchId/results', requireAuth, async (req, res: Response): Promis
                 : undefined;
         const sortDirection = req.query.sortDirection === 'desc' ? 'desc' : 'asc';
         const offset = (page - 1) * limit;
-        const whereClause = favoriteOnly
-            ? and(eq(contacts.searchId, req.params.searchId), eq(contacts.isFavorite, true))
-            : eq(contacts.searchId, req.params.searchId);
+
+        const conditions = [eq(contacts.searchId, req.params.searchId)];
+        if (favoriteOnly) conditions.push(eq(contacts.isFavorite, true));
+        if (!showArchived) conditions.push(eq(contacts.isArchived, false));
+        const whereClause = and(...conditions);
         const sortExpressions = {
             business: sql<string>`lower(coalesce(${contacts.title}, ''))`,
             contact: sql<string>`lower(coalesce(${contacts.email}, ${contacts.phone}, ${contacts.website}, ''))`,
@@ -1100,11 +1103,19 @@ router.get('/:searchId/results', requireAuth, async (req, res: Response): Promis
 
         const total = countResult?.count ?? 0;
 
+        // Count archived contacts for this search
+        const [archivedCountResult] = await db.select({
+            count: sql<number>`count(*)::int`,
+        })
+            .from(contacts)
+            .where(and(eq(contacts.searchId, req.params.searchId), eq(contacts.isArchived, true)));
+
         res.json({
             results,
             total,
             page,
             totalPages: Math.max(1, Math.ceil(total / limit)),
+            archivedCount: archivedCountResult?.count ?? 0,
         });
     } catch (error) {
         console.error('Get search results error:', error);

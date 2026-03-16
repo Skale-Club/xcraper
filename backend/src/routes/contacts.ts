@@ -182,6 +182,44 @@ router.patch('/:contactId/favorite', requireAuth, async (req, res: Response): Pr
     }
 });
 
+// Toggle archive status
+router.patch('/:contactId/archive', requireAuth, async (req, res: Response): Promise<void> => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ error: 'User not authenticated' });
+            return;
+        }
+
+        const { contactId } = req.params;
+
+        const [existingContact] = await db.select()
+            .from(contacts)
+            .where(and(
+                eq(contacts.id, contactId),
+                eq(contacts.userId, req.user.id)
+            ))
+            .limit(1);
+
+        if (!existingContact) {
+            res.status(404).json({ error: 'Contact not found' });
+            return;
+        }
+
+        const [updatedContact] = await db.update(contacts)
+            .set({ isArchived: !existingContact.isArchived })
+            .where(eq(contacts.id, contactId))
+            .returning();
+
+        res.json({
+            message: `Contact ${updatedContact.isArchived ? 'archived' : 'unarchived'}`,
+            contact: updatedContact,
+        });
+    } catch (error) {
+        console.error('Toggle archive error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Delete contact
 router.delete('/:contactId', requireAuth, async (req, res: Response): Promise<void> => {
     try {
