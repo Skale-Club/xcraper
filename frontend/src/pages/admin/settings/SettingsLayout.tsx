@@ -10,6 +10,7 @@ import {
     Palette,
     Receipt,
     Settings as SettingsIcon,
+    TrendingUp,
     Users,
 } from 'lucide-react';
 
@@ -23,7 +24,8 @@ type SettingsPage =
     | 'seo'
     | 'content'
     | 'pricing'
-    | 'advanced';
+    | 'advanced'
+    | 'pnl';
 
 interface SettingsLayoutProps {
     children: React.ReactNode;
@@ -36,6 +38,7 @@ const tabs: { id: SettingsPage; label: string; icon: typeof Globe; path: string 
     { id: 'logs', label: 'Logs', icon: Activity, path: '/admin/searches' },
     { id: 'contacts', label: 'All Contacts', icon: Contact, path: '/admin/contacts' },
     { id: 'transactions', label: 'Transactions', icon: Receipt, path: '/admin/transactions' },
+    { id: 'pnl', label: 'P&L', icon: TrendingUp, path: '/admin/pnl' },
     { id: 'branding', label: 'Branding', icon: Palette, path: '/admin/settings/branding' },
     { id: 'seo', label: 'SEO', icon: Globe, path: '/admin/settings/seo' },
     { id: 'content', label: 'Content', icon: SettingsIcon, path: '/admin/settings/content' },
@@ -55,11 +58,10 @@ export function SettingsLayout({ children, currentPage }: SettingsLayoutProps) {
                                     <Link
                                         key={tab.id}
                                         href={tab.path}
-                                        className={`w-full flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-                                            currentPage === tab.id
-                                                ? 'bg-primary text-primary-foreground shadow-sm'
-                                                : 'text-slate-700 dark:text-white hover:bg-muted hover:text-slate-900 dark:hover:text-white'
-                                        }`}
+                                        className={`w-full flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${currentPage === tab.id
+                                            ? 'bg-primary text-primary-foreground shadow-sm'
+                                            : 'text-slate-700 dark:text-white hover:bg-muted hover:text-slate-900 dark:hover:text-white'
+                                            }`}
                                     >
                                         <tab.icon className="h-4 w-4" />
                                         {tab.label}

@@ -31,6 +31,7 @@ const AdminSettingsContentPage = lazy(() => import('@/pages/admin/settings/Conte
 const AdminSettingsPricingPage = lazy(() => import('@/pages/admin/settings/PricingPage'));
 const AdminSettingsAdvancedPage = lazy(() => import('@/pages/admin/settings/AdvancedPage'));
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
+const AdminPnLPage = lazy(() => import('@/pages/AdminPnLPage'));
 
 const ReactQueryDevtools = import.meta.env.DEV
     ? lazy(async () => {
@@ -120,7 +121,8 @@ type SettingsPage =
     | 'seo'
     | 'content'
     | 'pricing'
-    | 'advanced';
+    | 'advanced'
+    | 'pnl';
 
 function SettingsLayoutWrapper({ page, children }: { page: SettingsPage; children: ReactNode }) {
     return (
@@ -279,6 +281,14 @@ function AppRoutes() {
                 <AdminRoute>
                     <SettingsLayoutWrapper page="logs">
                         <AdminSearchesPage />
+                    </SettingsLayoutWrapper>
+                </AdminRoute>
+            </Route>
+
+            <Route path="/admin/pnl">
+                <AdminRoute>
+                    <SettingsLayoutWrapper page="pnl">
+                        <AdminPnLPage />
                     </SettingsLayoutWrapper>
                 </AdminRoute>
             </Route>
