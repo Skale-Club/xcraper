@@ -8,6 +8,9 @@ ALTER TABLE "settings" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "credit_packages" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "session" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "subscription_plans" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "billing_events" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "billing_alerts" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "usage_summary" ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if any (to make it idempotent)
 DO $$ 
@@ -117,6 +120,60 @@ USING (is_active = true AND is_public = true);
 CREATE POLICY "Admins can manage subscription plans" 
 ON "subscription_plans" FOR ALL 
 USING (
+  EXISTS (
+    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+  )
+);
+
+-- 9. Billing Events Table Policies
+CREATE POLICY "Users can view own billing events"
+ON "billing_events" FOR SELECT
+USING (auth.uid() = user_id);
+
+CREATE POLICY "Admins can manage all billing events"
+ON "billing_events" FOR ALL
+USING (
+  EXISTS (
+    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+  )
+);
+
+-- 10. Billing Alerts Table Policies
+CREATE POLICY "Users can view own billing alerts"
+ON "billing_alerts" FOR SELECT
+USING (auth.uid() = user_id);
+
+CREATE POLICY "Admins can manage all billing alerts"
+ON "billing_alerts" FOR ALL
+USING (
+  EXISTS (
+    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+  )
+);
+
+-- 11. Usage Summary Table Policies
+CREATE POLICY "Users can view own usage summary"
+ON "usage_summary" FOR SELECT
+USING (auth.uid() = user_id);
+
+CREATE POLICY "Admins can manage all usage summary"
+ON "usage_summary" FOR ALL
+USING (
+  EXISTS (
+    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+  )
+)
+WITH CHECK (
   EXISTS (
     SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
   )

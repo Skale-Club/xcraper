@@ -129,7 +129,29 @@ ALTER TABLE "settings" ADD COLUMN IF NOT EXISTS "duplicate_window_days" integer 
 
 -- Re-enable RLS on new tables
 ALTER TABLE "subscription_plans" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "billing_events" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "billing_alerts" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "usage_summary" ENABLE ROW LEVEL SECURITY;
 
 -- Add RLS policies for subscription_plans
+DROP POLICY IF EXISTS "Public can view active plans" ON "subscription_plans";
+DROP POLICY IF EXISTS "Admins can manage all plans" ON "subscription_plans";
 CREATE POLICY "Public can view active plans" ON "subscription_plans" FOR SELECT USING (is_active = true AND is_public = true);
 CREATE POLICY "Admins can manage all plans" ON "subscription_plans" FOR ALL USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
+
+-- Add RLS policies for billing tables
+DROP POLICY IF EXISTS "Users can view own billing events" ON "billing_events";
+DROP POLICY IF EXISTS "Admins can manage all billing events" ON "billing_events";
+DROP POLICY IF EXISTS "Users can view own billing alerts" ON "billing_alerts";
+DROP POLICY IF EXISTS "Admins can manage all billing alerts" ON "billing_alerts";
+DROP POLICY IF EXISTS "Users can view own usage summary" ON "usage_summary";
+DROP POLICY IF EXISTS "Admins can manage all usage summary" ON "usage_summary";
+
+CREATE POLICY "Users can view own billing events" ON "billing_events" FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Admins can manage all billing events" ON "billing_events" FOR ALL USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')) WITH CHECK (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
+
+CREATE POLICY "Users can view own billing alerts" ON "billing_alerts" FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Admins can manage all billing alerts" ON "billing_alerts" FOR ALL USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')) WITH CHECK (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
+
+CREATE POLICY "Users can view own usage summary" ON "usage_summary" FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Admins can manage all usage summary" ON "usage_summary" FOR ALL USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')) WITH CHECK (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
