@@ -36,6 +36,7 @@ const ALLOWED_MIME_TYPES: Record<StorageBucket, string[]> = {
     avatars: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
     exports: ['application/json', 'text/csv'],
     'og-images': ['image/png', 'image/jpeg', 'image/webp'],
+    testimonials: ['image/png', 'image/jpeg', 'image/webp'],
 };
 
 const MAX_FILE_SIZES: Record<StorageBucket, number> = {
@@ -43,6 +44,7 @@ const MAX_FILE_SIZES: Record<StorageBucket, number> = {
     avatars: 2 * 1024 * 1024,
     exports: 10 * 1024 * 1024,
     'og-images': 5 * 1024 * 1024,
+    testimonials: 5 * 1024 * 1024,
 };
 
 function validateFile(bucket: StorageBucket, contentType: string, fileSize: number): void {

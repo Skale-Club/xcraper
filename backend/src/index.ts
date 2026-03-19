@@ -19,6 +19,8 @@ import adminBillingRoutes from './routes/adminBilling.js';
 import placesRoutes from './routes/places.js';
 import webhookRoutes from './routes/webhooks.js';
 import uploadRoutes from './routes/upload.js';
+import sseRoutes from './routes/sse.js';
+import pnlRoutes from './routes/pnl.js';
 
 dotenv.config();
 
@@ -78,6 +80,8 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/places', placesRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/sse', sseRoutes);
+app.use('/api/pnl', pnlRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

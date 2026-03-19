@@ -24,16 +24,21 @@ async function detailedCostAnalysis() {
 
       const run = await client.run(runInfo.id).get();
 
+      if (!run) {
+        console.log(`❌ Run ${runInfo.id} not found`);
+        continue;
+      }
+
       console.log('\n📊 Run Details:');
       console.log(`  Status: ${run.status}`);
       console.log(`  Started: ${run.startedAt}`);
       console.log(`  Finished: ${run.finishedAt}`);
-      console.log(`  Duration: ${run.buildDurationSecs || 0}s build + ${run.runDurationSecs || 0}s run`);
+      console.log(`  Duration: ${(run as any).buildDurationSecs || 0}s build + ${(run as any).runDurationSecs || 0}s run`);
 
       console.log('\n💵 Cost Breakdown:');
-      console.log(`  Compute Units Used: ${run.usageTotalComputeUnits || 0} CU`);
+      console.log(`  Compute Units Used: ${(run as any).usageTotalComputeUnits || 0} CU`);
       console.log(`  Total Cost USD: $${(run.usageTotalUsd || 0).toFixed(4)}`);
-      console.log(`  Data Transfer: ${run.usageDataTransferBytes || 0} bytes`);
+      console.log(`  Data Transfer: ${(run as any).usageDataTransferBytes || 0} bytes`);
 
       console.log('\n📦 Dataset:');
       const dataset = await client.dataset(run.defaultDatasetId).listItems();
@@ -66,10 +71,12 @@ async function detailedCostAnalysis() {
     console.log('\n📈 Comparison Summary:\n');
 
     const run1 = await client.run(runs[0].id).get();
+    if (!run1) throw new Error('Run 1 not found');
     const dataset1 = await client.dataset(run1.defaultDatasetId).listItems();
     const count1 = dataset1.count || dataset1.items.length;
 
     const run2 = await client.run(runs[1].id).get();
+    if (!run2) throw new Error('Run 2 not found');
     const dataset2 = await client.dataset(run2.defaultDatasetId).listItems();
     const count2 = dataset2.count || dataset2.items.length;
 

@@ -16,6 +16,7 @@ async function compareRunsRaw() {
 
     console.log('=== RUN COM SOCIAL MEDIA ===');
     const run1 = await client.run(run1Id).get();
+    if (!run1) throw new Error('Run 1 not found');
     const ds1 = await client.dataset(run1.defaultDatasetId).listItems({ limit: 1 });
     const item1 = ds1.items[0];
     console.log('Actor ID:', run1.actId);
@@ -25,6 +26,7 @@ async function compareRunsRaw() {
 
     console.log('=== RUN SEM SOCIAL MEDIA ===');
     const run2 = await client.run(run2Id).get();
+    if (!run2) throw new Error('Run 2 not found');
     const ds2 = await client.dataset(run2.defaultDatasetId).listItems({ limit: 1 });
     const item2 = ds2.items[0];
     console.log('Actor ID:', run2.actId);

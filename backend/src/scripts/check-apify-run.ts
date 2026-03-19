@@ -16,6 +16,11 @@ async function checkApifyRun() {
 
     const run = await client.run(runId).get();
 
+    if (!run) {
+      console.log('❌ Run not found');
+      return;
+    }
+
     console.log('✅ Run Details:');
     console.log('='.repeat(80));
     console.log('Run ID:', run.id);
@@ -28,7 +33,8 @@ async function checkApifyRun() {
     console.log('');
 
     // Get input
-    const input = await client.run(runId).input().get();
+    const inputRecord = await client.keyValueStore(run.defaultKeyValueStoreId).getRecord('INPUT');
+    const input = inputRecord?.value;
     console.log('📝 Input Parameters:');
     console.log('='.repeat(80));
     console.log(JSON.stringify(input, null, 2));

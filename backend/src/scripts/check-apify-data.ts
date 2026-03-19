@@ -15,6 +15,11 @@ async function checkApifyData() {
 
     const run = await client.run(runId).get();
 
+    if (!run) {
+      console.log('❌ Run not found');
+      return;
+    }
+
     console.log('📊 Run Info:');
     console.log('='.repeat(80));
     console.log('Status:', run.status);

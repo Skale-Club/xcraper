@@ -30,9 +30,9 @@ async function compareActorPricing() {
         console.log(`  Description: ${actor?.description?.substring(0, 100) || 'N/A'}...`);
         console.log(`  Version: ${actor?.taggedBuilds?.latest || 'N/A'}`);
         console.log(`  Stats:`);
-        console.log(`    - Runs (last 7 days): ${actor?.stats?.last7DaysRunsCount || 0}`);
-        console.log(`    - Total runs: ${actor?.stats?.totalRunsCount || 0}`);
-        console.log(`    - Total users: ${actor?.stats?.totalUsersCount || 0}`);
+        console.log(`    - Runs (last 7 days): ${(actor?.stats as any)?.last7DaysRunsCount || 0}`);
+        console.log(`    - Total runs: ${(actor?.stats as any)?.totalRunsCount || 0}`);
+        console.log(`    - Total users: ${actor?.stats?.totalUsers || 0}`);
 
         // Get recent runs to calculate average cost
         const runs = await client.actor(actorInfo.id).runs().list({ limit: 10 });

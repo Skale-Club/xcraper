@@ -23,6 +23,12 @@ async function compareActors() {
       console.log('='.repeat(100));
 
       const run = await client.run(runInfo.id).get();
+
+      if (!run) {
+        console.log(`❌ Run ${runInfo.id} not found`);
+        continue;
+      }
+
       const dataset = await client.dataset(run.defaultDatasetId).listItems({ limit: 5 });
 
       console.log(`\n📊 Results: ${dataset.items.length} items (showing first result)\n`);

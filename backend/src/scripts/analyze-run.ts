@@ -45,7 +45,8 @@ async function analyzeRun() {
     }
 
     // Get input
-    const input = await client.run(runId).input().get();
+    const inputRecord = await client.keyValueStore(run.defaultKeyValueStoreId).getRecord('INPUT');
+    const input = inputRecord?.value;
     console.log('📝 Input Parameters:');
     console.log('='.repeat(80));
     console.log(JSON.stringify(input, null, 2));
