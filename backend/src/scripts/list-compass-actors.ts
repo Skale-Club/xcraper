@@ -16,7 +16,7 @@ async function listCompassActors() {
     console.log(`Conta: ${user?.username}\n`);
 
     // List actors from Compass
-    const store = await client.store().listItems({
+    const store = await client.store().list({
       search: 'compass google maps',
       limit: 20
     });
@@ -34,7 +34,7 @@ async function listCompassActors() {
         // Try to get more details
         try {
           const actor = await client.actor(item.id).get();
-          console.log(`   Stats: ${actor?.stats?.totalRunsCount || 0} runs total`);
+          console.log(`   Stats: ${actor?.stats?.totalRuns || 0} runs total`);
         } catch (e) {
           // ignore
         }

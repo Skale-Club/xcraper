@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import * as dotenv from 'dotenv';
+import * as Sentry from '@sentry/node';
 
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
@@ -21,8 +22,21 @@ import webhookRoutes from './routes/webhooks.js';
 import uploadRoutes from './routes/upload.js';
 import sseRoutes from './routes/sse.js';
 import pnlRoutes from './routes/pnl.js';
+import gdprRoutes from './routes/gdpr.js';
+import { requestLogger, errorLogger } from './middleware/requestLogger.js';
+import { logger, logError } from './utils/logger.js';
 
 dotenv.config();
+
+// Initialize Sentry if DSN is configured
+if (process.env.SENTRY_DSN) {
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        environment: process.env.NODE_ENV || 'development',
+        tracesSampleRate: 0.1, // 10% of transactions
+    });
+    logger.info('Sentry initialized');
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -52,8 +66,15 @@ app.use('/api/subscriptions/webhook', express.raw({ type: 'application/json' }))
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Logging
-app.use(morgan('combined'));
+// Request logging middleware
+app.use(requestLogger);
+
+// HTTP logging (morgan for additional HTTP logging)
+app.use(morgan('combined', {
+    stream: {
+        write: (message) => logger.http(message.trim())
+    }
+}));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -82,16 +103,26 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/sse', sseRoutes);
 app.use('/api/pnl', pnlRoutes);
+app.use('/api/user', gdprRoutes); // GDPR routes (data export, deletion)
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Sentry error handler (must be before other error handlers)
+if (process.env.SENTRY_DSN) {
+    app.use(Sentry.expressErrorHandler());
+}
+
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error('Error:', err.message);
-    console.error('Stack:', err.stack);
+    logError('Unhandled error', err, {
+        method: req.method,
+        url: req.url,
+        userId: req.user?.id,
+        body: req.body
+    });
 
     res.status(500).json({
         error: process.env.NODE_ENV === 'production'
