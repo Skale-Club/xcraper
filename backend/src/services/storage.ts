@@ -3,16 +3,24 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Missing Supabase environment variables for storage');
-}
+let supabase: SupabaseClient | null = null;
 
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-    },
-});
+function getSupabaseClient(): SupabaseClient {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        throw new Error('Missing Supabase environment variables for storage');
+    }
+    
+    if (!supabase) {
+        supabase = createClient(supabaseUrl, supabaseServiceKey, {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false,
+            },
+        });
+    }
+    
+    return supabase;
+}
 
 export type StorageBucket = 'logos' | 'avatars' | 'exports' | 'og-images' | 'testimonials';
 
@@ -70,7 +78,7 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
         ? `${userId}/${timestamp}-${sanitizedFileName}`
         : `${timestamp}-${sanitizedFileName}`;
 
-    const { data, error } = await supabase.storage
+    const { data, error } = await getSupabaseClient().storage
         .from(bucket)
         .upload(filePath, fileBuffer, {
             contentType,
@@ -83,7 +91,7 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
         throw new Error(`Failed to upload file: ${error.message}`);
     }
 
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = getSupabaseClient().storage
         .from(bucket)
         .getPublicUrl(data.path);
 
@@ -95,7 +103,7 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
 }
 
 export async function deleteFile(bucket: StorageBucket, path: string): Promise<void> {
-    const { error } = await supabase.storage.from(bucket).remove([path]);
+    const { error } = await getSupabaseClient().storage.from(bucket).remove([path]);
 
     if (error) {
         console.error('Supabase storage delete error:', error);
@@ -104,14 +112,14 @@ export async function deleteFile(bucket: StorageBucket, path: string): Promise<v
 }
 
 export async function getFileUrl(bucket: StorageBucket, path: string): Promise<string> {
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    const { data } = getSupabaseClient().storage.from(bucket).getPublicUrl(path);
     return data.publicUrl;
 }
 
 export async function listFiles(bucket: StorageBucket, userId?: string): Promise<string[]> {
     const folder = userId || '';
     
-    const { data, error } = await supabase.storage
+    const { data, error } = await getSupabaseClient().storage
         .from(bucket)
         .list(folder, {
             limit: 100,
@@ -130,11 +138,11 @@ export async function ensureBucketsExist(): Promise<void> {
     const buckets: StorageBucket[] = ['logos', 'avatars', 'exports', 'og-images'];
 
     for (const bucket of buckets) {
-        const { data, error } = await supabase.storage.getBucket(bucket);
+        const { data, error } = await getSupabaseClient().storage.getBucket(bucket);
         
         if (error || !data) {
             console.log(`Creating bucket: ${bucket}`);
-            const { error: createError } = await supabase.storage.createBucket(bucket, {
+            const { error: createError } = await getSupabaseClient().storage.createBucket(bucket, {
                 public: true,
                 fileSizeLimit: MAX_FILE_SIZES[bucket],
                 allowedMimeTypes: ALLOWED_MIME_TYPES[bucket],
@@ -147,4 +155,4 @@ export async function ensureBucketsExist(): Promise<void> {
     }
 }
 
-export { supabase as storageClient };
+export { getSupabaseClient as storageClient };

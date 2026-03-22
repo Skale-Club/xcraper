@@ -136,10 +136,14 @@ app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Start server only in non-serverless environments (local development, traditional hosting)
+// Vercel serverless functions don't use app.listen()
+if (process.env.VERCEL !== '1') {
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+}
 
+// Export the Express app for Vercel serverless functions
 export default app;

@@ -224,6 +224,13 @@ next-env.d.ts
 docker-compose.override.yml
 
 # ============================================================
+# CLAUDE CODE
+# ============================================================
+
+# Claude Code local settings (user-specific)
+.claude/settings.local.json
+
+# ============================================================
 # ADDITIONAL IGNORES FOR THIS PROJECT
 # ============================================================
 
