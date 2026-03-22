@@ -1,6 +1,8 @@
 import * as winston from 'winston';
 import * as path from 'path';
 
+const isServerlessRuntime = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+
 // Define log format
 const logFormat = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -13,7 +15,12 @@ const logFormat = winston.format.combine(
 const consoleFormat = winston.format.combine(
     winston.format.colorize(),
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    winston.format.printf(({ timestamp, level, message, ...metadata }) => {
+    winston.format.printf(({ timestamp, level, message, ...metadata }: {
+        timestamp?: string;
+        level: string;
+        message: unknown;
+        [key: string]: unknown;
+    }) => {
         let msg = `${timestamp} [${level}]: ${message}`;
         if (Object.keys(metadata).length > 0) {
             msg += ` ${JSON.stringify(metadata)}`;
@@ -32,25 +39,26 @@ const transports: winston.transport[] = [
         format: process.env.NODE_ENV === 'production' ? logFormat : consoleFormat,
         level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug')
     }),
-
-    // File transport for all logs
-    new winston.transports.File({
-        filename: path.join(logsDir, 'combined.log'),
-        format: logFormat,
-        maxsize: 10485760, // 10MB
-        maxFiles: 30,
-        level: 'info'
-    }),
-
-    // File transport for errors only
-    new winston.transports.File({
-        filename: path.join(logsDir, 'error.log'),
-        format: logFormat,
-        maxsize: 10485760, // 10MB
-        maxFiles: 10,
-        level: 'error'
-    })
 ];
+
+if (!isServerlessRuntime) {
+    transports.push(
+        new winston.transports.File({
+            filename: path.join(logsDir, 'combined.log'),
+            format: logFormat,
+            maxsize: 10485760, // 10MB
+            maxFiles: 30,
+            level: 'info'
+        }),
+        new winston.transports.File({
+            filename: path.join(logsDir, 'error.log'),
+            format: logFormat,
+            maxsize: 10485760, // 10MB
+            maxFiles: 10,
+            level: 'error'
+        })
+    );
+}
 
 // Create the logger instance
 export const logger = winston.createLogger({
