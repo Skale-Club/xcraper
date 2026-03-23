@@ -9,14 +9,11 @@ import { getApiUrl } from '@/lib/api';
 import {
     DollarSign,
     TrendingUp,
-    TrendingDown,
     Users,
     Search,
-    CreditCard,
     ArrowUpRight,
     ArrowDownRight,
     Loader2,
-    Calendar,
     Download,
 } from 'lucide-react';
 import { format, subDays, subMonths } from 'date-fns';
@@ -163,7 +160,7 @@ export default function AdminPnLPage() {
         refetchInterval: 60000,
     });
 
-    const { data: dailyData, isLoading: isDailyLoading } = useQuery({
+    const { isLoading: isDailyLoading } = useQuery({
         queryKey: ['pnl-daily', dateRange],
         queryFn: async () => {
             const { startDate, endDate } = getDateRange(dateRange);

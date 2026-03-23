@@ -25,6 +25,7 @@ type SettingsPage =
     | 'content'
     | 'pricing'
     | 'advanced'
+    | 'system'
     | 'pnl';
 
 interface SettingsLayoutProps {
@@ -44,6 +45,7 @@ const tabs: { id: SettingsPage; label: string; icon: typeof Globe; path: string 
     { id: 'content', label: 'Content', icon: SettingsIcon, path: '/admin/settings/content' },
     { id: 'pricing', label: 'Pricing', icon: DollarSign, path: '/admin/settings/pricing' },
     { id: 'advanced', label: 'Advanced', icon: Cpu, path: '/admin/settings/advanced' },
+    { id: 'system', label: 'System', icon: SettingsIcon, path: '/admin/settings/system' },
 ];
 
 export function SettingsLayout({ children, currentPage }: SettingsLayoutProps) {

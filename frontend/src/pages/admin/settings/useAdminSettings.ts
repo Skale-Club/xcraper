@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
-import { settingsApi, ApiError, AdminSettings, AdminCreditPackage } from '@/lib/api';
+import { settingsApi, ApiError, AdminSettings, AdminCreditPackage, AdminSystemSettings } from '@/lib/api';
 
 export function useAdminSettings() {
     const { toast } = useToast();
@@ -12,6 +12,7 @@ export function useAdminSettings() {
     });
 
     const settings: Partial<AdminSettings> = data?.settings ?? {};
+    const systemSettings: Partial<AdminSystemSettings> = data?.systemSettings ?? {};
     const packages: AdminCreditPackage[] = data?.packages ?? [];
 
     const updateMutation = useMutation({
@@ -23,6 +24,19 @@ export function useAdminSettings() {
         },
         onError: (error: Error) => {
             const message = error instanceof ApiError ? error.message : 'Failed to save settings';
+            toast({ variant: 'destructive', title: 'Error', description: message });
+        },
+    });
+
+    const updateSystemMutation = useMutation({
+        mutationFn: (data: Partial<AdminSystemSettings>) => settingsApi.updateSystem(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['admin-settings'] });
+            queryClient.invalidateQueries({ queryKey: ['public-settings'] });
+            toast({ title: 'System settings saved successfully!' });
+        },
+        onError: (error: Error) => {
+            const message = error instanceof ApiError ? error.message : 'Failed to save system settings';
             toast({ variant: 'destructive', title: 'Error', description: message });
         },
     });
@@ -73,12 +87,15 @@ export function useAdminSettings() {
 
     return {
         settings,
+        systemSettings,
         packages,
         isLoading,
         handleSave,
         saveSetting: handleSave,
+        saveSystemSetting: updateSystemMutation.mutate,
         optionalValue,
         isSaving: updateMutation.isPending,
+        isSavingSystem: updateSystemMutation.isPending,
         createPackage: createPackageMutation.mutate,
         deletePackage: deletePackageMutation.mutate,
         updatePackage: updatePackageMutation.mutate,

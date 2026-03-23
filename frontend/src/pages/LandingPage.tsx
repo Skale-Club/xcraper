@@ -22,6 +22,7 @@ interface PublicSettings {
     brandTagline: string;
     brandDescription: string;
     logoUrl?: string;
+    faviconUrl?: string;
     seoTitle: string;
     seoDescription: string;
     seoKeywords: string;
@@ -168,6 +169,7 @@ export default function LandingPage() {
             { label: 'Terms', url: '/terms' },
             { label: 'Pricing', url: '#pricing' },
         ];
+    const brandMark = settings.logoUrl || settings.faviconUrl || '/favicon.png';
 
     if (isLoading) {
         return (
@@ -194,7 +196,7 @@ export default function LandingPage() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center">
                         <Link href="/" className="flex items-center gap-2 group">
-                            <img src="/favicon.png" alt="Xcraper" className="w-10 h-10 rounded-xl shadow-lg group-hover:rotate-6 transition-transform" />
+                            <img src={brandMark} alt={settings.brandName} className="w-10 h-10 rounded-xl shadow-lg group-hover:rotate-6 transition-transform" />
                             <span className="text-2xl font-bold tracking-tight">
                                 {settings.brandName}
                             </span>
@@ -672,7 +674,7 @@ export default function LandingPage() {
                 <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-16">
                     <div className="col-span-1 md:col-span-1">
                         <Link href="/" className="flex items-center gap-2 mb-8">
-                            <img src="/favicon.png" alt="Xcraper" className="w-8 h-8 rounded-lg" />
+                            <img src={brandMark} alt={settings.brandName} className="w-8 h-8 rounded-lg" />
                             <span className="text-xl font-bold tracking-tight">{settings.brandName}</span>
                         </Link>
                         <p className="text-slate-500 leading-relaxed mb-8">

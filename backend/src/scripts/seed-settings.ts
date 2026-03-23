@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { settings, creditPackages } from '../db/schema.js';
+import { settings, creditPackages, systemSettings } from '../db/schema.js';
 
 async function seedSettings() {
     console.log('Seeding default settings...');
@@ -90,6 +90,15 @@ async function seedSettings() {
         console.log('✓ Default settings inserted');
     } else {
         console.log('✓ Settings already exist, skipping');
+    }
+
+    const existingSystemSettings = await db.select().from(systemSettings).limit(1);
+
+    if (existingSystemSettings.length === 0) {
+        await db.insert(systemSettings).values({ id: 'default' });
+        console.log('Default system settings inserted');
+    } else {
+        console.log('System settings already exist, skipping');
     }
 
     // Check if credit packages already exist

@@ -1,8 +1,9 @@
 import * as Sentry from '@sentry/react';
+import { getPublicSentryDsn } from './runtime-config';
 
 // Initialize Sentry if DSN is configured
-export function initSentry() {
-    const dsn = import.meta.env.VITE_SENTRY_DSN;
+export async function initSentry() {
+    const dsn = await getPublicSentryDsn();
 
     if (!dsn) {
         console.log('Sentry DSN not configured, skipping initialization');

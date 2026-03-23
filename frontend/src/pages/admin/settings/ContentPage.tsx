@@ -131,6 +131,30 @@ export default function ContentPage() {
                                 disabled={isSaving}
                             />
                         </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="duplicateWindowDays">Duplicate Window (Days)</Label>
+                            <Input
+                                id="duplicateWindowDays"
+                                type="number"
+                                min={0}
+                                defaultValue={settings.duplicateWindowDays ?? 30}
+                                onBlur={(e) => saveSetting({ duplicateWindowDays: parseInt(e.target.value) || 0 })}
+                                disabled={isSaving}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="enrichmentPricingMode">Enrichment Pricing Mode</Label>
+                            <select
+                                id="enrichmentPricingMode"
+                                defaultValue={settings.enrichmentPricingMode ?? 'fixed'}
+                                onChange={(e) => saveSetting({ enrichmentPricingMode: e.target.value as 'fixed' | 'base_plus_enrichment' })}
+                                disabled={isSaving}
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            >
+                                <option value="fixed">Fixed enriched price</option>
+                                <option value="base_plus_enrichment">Base + enrichment increment</option>
+                            </select>
+                        </div>
                         <div className="flex items-center gap-2 pt-6">
                             <input
                                 type="checkbox"
@@ -141,6 +165,17 @@ export default function ContentPage() {
                                 disabled={isSaving}
                             />
                             <Label htmlFor="registrationEnabled">Enable Registration</Label>
+                        </div>
+                        <div className="flex items-center gap-2 pt-6">
+                            <input
+                                type="checkbox"
+                                id="chargeForDuplicates"
+                                defaultChecked={settings.chargeForDuplicates ?? false}
+                                onChange={(e) => saveSetting({ chargeForDuplicates: e.target.checked })}
+                                className="h-4 w-4"
+                                disabled={isSaving}
+                            />
+                            <Label htmlFor="chargeForDuplicates">Charge for duplicate contacts</Label>
                         </div>
                     </div>
                 </div>

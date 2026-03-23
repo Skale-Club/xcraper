@@ -30,7 +30,9 @@ interface AppTopbarProps {
 }
 
 export default function AppTopbar({ location, onOpenSidebar }: AppTopbarProps) {
-    const currentPage = pageMetadata[location] ?? pageMetadata['/dashboard'];
+    const currentPage = pageMetadata[location]
+        ?? (location.startsWith('/admin/settings') ? pageMetadata['/admin/settings'] : undefined)
+        ?? pageMetadata['/dashboard'];
     const { openSearchSurvey } = useSearchSurvey();
     const showNewSearchButton = !location.startsWith('/admin');
 

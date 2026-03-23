@@ -1,6 +1,7 @@
 import { ApifyClient } from 'apify-client';
-import type { ActorStartOptions, WebhookEventType } from 'apify-client';
+import type { ActorStartOptions } from 'apify-client';
 import * as dotenv from 'dotenv';
+import { systemSettingsService } from './systemSettings.js';
 
 dotenv.config();
 
@@ -14,84 +15,10 @@ export const apifyClient = APIFY_API_TOKEN
     ? new ApifyClient({ token: APIFY_API_TOKEN })
     : null;
 
-// Retry configuration
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000; // 2 seconds
-const APIFY_MIN_RUN_CHARGE_USD = 0.5;
+const RETRY_DELAY_MS = 2000;
 
 type ActorType = 'standard' | 'enriched';
-
-interface ActorConfig {
-    type: ActorType;
-    id: string;
-    name: string;
-    extractsEmails: boolean;
-    costPerResultUsd: number;
-    fixedStartCostUsd: number;
-    creditsPerResult: number;
-    buildInput: (params: Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>>) => Record<string, unknown>;
-    buildStartOptions: (params: Required<Pick<SearchParams, 'maxResults'>>) => ActorStartOptions;
-}
-
-const baseSearchInput = (params: Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>>) => ({
-    searchStringsArray: [params.search.trim()],
-    locationQuery: params.location.trim(),
-    countryCode: params.countryCode,
-    language: params.language,
-    maxCrawledPlacesPerSearch: params.maxResults,
-    maxImages: 0, // 0 para não consumir recursos extras
-    maxReviews: 0,
-    skipClosedPlaces: false,
-    proxyConfig: {
-        useApifyProxy: true,
-    },
-});
-
-const ACTOR_CONFIGS: Record<ActorType, ActorConfig> = {
-    standard: {
-        type: 'standard',
-        id: 'nwua9Gu5YrADL7ZDj',
-        name: 'Google Maps Scraper (Standard)',
-        extractsEmails: false,
-        costPerResultUsd: 0.004,
-        fixedStartCostUsd: 0.007,
-        creditsPerResult: 1,
-        buildInput: (params) => ({
-            ...baseSearchInput(params),
-        }),
-        buildStartOptions: (params) => ({
-            memory: 2048, // Use 2GB de memória (mínimo necessário)
-            maxTotalChargeUsd: Number(Math.max(
-                APIFY_MIN_RUN_CHARGE_USD,
-                0.02 + 0.007 + (params.maxResults * 0.004),
-            ).toFixed(3)),
-        }),
-    },
-    enriched: {
-        type: 'enriched',
-        id: 'WnMxbsRLNbPeYL6ge',
-        name: 'Google Maps Email Extractor (Enriched)',
-        extractsEmails: true,
-        costPerResultUsd: 0.009,
-        fixedStartCostUsd: 0,
-        creditsPerResult: 3,
-        buildInput: (params) => ({
-            searchStringsArray: [params.search.trim()],
-            locationQuery: params.location.trim(),
-            countryCode: params.countryCode,
-            language: params.language,
-            maxCrawledPlacesPerSearch: params.maxResults,
-            skipClosedPlaces: false,
-        }),
-        buildStartOptions: (params) => ({
-            memory: 2048, // Use 2GB de memória (mínimo necessário)
-            maxTotalChargeUsd: Number(Math.max(
-                APIFY_MIN_RUN_CHARGE_USD,
-                0.02 + (params.maxResults * 0.009),
-            ).toFixed(3)),
-        }),
-    },
-};
 
 export interface SearchParams {
     search: string;
@@ -100,6 +27,20 @@ export interface SearchParams {
     language?: string;
     countryCode?: string;
     extractEmails?: boolean;
+}
+
+interface ActorConfig {
+    type: ActorType;
+    id: string;
+    name: string;
+    extractsEmails: boolean;
+    costPerResultUsd: number;
+    fixedStartCostUsd: number;
+    memoryMb: number;
+    baseRunCostUsd: number;
+    minRunChargeUsd: number;
+    buildInput: (params: Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>>) => Record<string, unknown>;
+    buildStartOptions: (params: Required<Pick<SearchParams, 'maxResults'>>) => ActorStartOptions;
 }
 
 export interface StartedTask {
@@ -149,6 +90,30 @@ export interface ScrapedPlace {
     [key: string]: unknown;
 }
 
+const baseSearchInput = (params: Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>>) => ({
+    searchStringsArray: [params.search.trim()],
+    locationQuery: params.location.trim(),
+    countryCode: params.countryCode,
+    language: params.language,
+    maxCrawledPlacesPerSearch: params.maxResults,
+    maxImages: 0,
+    maxReviews: 0,
+    skipClosedPlaces: false,
+    proxyConfig: {
+        useApifyProxy: true,
+    },
+});
+
+function buildStartOptions(config: Pick<ActorConfig, 'memoryMb' | 'baseRunCostUsd' | 'fixedStartCostUsd' | 'costPerResultUsd' | 'minRunChargeUsd'>, params: Required<Pick<SearchParams, 'maxResults'>>): ActorStartOptions {
+    return {
+        memory: config.memoryMb,
+        maxTotalChargeUsd: Number(Math.max(
+            config.minRunChargeUsd,
+            config.baseRunCostUsd + config.fixedStartCostUsd + (params.maxResults * config.costPerResultUsd),
+        ).toFixed(3)),
+    };
+}
+
 function getFirstString(value: unknown): string | undefined {
     if (typeof value === 'string') {
         const trimmed = value.trim();
@@ -169,10 +134,6 @@ function getFirstString(value: unknown): string | undefined {
     return undefined;
 }
 
-function getConfig(extractEmails: boolean): ActorConfig {
-    return extractEmails ? ACTOR_CONFIGS.enriched : ACTOR_CONFIGS.standard;
-}
-
 function normalizeSearchParams(params: SearchParams): Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>> {
     return {
         search: params.search.trim(),
@@ -180,6 +141,43 @@ function normalizeSearchParams(params: SearchParams): Required<Pick<SearchParams
         maxResults: params.maxResults || 50,
         language: params.language || 'en',
         countryCode: params.countryCode?.toLowerCase() || 'us',
+    };
+}
+
+async function getConfig(extractEmails: boolean): Promise<ActorConfig> {
+    const apifyConfig = await systemSettingsService.getApifyConfig();
+    const actorConfig = extractEmails ? apifyConfig.enriched : apifyConfig.standard;
+    const type: ActorType = extractEmails ? 'enriched' : 'standard';
+
+    return {
+        type,
+        id: actorConfig.actorId,
+        name: actorConfig.actorName,
+        extractsEmails: extractEmails,
+        costPerResultUsd: actorConfig.costPerResultUsd,
+        fixedStartCostUsd: actorConfig.fixedStartCostUsd,
+        memoryMb: actorConfig.memoryMb,
+        baseRunCostUsd: apifyConfig.baseRunCostUsd,
+        minRunChargeUsd: apifyConfig.minRunChargeUsd,
+        buildInput: type === 'standard'
+            ? (params) => ({
+                ...baseSearchInput(params),
+            })
+            : (params) => ({
+                searchStringsArray: [params.search.trim()],
+                locationQuery: params.location.trim(),
+                countryCode: params.countryCode,
+                language: params.language,
+                maxCrawledPlacesPerSearch: params.maxResults,
+                skipClosedPlaces: false,
+            }),
+        buildStartOptions: (params) => buildStartOptions({
+            memoryMb: actorConfig.memoryMb,
+            baseRunCostUsd: apifyConfig.baseRunCostUsd,
+            fixedStartCostUsd: actorConfig.fixedStartCostUsd,
+            costPerResultUsd: actorConfig.costPerResultUsd,
+            minRunChargeUsd: apifyConfig.minRunChargeUsd,
+        }, params),
     };
 }
 
@@ -193,9 +191,6 @@ function getItemsCountFromRun(run: Record<string, unknown>): number {
             : 0;
 }
 
-/**
- * Retry helper function with exponential backoff
- */
 async function retryWithBackoff<T>(
     fn: () => Promise<T>,
     retries: number = MAX_RETRIES,
@@ -209,10 +204,7 @@ async function retryWithBackoff<T>(
         }
 
         console.warn(`Retry attempt ${MAX_RETRIES - retries + 1}/${MAX_RETRIES} after error:`, error);
-
-        // Exponential backoff
-        await new Promise(resolve => setTimeout(resolve, delay));
-
+        await new Promise((resolve) => setTimeout(resolve, delay));
         return retryWithBackoff(fn, retries - 1, delay * 2);
     }
 }
@@ -222,38 +214,27 @@ export async function startScrapingTask(params: SearchParams): Promise<StartedTa
         throw new Error('Apify client is not initialized. Please set APIFY_API_TOKEN.');
     }
 
-    const normalizedParams = normalizeSearchParams(params);
-    const config = getConfig(Boolean(params.extractEmails));
+    const apifyDefaults = await systemSettingsService.getApifyConfig();
+    const normalizedParams = normalizeSearchParams({
+        ...params,
+        language: params.language || apifyDefaults.defaultSearchLanguage,
+        countryCode: params.countryCode || apifyDefaults.defaultSearchCountryCode,
+    });
+    const config = await getConfig(Boolean(params.extractEmails));
     const input = config.buildInput(normalizedParams);
-    const baseStartOptions = config.buildStartOptions({ maxResults: normalizedParams.maxResults });
+    const startOptions = config.buildStartOptions({ maxResults: normalizedParams.maxResults });
 
-    // Configure webhook for real-time notifications
     const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
     const webhookUrl = `${backendUrl}/api/webhooks/apify`;
 
-    const webhookEventTypes: WebhookEventType[] = [
-        'ACTOR.RUN.SUCCEEDED',
-        'ACTOR.RUN.FAILED',
-        'ACTOR.RUN.ABORTED',
-        'ACTOR.RUN.TIMED_OUT',
-    ];
-
-    const startOptions: ActorStartOptions = {
-        ...baseStartOptions,
-        // Remover webhooks por enquanto - eles serão configurados separadamente
-    };
-
     try {
-        // Use retry logic for starting the actor
-        const run = await retryWithBackoff(async () => {
-            return await apifyClient!.actor(config.id).start(input, startOptions);
-        });
+        const run = await retryWithBackoff(async () => apifyClient.actor(config.id).start(input, startOptions));
 
-        console.log(`✅ Started ${config.name} - Run ID: ${run.id}`);
-        console.log(`   Actor: ${config.id}`);
-        console.log(`   Email extraction: ${config.extractsEmails ? 'YES' : 'NO'}`);
-        console.log(`   Requested max results: ${normalizedParams.maxResults}`);
-        console.log(`   Webhook URL: ${webhookUrl}`);
+        console.log(`Started ${config.name} - Run ID: ${run.id}`);
+        console.log(`Actor: ${config.id}`);
+        console.log(`Email extraction: ${config.extractsEmails ? 'YES' : 'NO'}`);
+        console.log(`Requested max results: ${normalizedParams.maxResults}`);
+        console.log(`Webhook URL: ${webhookUrl}`);
 
         return {
             runId: run.id,
@@ -335,10 +316,7 @@ export async function getTaskResults(runId: string): Promise<ScrapedPlace[]> {
     }
 
     try {
-        // Use retry logic for fetching results
-        const { items } = await retryWithBackoff(async () => {
-            return await apifyClient!.run(runId).dataset().listItems();
-        });
+        const { items } = await retryWithBackoff(async () => apifyClient.run(runId).dataset().listItems());
 
         return items.map((item: Record<string, unknown>) => {
             const location =
@@ -398,6 +376,6 @@ export function isApifyConfigured(): boolean {
     return apifyClient !== null;
 }
 
-export function getActorConfig(extractEmails: boolean) {
+export async function getActorConfig(extractEmails: boolean) {
     return getConfig(extractEmails);
 }

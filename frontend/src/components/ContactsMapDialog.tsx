@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MapPin, Loader2, AlertCircle } from 'lucide-react';
+import { getGoogleMapsBrowserApiKey } from '@/lib/runtime-config';
 
 interface Contact {
     id: string;
@@ -32,13 +33,13 @@ declare global {
 // Singleton promise so we never load the script twice
 let googleMapsPromise: Promise<void> | null = null;
 
-function loadGoogleMapsScript(): Promise<void> {
+async function loadGoogleMapsScript(): Promise<void> {
     if (window.google?.maps) return Promise.resolve();
     if (googleMapsPromise) return googleMapsPromise;
 
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    const apiKey = await getGoogleMapsBrowserApiKey();
     if (!apiKey) {
-        return Promise.reject(new Error('Google Maps API key is missing. Set VITE_GOOGLE_MAPS_API_KEY in your .env file.'));
+        return Promise.reject(new Error('Google Maps API key is missing. Configure it in admin system settings or VITE_GOOGLE_MAPS_API_KEY.'));
     }
 
     const existing = document.querySelector('script[src*="maps.googleapis.com"]');

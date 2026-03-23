@@ -498,10 +498,12 @@ export interface PublicSettings {
     brandTagline: string;
     brandDescription: string;
     logoUrl?: string;
+    faviconUrl?: string;
     seoTitle: string;
     seoDescription: string;
     seoKeywords: string;
     ogImageUrl?: string;
+    twitterHandle?: string;
     heroTitle: string;
     heroSubtitle: string;
     heroCtaText: string;
@@ -526,6 +528,27 @@ export interface PublicSettings {
     freeCreditsOnSignup: number;
     creditsPerStandardResult: number;
     creditsPerEnrichedResult: number;
+    enrichmentPricingMode?: 'fixed' | 'base_plus_enrichment';
+    chargeForDuplicates?: boolean;
+    duplicateWindowDays?: number | null;
+    contactEmail?: string | null;
+    contactPhone?: string | null;
+    contactAddress?: string | null;
+    gtmContainerId?: string | null;
+}
+
+export interface PublicRuntimeSettings {
+    googleMapsApiKey?: string | null;
+    sentryDsn?: string | null;
+    pwaName: string;
+    pwaShortName: string;
+    pwaDescription: string;
+    pwaThemeColor: string;
+    pwaBackgroundColor: string;
+    pwaIcon192Url?: string | null;
+    pwaIcon512Url?: string | null;
+    pwaMaskableIcon512Url?: string | null;
+    pwaAppleTouchIconUrl?: string | null;
 }
 
 export interface AdminSettings extends PublicSettings {
@@ -538,6 +561,43 @@ export interface AdminSettings extends PublicSettings {
     gtmContainerId?: string;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface AdminSystemSettings {
+    id: string;
+    apifyBaseRunCostUsd: string;
+    apifyMinRunChargeUsd: string;
+    apifyStandardActorId: string;
+    apifyStandardActorName: string;
+    apifyStandardCostPerResultUsd: string;
+    apifyStandardFixedStartCostUsd: string;
+    apifyStandardMemoryMb: number;
+    apifyEnrichedActorId: string;
+    apifyEnrichedActorName: string;
+    apifyEnrichedCostPerResultUsd: string;
+    apifyEnrichedFixedStartCostUsd: string;
+    apifyEnrichedMemoryMb: number;
+    defaultSearchLanguage: string;
+    defaultSearchCountryCode: string;
+    publicGoogleMapsApiKey?: string | null;
+    publicSentryDsn?: string | null;
+    pwaName: string;
+    pwaShortName: string;
+    pwaDescription: string;
+    pwaThemeColor: string;
+    pwaBackgroundColor: string;
+    pwaIcon192Url?: string | null;
+    pwaIcon512Url?: string | null;
+    pwaMaskableIcon512Url?: string | null;
+    pwaAppleTouchIconUrl?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface PublicSettingsResponse {
+    settings: PublicSettings;
+    runtime: PublicRuntimeSettings;
+    packages: CreditPackage[];
 }
 
 export interface AdminCreditPackage {
@@ -556,15 +616,24 @@ export interface AdminCreditPackage {
  // Settings API
 export const settingsApi = {
     getPublic: () =>
-        apiFetch<{ settings: PublicSettings; packages: CreditPackage[] }>('/settings/public'),
+        apiFetch<PublicSettingsResponse>('/settings/public'),
 
     getAdmin: () =>
-        apiFetch<{ settings: AdminSettings; packages: AdminCreditPackage[] }>('/settings/'),
+        apiFetch<{ settings: AdminSettings; systemSettings: AdminSystemSettings; packages: AdminCreditPackage[] }>('/settings/'),
 
     update: (data: Partial<AdminSettings>) =>
         apiFetch<{ message: string; settings: AdminSettings }>('/settings/', {
             method: 'PATCH',
             body: JSON.stringify(data)
+        }),
+
+    getSystem: () =>
+        apiFetch<{ systemSettings: AdminSystemSettings }>('/settings/system'),
+
+    updateSystem: (data: Partial<AdminSystemSettings>) =>
+        apiFetch<{ message: string; systemSettings: AdminSystemSettings }>('/settings/system', {
+            method: 'PATCH',
+            body: JSON.stringify(data),
         }),
 
     createPackage: (data: {

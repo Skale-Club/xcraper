@@ -507,6 +507,46 @@ export const settings = pgTable('settings', {
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+export const systemSettings = pgTable('system_settings', {
+    id: text('id').primaryKey().default('default'),
+
+    // Scraper configuration
+    apifyBaseRunCostUsd: decimal('apify_base_run_cost_usd', { precision: 10, scale: 4 }).notNull().default('0.0200'),
+    apifyMinRunChargeUsd: decimal('apify_min_run_charge_usd', { precision: 10, scale: 4 }).notNull().default('0.5000'),
+
+    apifyStandardActorId: text('apify_standard_actor_id').notNull().default('nwua9Gu5YrADL7ZDj'),
+    apifyStandardActorName: text('apify_standard_actor_name').notNull().default('Google Maps Scraper (Standard)'),
+    apifyStandardCostPerResultUsd: decimal('apify_standard_cost_per_result_usd', { precision: 10, scale: 4 }).notNull().default('0.0040'),
+    apifyStandardFixedStartCostUsd: decimal('apify_standard_fixed_start_cost_usd', { precision: 10, scale: 4 }).notNull().default('0.0070'),
+    apifyStandardMemoryMb: integer('apify_standard_memory_mb').notNull().default(2048),
+
+    apifyEnrichedActorId: text('apify_enriched_actor_id').notNull().default('WnMxbsRLNbPeYL6ge'),
+    apifyEnrichedActorName: text('apify_enriched_actor_name').notNull().default('Google Maps Email Extractor (Enriched)'),
+    apifyEnrichedCostPerResultUsd: decimal('apify_enriched_cost_per_result_usd', { precision: 10, scale: 4 }).notNull().default('0.0090'),
+    apifyEnrichedFixedStartCostUsd: decimal('apify_enriched_fixed_start_cost_usd', { precision: 10, scale: 4 }).notNull().default('0.0000'),
+    apifyEnrichedMemoryMb: integer('apify_enriched_memory_mb').notNull().default(2048),
+
+    defaultSearchLanguage: text('default_search_language').notNull().default('en'),
+    defaultSearchCountryCode: text('default_search_country_code').notNull().default('us'),
+
+    // Public runtime configuration
+    publicGoogleMapsApiKey: text('public_google_maps_api_key'),
+    publicSentryDsn: text('public_sentry_dsn'),
+
+    pwaName: text('pwa_name').notNull().default('Xcraper'),
+    pwaShortName: text('pwa_short_name').notNull().default('Xcraper'),
+    pwaDescription: text('pwa_description').notNull().default('Google Maps lead generation and contact scraping platform.'),
+    pwaThemeColor: text('pwa_theme_color').notNull().default('#0f172a'),
+    pwaBackgroundColor: text('pwa_background_color').notNull().default('#0f172a'),
+    pwaIcon192Url: text('pwa_icon_192_url'),
+    pwaIcon512Url: text('pwa_icon_512_url'),
+    pwaMaskableIcon512Url: text('pwa_maskable_icon_512_url'),
+    pwaAppleTouchIconUrl: text('pwa_apple_touch_icon_url'),
+
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // Relations
 export const subscriptionPlansRelations = relations(subscriptionPlans, ({ many }) => ({
     users: many(users),
@@ -631,6 +671,8 @@ export type CreditPackage = typeof creditPackages.$inferSelect;
 export type NewCreditPackage = typeof creditPackages.$inferInsert;
 export type Settings = typeof settings.$inferSelect;
 export type NewSettings = typeof settings.$inferInsert;
+export type SystemSettings = typeof systemSettings.$inferSelect;
+export type NewSystemSettings = typeof systemSettings.$inferInsert;
 export type BillingEvent = typeof billingEvents.$inferSelect;
 export type NewBillingEvent = typeof billingEvents.$inferInsert;
 export type BillingAlert = typeof billingAlerts.$inferSelect;
