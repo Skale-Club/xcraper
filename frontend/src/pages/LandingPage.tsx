@@ -136,20 +136,24 @@ export default function LandingPage() {
 
     const defaultFaqs = [
         {
-            question: 'How accurate is the data?',
-            answer: 'We extract data directly from Google Maps in real-time. For email enrichment, we use proprietary algorithms to verify contact info, ensuring over 95% accuracy.',
+            question: 'How accurate is the extraction process?',
+            answer: 'We pull data directly from Google Maps in real-time, ensuring you get the most up-to-date business information. Our AI enrichment then verifies emails and social profiles to maintain high delivery rates.',
         },
         {
-            question: 'What is a "Credit"?',
-            answer: 'One credit equals one successfully extracted and enriched business contact. We don\'t charge for search results that don\'t have the data you need.',
+            question: 'What exactly is a "Credit"?',
+            answer: 'One credit represents one fully enriched business lead (including verified emails and social links). We only charge for successful extractions, ensuring you get maximum value for your investment.',
         },
         {
-            question: 'Can I cancel my subscription?',
-            answer: 'Absolutely. You can cancel at any time from your dashboard. Your remaining credits will stay in your account until the end of your billing cycle.',
+            question: 'Can I export the leads to my CRM?',
+            answer: 'Yes! You can export your data in CSV format, perfectly structured to be imported directly into HubSpot, Salesforce, Pipedrive, or any other CRM of your choice.',
         },
         {
-            question: 'Do you offer a free trial?',
-            answer: `Yes! Every new account gets ${settings.freeCreditsOnSignup} free credits to test our extraction and enrichment capabilities—no credit card required.`,
+            question: 'Does Xcraper find private email addresses?',
+            answer: 'We use advanced AI to discover and verify official business emails and public professional contacts associated with the business profiles, complying with public data access standards.',
+        },
+        {
+            question: 'How do the monthly credits work?',
+            answer: 'Your plan provides a set amount of credits each month. If you need more, you can upgrade your plan or purchase top-up packages at any time from your dashboard.',
         },
     ];
 
@@ -157,9 +161,27 @@ export default function LandingPage() {
     const displayTestimonials = settings.testimonialsContent?.length > 0
         ? settings.testimonialsContent
         : [
-            { name: 'Alex Rivera', role: 'Head of Sales', company: 'GrowthScale', content: 'Xcraper changed our outbound game. We went from 10 leads a day to 500+.' },
-            { name: 'Sarah Chen', role: 'Founder', company: 'Chen Agency', content: 'The email enrichment is magic. Most scrapers only give you phone numbers, but Xcraper gives us everything.' },
-            { name: 'Marc Dupont', role: 'Marketing Manager', company: 'Global Reach', content: 'Cleanest UI and fastest extraction I\'ve used. The CSV exports are perfectly formatted for our CRM.' },
+            { 
+                name: 'Alex Rivera', 
+                role: 'Head of Sales', 
+                company: 'GrowthScale', 
+                content: 'Xcraper changed our outbound game. We went from 10 leads a day to 500+.',
+                avatar: 'https://i.pravatar.cc/150?u=alex'
+            },
+            { 
+                name: 'Sarah Chen', 
+                role: 'Founder', 
+                company: 'Chen Agency', 
+                content: 'The email enrichment is magic. Most scrapers only give you phone numbers, but Xcraper gives us everything.',
+                avatar: 'https://i.pravatar.cc/150?u=sarah'
+            },
+            { 
+                name: 'Marc Dupont', 
+                role: 'Marketing Manager', 
+                company: 'Global Reach', 
+                content: 'Cleanest UI and fastest extraction I\'ve used. The CSV exports are perfectly formatted for our CRM.',
+                avatar: 'https://i.pravatar.cc/150?u=marc'
+            },
         ];
 
     const displayFooterLinks = settings.footerLinks?.length > 0
@@ -178,7 +200,6 @@ export default function LandingPage() {
                     <div className="h-16 w-16 rounded-full border-4 border-primary/20 animate-ping absolute"></div>
                     <div className="h-16 w-16 rounded-full border-4 border-t-primary animate-spin"></div>
                 </div>
-                <p className="mt-8 text-slate-400 font-medium animate-pulse">Loading experience...</p>
             </div>
         );
     }
@@ -197,7 +218,7 @@ export default function LandingPage() {
                     <div className="flex justify-between items-center">
                         <Link href="/" className="flex items-center gap-2 group">
                             <img src={brandMark} alt={settings.brandName} className="w-10 h-10 rounded-xl shadow-lg group-hover:rotate-6 transition-transform" />
-                            <span className="text-2xl font-bold tracking-tight">
+                            <span className="text-2xl font-bold tracking-tight font-heading">
                                 {settings.brandName}
                             </span>
                         </Link>
@@ -257,8 +278,8 @@ export default function LandingPage() {
 
             <main className="relative z-10">
                 {/* Hero Section */}
-                <section className="pt-28 pb-12 px-4 overflow-hidden">
-                    <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+                <section className="pt-32 pb-16 overflow-hidden">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-16 items-center">
                         <motion.div
                             initial={{ opacity: 0, x: -30 }}
                             animate={{ opacity: 1, x: 0 }}
@@ -267,7 +288,7 @@ export default function LandingPage() {
                             <Badge variant="outline" className="mb-6 py-1 px-4 rounded-full bg-primary/5 text-primary border-primary/20 animate-bounce">
                                 New: AI-Powered Email Enrichment
                             </Badge>
-                            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-[1.1]">
+                            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-[1.1] font-heading">
                                 {settings.heroTitle.split(' ').map((word, i) => (
                                     <span key={i} className={i >= settings.heroTitle.split(' ').length - 2 ? 'text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-400' : ''}>
                                         {word}{' '}
@@ -318,7 +339,7 @@ export default function LandingPage() {
                                             <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
                                         </div>
                                         <div className="flex-1 ml-4 h-7 bg-slate-900/50 rounded-lg flex items-center px-3 text-[10px] text-slate-500 font-mono">
-                                            xcraper.io/app/search
+                                            xcraper.skale.club/app/search
                                         </div>
                                     </div>
 
@@ -397,13 +418,18 @@ export default function LandingPage() {
 
                 {/* Pricing Section */}
                 {displayPlans.length > 0 && (
-                <section id="pricing" className="py-32 px-4 bg-slate-900/50">
-                    <div className="max-w-7xl mx-auto">
-                        <div className="text-center mb-16">
-                            <h2 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight">
+                <section id="pricing" className="py-32 bg-slate-950 relative overflow-hidden">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] pointer-events-none"></div>
+                    
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+                        <div className="text-center mb-20">
+                            <Badge variant="outline" className="mb-4 py-1 px-4 rounded-full bg-primary/10 text-primary border-primary/20 font-semibold tracking-wide uppercase text-[10px]">
+                                Transparent Pricing
+                            </Badge>
+                            <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight font-heading">
                                 {settings.pricingTitle}
                             </h2>
-                            <p className="text-xl text-slate-400 max-w-2xl mx-auto">
+                            <p className="text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
                                 {settings.pricingSubtitle}
                             </p>
                         </div>
@@ -412,88 +438,90 @@ export default function LandingPage() {
                             {displayPlans.map((plan, index) => (
                                 <motion.div
                                     key={plan.id}
-                                    initial={{ opacity: 0, y: 20 }}
+                                    initial={{ opacity: 0, y: 30 }}
                                     whileInView={{ opacity: 1, y: 0 }}
                                     viewport={{ once: true }}
-                                    transition={{ delay: index * 0.1 }}
-                                    className="relative group"
+                                    transition={{ delay: index * 0.1, duration: 0.5 }}
+                                    className="relative group h-full"
                                 >
-                                    {/* Glow effect for popular plans */}
+                                    {/* Advanced Glow effect for popular plans */}
                                     {(plan.isPopular || displayPlans.length === 1) && (
-                                        <div className="absolute -inset-px bg-gradient-to-br from-primary via-indigo-500 to-primary rounded-[2rem] opacity-75 blur-sm group-hover:opacity-100 transition-opacity"></div>
+                                        <div className="absolute -inset-[2px] bg-gradient-to-b from-primary/50 via-indigo-500/50 to-purple-600/50 rounded-[2.5rem] opacity-70 blur-[2px] group-hover:opacity-100 transition-opacity duration-500"></div>
                                     )}
 
-                                    <div className={`relative h-full p-8 rounded-[2rem] border transition-all duration-300 ${
+                                    <div className={`relative h-full flex flex-col p-10 rounded-[2.4rem] border transition-all duration-500 ${
                                         plan.isPopular || displayPlans.length === 1
-                                            ? 'bg-slate-800/90 border-primary/20 backdrop-blur-sm'
-                                            : 'bg-slate-800/50 border-slate-700 hover:border-slate-600 hover:bg-slate-800/80'
+                                            ? 'bg-slate-900/90 border-white/10 backdrop-blur-xl shadow-2xl shadow-primary/10'
+                                            : 'bg-slate-900/40 border-slate-800/50 hover:border-slate-700 hover:bg-slate-900/60'
                                     }`}>
                                         {/* Popular Badge */}
                                         {(plan.isPopular || displayPlans.length === 1) && (
-                                            <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                                                <div className="bg-gradient-to-r from-primary to-indigo-500 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg">
-                                                    ✨ Popular
+                                            <div className="absolute -top-5 left-1/2 -translate-x-1/2 z-20">
+                                                <div className="bg-gradient-to-r from-primary to-indigo-600 text-white text-[10px] font-black px-6 py-2 rounded-full shadow-xl uppercase tracking-tighter">
+                                                    Most Popular
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* Plan Name */}
-                                        <div className="mb-8">
-                                            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">{plan.name}</h3>
-                                            <div className="flex items-baseline gap-2">
-                                                <span className="text-5xl font-black text-white tracking-tight">${plan.price}</span>
-                                                <span className="text-lg text-slate-400 font-medium">/month</span>
+                                        {/* Plan Name & Price */}
+                                        <div className="mb-10 text-center">
+                                            <h3 className="text-xs font-black text-primary uppercase tracking-[0.2em] mb-6">{plan.name}</h3>
+                                            <div className="flex flex-col items-center gap-1">
+                                                <div className="flex items-start">
+                                                    <span className="text-2xl font-bold mt-2 mr-1 text-slate-500">$</span>
+                                                    <span className="text-7xl font-black text-white tracking-tighter">{plan.price}</span>
+                                                </div>
+                                                <span className="text-sm text-slate-500 font-medium">per month / billed monthly</span>
                                             </div>
                                         </div>
 
-                                        {/* Credits Badge */}
-                                        <div className={`relative overflow-hidden rounded-2xl p-4 mb-8 ${
+                                        {/* Credits Visualizer Box */}
+                                        <div className={`relative overflow-hidden rounded-3xl p-6 mb-10 text-center transition-transform group-hover:scale-[1.02] duration-500 ${
                                             plan.isPopular || displayPlans.length === 1
-                                                ? 'bg-gradient-to-br from-primary/20 to-indigo-500/20 border border-primary/30'
-                                                : 'bg-slate-700/50 border border-slate-600/50'
+                                                ? 'bg-gradient-to-br from-primary/10 to-transparent border border-primary/20'
+                                                : 'bg-slate-800/30 border border-slate-700/50'
                                         }`}>
-                                            <div className="relative z-10">
-                                                <div className="text-3xl font-black text-white mb-1">{plan.monthlyCredits}</div>
-                                                <div className="text-sm text-slate-300 font-medium">credits included</div>
-                                            </div>
-                                            {(plan.isPopular || displayPlans.length === 1) && (
-                                                <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 rounded-full blur-2xl"></div>
-                                            )}
+                                            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Monthly Power</div>
+                                            <div className="text-4xl font-black text-white mb-1 font-heading">{plan.monthlyCredits.toLocaleString()}</div>
+                                            <div className="text-[10px] text-primary font-black uppercase tracking-tighter">Verified Credits</div>
+                                            
+                                            {/* Decorative background element for credits */}
+                                            <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-primary/5 rounded-full blur-2xl"></div>
                                         </div>
 
                                         {/* Features List */}
-                                        <ul className="space-y-4 mb-8">
+                                        <div className="flex-1 space-y-5 mb-10">
                                             {[
-                                                `${plan.monthlyCredits} verified leads`,
-                                                'Email enrichment',
-                                                'Social profiles',
-                                                'Unlimited exports',
-                                                'Priority support',
+                                                { label: `${plan.monthlyCredits.toLocaleString()} Target Leads`, active: true },
+                                                { label: 'AI Email Discovery', active: true },
+                                                { label: 'Social Profile Extraction', active: true },
+                                                { label: 'Cloud-Sync Search History', active: plan.price > 0 },
+                                                { label: 'Priority API Access', active: plan.isPopular },
                                             ].map((feature, i) => (
-                                                <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
-                                                    <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5 ${
-                                                        plan.isPopular || displayPlans.length === 1
-                                                            ? 'bg-primary/20 text-primary'
-                                                            : 'bg-slate-700 text-slate-400'
+                                                <li key={i} className={`flex items-center gap-4 text-sm list-none transition-opacity ${feature.active ? 'text-slate-200' : 'text-slate-600 opacity-50'}`}>
+                                                    <div className={`shrink-0 w-6 h-6 rounded-lg flex items-center justify-center ${
+                                                        feature.active 
+                                                            ? 'bg-primary/10 text-primary border border-primary/20' 
+                                                            : 'bg-slate-800 text-slate-600 border border-slate-700'
                                                     }`}>
-                                                        <CheckCircle className="w-3 h-3" />
+                                                        {feature.active ? <CheckCircle className="w-3.5 h-3.5" /> : <X className="w-3 h-3" />}
                                                     </div>
-                                                    <span className="leading-tight">{feature}</span>
+                                                    <span className="font-medium">{feature.label}</span>
                                                 </li>
                                             ))}
-                                        </ul>
+                                        </div>
 
                                         {/* CTA Button */}
                                         <Link href="/login" className="block">
                                             <Button
-                                                className={`w-full h-12 text-base font-bold rounded-xl transition-all ${
+                                                className={`w-full h-14 text-base font-black rounded-2xl transition-all duration-300 ${
                                                     plan.isPopular || displayPlans.length === 1
-                                                        ? 'bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 hover:scale-[1.02]'
-                                                        : 'bg-slate-700 hover:bg-slate-600 text-white'
+                                                        ? 'bg-primary hover:bg-primary/90 text-white shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1'
+                                                        : 'bg-white/5 hover:bg-white/10 text-white border border-white/10'
                                                 }`}
                                                 variant="ghost"
                                             >
-                                                Get Started
+                                                Start with {plan.name}
                                             </Button>
                                         </Link>
                                     </div>
@@ -506,12 +534,12 @@ export default function LandingPage() {
 
                 {/* Testimonials */}
                 {settings.testimonialsEnabled && displayTestimonials.length > 0 && (
-                <section className="py-32 px-4 bg-slate-950 text-white overflow-hidden relative">
+                <section className="py-32 text-white overflow-hidden relative">
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-px bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
                     
-                    <div className="max-w-7xl mx-auto">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                         <div className="text-center mb-20">
-                            <h2 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight">What our customers say</h2>
+                            <h2 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight font-heading">What our customers say</h2>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -534,13 +562,11 @@ export default function LandingPage() {
                                     </p>
                                     <div className="flex items-center gap-4">
                                         <div className="w-12 h-12 rounded-2xl bg-slate-800 overflow-hidden flex-shrink-0">
-                                            {testimonial.avatar ? (
-                                                <img src={testimonial.avatar} alt={testimonial.name} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-slate-700 text-slate-300 font-bold">
-                                                    {testimonial.name.charAt(0)}
-                                                </div>
-                                            )}
+                                            <img 
+                                                src={testimonial.avatar || `https://i.pravatar.cc/150?u=${testimonial.name}`} 
+                                                alt={testimonial.name} 
+                                                className="w-full h-full object-cover" 
+                                            />
                                         </div>
                                         <div>
                                             <div className="font-bold text-lg">{testimonial.name}</div>
@@ -555,13 +581,13 @@ export default function LandingPage() {
                 )}
 
                 {/* FAQ Section */}
-                <section id="faq" className="py-32 px-4 bg-gradient-to-b from-slate-900 to-slate-950">
-                    <div className="max-w-4xl mx-auto">
+                <section id="faq" className="py-32 bg-gradient-to-b from-slate-900 to-slate-950">
+                    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
                         <div className="text-center mb-16">
                             <Badge variant="outline" className="mb-4 px-4 py-1 rounded-full bg-primary/5 text-primary border-primary/20">
                                 FAQ
                             </Badge>
-                            <h2 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight">{settings.faqTitle}</h2>
+                            <h2 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight font-heading">{settings.faqTitle}</h2>
                             <p className="text-lg text-slate-400 max-w-2xl mx-auto">
                                 Everything you need to know about the platform.
                             </p>
@@ -643,7 +669,7 @@ export default function LandingPage() {
                                 viewport={{ once: true }}
                                 className="relative z-10"
                             >
-                                <h2 className="text-4xl md:text-6xl font-black mb-8 tracking-tight">
+                                <h2 className="text-4xl md:text-6xl font-black mb-8 tracking-tight font-heading">
                                     {settings.brandTagline || "Ready to automate your lead generation?"}
                                 </h2>
                                 <p className="text-xl text-primary-foreground/80 mb-12 max-w-2xl mx-auto">

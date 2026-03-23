@@ -86,17 +86,17 @@ function applyManifest(config: PublicRuntimeConfigResponse) {
         theme_color: config.runtime.pwaThemeColor,
         icons: [
             {
-                src: resolveAppAsset(config.runtime.pwaIcon192Url, '/icon-192.png'),
+                src: resolveAppAsset(config.runtime.pwaIcon192Url || config.settings.faviconUrl, '/icon-192.png'),
                 sizes: '192x192',
                 type: 'image/png',
             },
             {
-                src: resolveAppAsset(config.runtime.pwaIcon512Url, '/icon-512.png'),
+                src: resolveAppAsset(config.runtime.pwaIcon512Url || config.settings.faviconUrl, '/icon-512.png'),
                 sizes: '512x512',
                 type: 'image/png',
             },
             {
-                src: resolveAppAsset(config.runtime.pwaMaskableIcon512Url, '/maskable-icon-512.png'),
+                src: resolveAppAsset(config.runtime.pwaMaskableIcon512Url || config.settings.faviconUrl, '/maskable-icon-512.png'),
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'maskable',

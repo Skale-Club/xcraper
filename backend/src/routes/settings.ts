@@ -176,23 +176,23 @@ router.get('/manifest.webmanifest', async (_req, res: Response): Promise<void> =
         const settingsRecord = await ensureSettingsRecord();
         const runtime = await systemSettingsService.getPublicRuntimeSettings();
         const icons = [
-            runtime.pwaIcon192Url ? {
-                src: runtime.pwaIcon192Url,
+            {
+                src: runtime.pwaIcon192Url || '/icon-192.png',
                 sizes: '192x192',
                 type: 'image/png',
-            } : null,
-            runtime.pwaIcon512Url ? {
-                src: runtime.pwaIcon512Url,
+            },
+            {
+                src: runtime.pwaIcon512Url || '/icon-512.png',
                 sizes: '512x512',
                 type: 'image/png',
-            } : null,
-            runtime.pwaMaskableIcon512Url ? {
-                src: runtime.pwaMaskableIcon512Url,
+            },
+            {
+                src: runtime.pwaMaskableIcon512Url || '/maskable-icon-512.png',
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'maskable',
-            } : null,
-        ].filter(Boolean);
+            },
+        ];
 
         res.setHeader('Content-Type', 'application/manifest+json');
         res.json({

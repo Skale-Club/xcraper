@@ -2,9 +2,10 @@ import { Router, Response, Request } from 'express';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { uploadFile, deleteFile } from '../services/storage.js';
 import { db } from '../db/index.js';
-import { settings, users } from '../db/schema.js';
+import { settings, users, systemSettings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import multer from 'multer';
+import { systemSettingsService } from '../services/systemSettings.js';
 
 const router = Router();
 
@@ -63,12 +64,21 @@ router.post('/favicon', requireAuth, requireAdmin, upload.single('favicon'), asy
             upsert: true,
         });
 
+        // Update branding settings
         await db.update(settings)
             .set({ faviconUrl: result.url, updatedAt: new Date() })
             .where(eq(settings.id, 'default'));
 
+        // Update system settings (PWA icons)
+        await systemSettingsService.updateSettings({
+            pwaIcon192Url: result.url,
+            pwaIcon512Url: result.url,
+            pwaMaskableIcon512Url: result.url,
+            pwaAppleTouchIconUrl: result.url,
+        });
+
         res.json({
-            message: 'Favicon uploaded successfully',
+            message: 'Favicon and PWA icons updated successfully',
             url: result.url,
         });
     } catch (error) {
@@ -235,7 +245,15 @@ router.delete('/favicon', requireAuth, requireAdmin, async (req, res: Response):
             .set({ faviconUrl: null, updatedAt: new Date() })
             .where(eq(settings.id, 'default'));
 
-        res.json({ message: 'Favicon deleted successfully' });
+        // Clear PWA icons
+        await systemSettingsService.updateSettings({
+            pwaIcon192Url: null,
+            pwaIcon512Url: null,
+            pwaMaskableIcon512Url: null,
+            pwaAppleTouchIconUrl: null,
+        });
+
+        res.json({ message: 'Favicon and PWA icons deleted successfully' });
     } catch (error) {
         console.error('Delete favicon error:', error);
         res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
