@@ -21,6 +21,12 @@ export default defineConfig({
                 globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
                 navigateFallbackDenylist: [/^\/api\//],
                 cleanupOutdatedCaches: true,
+                runtimeCaching: [
+                    {
+                        urlPattern: /^\/api\//,
+                        handler: 'NetworkOnly',
+                    },
+                ],
             },
             devOptions: {
                 enabled: false,
