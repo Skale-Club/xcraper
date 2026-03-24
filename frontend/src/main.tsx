@@ -6,12 +6,16 @@ import { initSentry } from './lib/sentry'
 import { loadPublicRuntimeConfig } from './lib/runtime-config'
 import './index.css'
 
-void loadPublicRuntimeConfig()
-void initSentry()
-registerSW({ immediate: true })
+async function bootstrap() {
+    await loadPublicRuntimeConfig()
+    await initSentry()
+    registerSW({ immediate: true })
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-        <App />
-    </React.StrictMode>,
-)
+    ReactDOM.createRoot(document.getElementById('root')!).render(
+        <React.StrictMode>
+            <App />
+        </React.StrictMode>,
+    )
+}
+
+void bootstrap()

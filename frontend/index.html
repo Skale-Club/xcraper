@@ -11,8 +11,84 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Xcraper" />
     <meta name="description" content="Google Maps lead generation and business contact scraping platform." />
+    <meta name="keywords" content="google maps scraper, lead generation, business contacts" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Xcraper | Lead Generation Tool" />
+    <meta property="og:description" content="Google Maps lead generation and business contact scraping platform." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Xcraper | Lead Generation Tool" />
+    <meta name="twitter:description" content="Google Maps lead generation and business contact scraping platform." />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Xcraper | Lead Generation Tool</title>
+    <script>
+      (function () {
+        var endpoint = '/api/settings/public';
+
+        function upsertMeta(selector, attrs, content) {
+          var element = document.head.querySelector(selector);
+          if (!element) {
+            element = document.createElement('meta');
+            Object.keys(attrs).forEach(function (key) {
+              element.setAttribute(key, attrs[key]);
+            });
+            document.head.appendChild(element);
+          }
+          element.setAttribute('content', content);
+        }
+
+        function removeMeta(selector) {
+          var element = document.head.querySelector(selector);
+          if (element) element.remove();
+        }
+
+        fetch(endpoint)
+          .then(function (response) {
+            if (!response.ok) throw new Error('Failed to load public settings');
+            return response.json();
+          })
+          .then(function (payload) {
+            var settings = payload && payload.settings ? payload.settings : null;
+            var runtime = payload && payload.runtime ? payload.runtime : null;
+            if (!settings) return;
+
+            var title = settings.seoTitle || settings.brandName || 'Xcraper';
+            var description = settings.seoDescription || settings.brandDescription || '';
+            var keywords = settings.seoKeywords || '';
+            var brandName = settings.brandName || 'Xcraper';
+            var favicon = settings.faviconUrl || '/favicon.png';
+            var appleTitle = (runtime && runtime.pwaShortName) || brandName;
+
+            document.title = title;
+            upsertMeta('meta[name="description"]', { name: 'description' }, description);
+            upsertMeta('meta[name="keywords"]', { name: 'keywords' }, keywords);
+            upsertMeta('meta[name="apple-mobile-web-app-title"]', { name: 'apple-mobile-web-app-title' }, appleTitle);
+            upsertMeta('meta[property="og:type"]', { property: 'og:type' }, 'website');
+            upsertMeta('meta[property="og:title"]', { property: 'og:title' }, title);
+            upsertMeta('meta[property="og:description"]', { property: 'og:description' }, description);
+            upsertMeta('meta[name="twitter:card"]', { name: 'twitter:card' }, settings.ogImageUrl ? 'summary_large_image' : 'summary');
+            upsertMeta('meta[name="twitter:title"]', { name: 'twitter:title' }, title);
+            upsertMeta('meta[name="twitter:description"]', { name: 'twitter:description' }, description);
+
+            if (settings.twitterHandle) {
+              upsertMeta('meta[name="twitter:site"]', { name: 'twitter:site' }, settings.twitterHandle);
+            } else {
+              removeMeta('meta[name="twitter:site"]');
+            }
+
+            if (settings.ogImageUrl) {
+              upsertMeta('meta[property="og:image"]', { property: 'og:image' }, settings.ogImageUrl);
+              upsertMeta('meta[name="twitter:image"]', { name: 'twitter:image' }, settings.ogImageUrl);
+            } else {
+              removeMeta('meta[property="og:image"]');
+              removeMeta('meta[name="twitter:image"]');
+            }
+
+            var faviconLink = document.getElementById('app-favicon');
+            if (faviconLink) faviconLink.href = favicon;
+          })
+          .catch(function () {});
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap" rel="stylesheet">

@@ -5,6 +5,11 @@ type PublicRuntimeConfigResponse = {
         brandName: string;
         brandDescription: string;
         faviconUrl?: string | null;
+        seoTitle: string;
+        seoDescription: string;
+        seoKeywords: string;
+        ogImageUrl?: string | null;
+        twitterHandle?: string | null;
     };
     runtime: {
         googleMapsApiKey?: string | null;
@@ -29,6 +34,11 @@ const fallbackRuntimeConfig: PublicRuntimeConfigResponse = {
         brandName: 'Xcraper',
         brandDescription: 'Google Maps lead generation and contact scraping platform.',
         faviconUrl: null,
+        seoTitle: 'Xcraper | Lead Generation Tool',
+        seoDescription: 'Google Maps lead generation and business contact scraping platform.',
+        seoKeywords: 'google maps scraper, lead generation, business contacts',
+        ogImageUrl: null,
+        twitterHandle: null,
     },
     runtime: {
         googleMapsApiKey: null,
@@ -66,6 +76,21 @@ function upsertMeta(name: string, content: string) {
     }
 
     meta.setAttribute('content', content);
+}
+
+function upsertPropertyMeta(property: string, content: string) {
+    let meta = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement | null;
+    if (!meta) {
+        meta = document.createElement('meta');
+        meta.setAttribute('property', property);
+        document.head.appendChild(meta);
+    }
+
+    meta.setAttribute('content', content);
+}
+
+function removeMeta(selector: string) {
+    document.querySelector(selector)?.remove();
 }
 
 function resolveAppAsset(url: string | null | undefined, fallbackPath: string) {
@@ -116,7 +141,37 @@ function applyManifest(config: PublicRuntimeConfigResponse) {
 }
 
 function applyHeadConfig(config: PublicRuntimeConfigResponse) {
+    document.title = config.settings.seoTitle || config.settings.brandName;
     upsertMeta('theme-color', config.runtime.pwaThemeColor);
+    upsertMeta('description', config.settings.seoDescription || config.settings.brandDescription);
+    upsertMeta('keywords', config.settings.seoKeywords || '');
+    upsertMeta('apple-mobile-web-app-title', config.runtime.pwaShortName || config.settings.brandName);
+    upsertMeta('twitter:card', config.settings.ogImageUrl ? 'summary_large_image' : 'summary');
+    upsertMeta('twitter:title', config.settings.seoTitle || config.settings.brandName);
+    upsertMeta('twitter:description', config.settings.seoDescription || config.settings.brandDescription);
+
+    if (config.settings.twitterHandle) {
+        upsertMeta('twitter:site', config.settings.twitterHandle);
+    } else {
+        removeMeta('meta[name="twitter:site"]');
+    }
+
+    if (config.settings.ogImageUrl) {
+        upsertMeta('twitter:image', config.settings.ogImageUrl);
+    } else {
+        removeMeta('meta[name="twitter:image"]');
+    }
+
+    upsertPropertyMeta('og:title', config.settings.seoTitle || config.settings.brandName);
+    upsertPropertyMeta('og:description', config.settings.seoDescription || config.settings.brandDescription);
+    upsertPropertyMeta('og:type', 'website');
+
+    if (config.settings.ogImageUrl) {
+        upsertPropertyMeta('og:image', config.settings.ogImageUrl);
+    } else {
+        removeMeta('meta[property="og:image"]');
+    }
+
     upsertLink('app-favicon', 'icon', config.settings.faviconUrl || '/favicon.png');
     upsertLink(
         'app-apple-touch-icon',
