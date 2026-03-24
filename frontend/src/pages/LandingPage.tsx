@@ -14,7 +14,6 @@ import {
     Menu,
     X,
     ChevronDown,
-    MousePointer2,
 } from 'lucide-react';
 
 interface PublicSettings {
@@ -56,6 +55,7 @@ export default function LandingPage() {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [openFaq, setOpenFaq] = useState<number | null>(null);
     const [scrolled, setScrolled] = useState(false);
+    const currentYear = new Date().getFullYear();
 
     useEffect(() => {
         const handleScroll = () => {
@@ -101,6 +101,7 @@ export default function LandingPage() {
         registrationEnabled: true,
         freeCreditsOnSignup: 10,
     };
+    const footerText = settings.footerText.replace(/©\s*\d{4}/, `© ${currentYear}`);
 
     useEffect(() => {
         if (settings) {
@@ -495,7 +496,7 @@ export default function LandingPage() {
                                                 { label: `${plan.monthlyCredits.toLocaleString()} Target Leads`, active: true },
                                                 { label: 'AI Email Discovery', active: true },
                                                 { label: 'Social Profile Extraction', active: true },
-                                                { label: 'Cloud-Sync Search History', active: plan.price > 0 },
+                                                { label: 'Cloud-Sync Search History', active: Number(plan.price) > 0 },
                                                 { label: 'Priority API Access', active: plan.isPopular },
                                             ].map((feature, i) => (
                                                 <li key={i} className={`flex items-center gap-4 text-sm list-none transition-opacity ${feature.active ? 'text-slate-200' : 'text-slate-600 opacity-50'}`}>
@@ -658,8 +659,8 @@ export default function LandingPage() {
                 </section>
 
                 {/* Final CTA */}
-                <section className="py-24 px-4">
-                    <div className="max-w-7xl mx-auto">
+                <section className="py-24">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                         <div className="relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-primary to-indigo-700 p-12 md:p-24 text-center text-white shadow-2xl">
                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20 pointer-events-none"></div>
                             
@@ -696,36 +697,29 @@ export default function LandingPage() {
             </main>
 
             {/* Footer */}
-            <footer className="bg-slate-950 border-t border-slate-900 py-20 px-4 relative z-10">
-                <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-16">
-                    <div className="col-span-1 md:col-span-1">
-                        <Link href="/" className="flex items-center gap-2 mb-8">
+            <footer className="bg-slate-950 border-t border-slate-900 pt-16 pb-8 relative z-10">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_220px_220px] gap-12 lg:gap-16 items-start">
+                    <div className="max-w-md">
+                        <Link href="/" className="flex items-center gap-2 mb-4">
                             <img src={brandMark} alt={settings.brandName} className="w-8 h-8 rounded-lg" />
                             <span className="text-xl font-bold tracking-tight">{settings.brandName}</span>
                         </Link>
-                        <p className="text-slate-500 leading-relaxed mb-8">
+                        <p className="text-slate-500 leading-relaxed">
                             {settings.brandDescription}
                         </p>
-                        <div className="flex gap-4">
-                            {settings.socialLinks?.map((social, index) => (
-                                <a key={index} href={social.url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 transition-all cursor-pointer" title={social.platform}>
-                                    <MousePointer2 className="w-4 h-4" />
-                                </a>
-                            ))}
-                        </div>
                     </div>
 
                     <div>
-                        <h4 className="font-bold mb-8 uppercase tracking-widest text-xs text-slate-500">Product</h4>
-                        <ul className="space-y-4">
+                        <h4 className="font-bold mb-4 uppercase tracking-widest text-xs text-slate-500">Product</h4>
+                        <ul className="space-y-3">
                             <li><a href="#pricing" className="text-slate-400 hover:text-primary transition-colors">Pricing</a></li>
-                            <li><a href="#faq" className="text-slate-400 hover:text-primary transition-colors">Documentation</a></li>
+                            <li><a href="#faq" className="text-slate-400 hover:text-primary transition-colors">FAQ</a></li>
                         </ul>
                     </div>
 
                     <div>
-                        <h4 className="font-bold mb-8 uppercase tracking-widest text-xs text-slate-500">Legal</h4>
-                        <ul className="space-y-4">
+                        <h4 className="font-bold mb-4 uppercase tracking-widest text-xs text-slate-500">Legal</h4>
+                        <ul className="space-y-3">
                             {displayFooterLinks.map((link, index) => (
                                 <li key={index}>
                                     <Link href={link.url} className="text-slate-400 hover:text-primary transition-colors">
@@ -735,24 +729,9 @@ export default function LandingPage() {
                             ))}
                         </ul>
                     </div>
-
-                    <div>
-                        <h4 className="font-bold mb-8 uppercase tracking-widest text-xs text-slate-500">Subscribe</h4>
-                        <p className="text-slate-500 text-sm mb-6">Get the latest updates on data extraction techniques.</p>
-                        <div className="flex gap-2">
-                            <input 
-                                type="email" 
-                                placeholder="Email address" 
-                                className="bg-slate-900 border-none rounded-xl px-4 py-3 text-sm flex-1 focus:ring-2 focus:ring-primary outline-none text-white placeholder:text-slate-500" 
-                            />
-                            <Button className="rounded-xl px-4">
-                                <ArrowRight className="w-4 h-4" />
-                            </Button>
-                        </div>
-                    </div>
                 </div>
-                <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-slate-900 text-center text-slate-500 text-sm">
-                    {settings.footerText}
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 pt-6 border-t border-slate-900 text-center text-slate-500 text-sm">
+                    {footerText}
                 </div>
             </footer>
         </div>

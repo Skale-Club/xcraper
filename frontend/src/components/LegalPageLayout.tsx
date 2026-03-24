@@ -18,6 +18,7 @@ export default function LegalPageLayout({
     children,
 }: LegalPageLayoutProps) {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const currentYear = new Date().getFullYear();
     const { data } = useQuery({
         queryKey: ['public-settings'],
         queryFn: () => settingsApi.getPublic(),
@@ -49,6 +50,7 @@ export default function LegalPageLayout({
         creditsPerStandardResult: 1,
         creditsPerEnrichedResult: 3,
     };
+    const footerText = settings.footerText.replace(/©\s*\d{4}/, `© ${currentYear}`);
 
     const displayFooterLinks = settings.footerLinks?.length > 0
         ? settings.footerLinks
@@ -212,7 +214,7 @@ export default function LegalPageLayout({
                         </div>
                     </div>
                     <div className="border-t border-gray-800 pt-8 text-center text-sm">
-                        {settings.footerText}
+                        {footerText}
                     </div>
                 </div>
             </footer>
