@@ -104,34 +104,38 @@ export default function LandingPage() {
     const footerText = settings.footerText.replace(/©\s*\d{4}/, `© ${currentYear}`);
 
     useEffect(() => {
-        if (settings) {
-            document.title = settings.seoTitle;
-            let metaDescription = document.querySelector('meta[name="description"]');
-            if (!metaDescription) {
-                metaDescription = document.createElement('meta');
-                metaDescription.setAttribute('name', 'description');
-                document.head.appendChild(metaDescription);
-            }
-            metaDescription.setAttribute('content', settings.seoDescription);
-
-            const updateMeta = (property: string, content: string) => {
-                let meta = document.querySelector(`meta[property="${property}"]`);
-                if (!meta) {
-                    meta = document.createElement('meta');
-                    meta.setAttribute('property', property);
-                    document.head.appendChild(meta);
-                }
-                meta.setAttribute('content', content);
-            };
-
-            updateMeta('og:title', settings.seoTitle);
-            updateMeta('og:description', settings.seoDescription);
-            if (settings.ogImageUrl) {
-                updateMeta('og:image', settings.ogImageUrl);
-            }
-            updateMeta('og:type', 'website');
+        if (!settingsData?.settings) {
+            return;
         }
-    }, [settings]);
+
+        const nextSettings = settingsData.settings;
+        document.title = nextSettings.seoTitle;
+
+        let metaDescription = document.querySelector('meta[name="description"]');
+        if (!metaDescription) {
+            metaDescription = document.createElement('meta');
+            metaDescription.setAttribute('name', 'description');
+            document.head.appendChild(metaDescription);
+        }
+        metaDescription.setAttribute('content', nextSettings.seoDescription);
+
+        const updateMeta = (property: string, content: string) => {
+            let meta = document.querySelector(`meta[property="${property}"]`);
+            if (!meta) {
+                meta = document.createElement('meta');
+                meta.setAttribute('property', property);
+                document.head.appendChild(meta);
+            }
+            meta.setAttribute('content', content);
+        };
+
+        updateMeta('og:title', nextSettings.seoTitle);
+        updateMeta('og:description', nextSettings.seoDescription);
+        if (nextSettings.ogImageUrl) {
+            updateMeta('og:image', nextSettings.ogImageUrl);
+        }
+        updateMeta('og:type', 'website');
+    }, [settingsData]);
 
     const displayPlans = plansData?.plans ?? [];
 
