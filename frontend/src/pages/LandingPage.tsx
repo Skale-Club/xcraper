@@ -258,9 +258,9 @@ export default function LandingPage() {
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="md:hidden bg-slate-900 border-b border-slate-800 overflow-hidden"
+                            className="md:hidden mt-3 bg-slate-900 border-b border-slate-800 overflow-hidden"
                         >
-                            <div className="px-4 py-6 flex flex-col gap-6">
+                            <div className="px-4 pt-8 pb-6 flex flex-col gap-6">
                                 <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-lg font-medium">Pricing</a>
                                 <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="text-lg font-medium">FAQ</a>
                                 <Link href="/login">
@@ -279,7 +279,7 @@ export default function LandingPage() {
 
             <main className="relative z-10">
                 {/* Hero Section */}
-                <section className="pt-32 pb-16 overflow-hidden">
+                <section className="pt-32 pb-10 md:pb-16 overflow-hidden">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-16 items-center">
                         <motion.div
                             initial={{ opacity: 0, x: -30 }}
@@ -299,19 +299,23 @@ export default function LandingPage() {
                             <p className="text-xl text-slate-400 mb-10 leading-relaxed max-w-xl">
                                 {settings.heroSubtitle}
                             </p>
-                            <div className="flex flex-col sm:flex-row gap-4 items-center">
+                            <div className="flex flex-col sm:flex-row gap-7 sm:gap-4 items-start sm:items-center">
                                 {settings.registrationEnabled && (
-                                    <Link href="/login">
-                                        <Button size="lg" className="h-14 px-10 text-lg rounded-2xl shadow-xl shadow-primary/20 transition-transform hover:scale-105 active:scale-95">
+                                    <Link href="/login" className="w-full sm:w-auto">
+                                        <Button size="lg" className="h-14 w-full sm:w-auto px-10 text-lg rounded-2xl shadow-xl shadow-primary/20 transition-transform hover:scale-105 active:scale-95">
                                             {settings.heroCtaText}
                                             <ArrowRight className="ml-2 w-5 h-5" />
                                         </Button>
                                     </Link>
                                 )}
-                                <div className="flex -space-x-3 items-center">
+                                <div className="flex -space-x-2 items-center self-start">
                                     {[1, 2, 3, 4].map((i) => (
-                                        <div key={i} className="w-10 h-10 rounded-full border-2 border-slate-900 bg-slate-700 overflow-hidden">
-                                            <img src={`https://i.pravatar.cc/100?u=${i + 10}`} alt="User" />
+                                        <div key={i} className="w-10 h-10 aspect-square shrink-0 rounded-full border-2 border-slate-900 bg-slate-700 overflow-hidden">
+                                            <img
+                                                src={`https://i.pravatar.cc/100?u=${i + 10}`}
+                                                alt="User"
+                                                className="block w-full h-full object-cover"
+                                            />
                                         </div>
                                     ))}
                                     <div className="pl-6 text-sm text-slate-500 font-medium">
@@ -325,7 +329,7 @@ export default function LandingPage() {
                             initial={{ opacity: 0, scale: 0.8, rotate: 5 }}
                             animate={{ opacity: 1, scale: 1, rotate: 0 }}
                             transition={{ duration: 1, delay: 0.2, ease: 'easeOut' }}
-                            className="relative lg:block"
+                            className="relative lg:block lg:pr-10"
                         >
                             {/* Visual Demo Visualizer */}
                             <div className="relative bg-slate-900 rounded-[2.5rem] p-4 shadow-2xl border border-slate-800/50 backdrop-blur-sm">
@@ -400,7 +404,7 @@ export default function LandingPage() {
                                 <motion.div
                                     animate={{ y: [0, -10, 0] }}
                                     transition={{ duration: 3, repeat: Infinity }}
-                                    className="absolute -right-8 top-1/2 bg-slate-800 p-4 rounded-2xl shadow-2xl border border-slate-700 hidden sm:block"
+                                    className="absolute -right-4 top-1/2 bg-slate-800 px-3 py-3 rounded-2xl shadow-2xl border border-slate-700 hidden sm:block"
                                 >
                                     <div className="flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -419,7 +423,7 @@ export default function LandingPage() {
 
                 {/* Pricing Section */}
                 {displayPlans.length > 0 && (
-                <section id="pricing" className="py-32 bg-slate-950 relative overflow-hidden">
+                <section id="pricing" className="pt-16 pb-24 md:py-32 bg-slate-950 relative overflow-hidden">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] pointer-events-none"></div>
                     
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
