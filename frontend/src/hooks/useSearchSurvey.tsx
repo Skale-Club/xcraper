@@ -335,7 +335,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                 className="flex w-full max-w-2xl flex-col overflow-visible rounded-[28px] border border-border bg-background shadow-2xl"
                                 onClick={(event) => event.stopPropagation()}
                             >
-                                <div className="border-b border-border bg-muted/20 px-6 py-5">
+                                <div className="rounded-t-[28px] border-b border-border bg-muted/20 px-6 py-5">
                                     <div className="flex items-center justify-between gap-4">
                                         <div className="flex items-center gap-3">
                                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
