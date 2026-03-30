@@ -15,6 +15,7 @@ interface PlacesAutocompleteInputProps {
     autoFocus?: boolean;
     disabled?: boolean;
     minLength?: number;
+    onOpenChange?: (open: boolean) => void;
 }
 
 export function PlacesAutocompleteInput({
@@ -27,6 +28,7 @@ export function PlacesAutocompleteInput({
     autoFocus = false,
     disabled = false,
     minLength = 3,
+    onOpenChange,
 }: PlacesAutocompleteInputProps) {
     const listboxId = useId();
     const blurTimeoutRef = useRef<number | null>(null);
@@ -39,6 +41,10 @@ export function PlacesAutocompleteInput({
     const trimmedValue = value.trim();
     const meetsMinLength = trimmedValue.length >= minLength;
     const isOpen = isFocused && meetsMinLength && (isLoading || suggestions.length > 0);
+
+    useEffect(() => {
+        onOpenChange?.(isOpen);
+    }, [isOpen, onOpenChange]);
 
     useEffect(() => {
         return () => {
@@ -157,7 +163,10 @@ export function PlacesAutocompleteInput({
                     }, 120);
                 }}
                 onKeyDown={handleKeyDown}
-                className="h-12 pl-10 pr-10 text-base focus-visible:ring-0 focus-visible:ring-offset-0"
+                className={cn(
+                    "h-12 pl-10 pr-10 text-base focus-visible:ring-0 focus-visible:ring-offset-0",
+                    isOpen && "rounded-b-none"
+                )}
                 disabled={disabled}
                 role="combobox"
                 aria-autocomplete="list"
@@ -168,8 +177,8 @@ export function PlacesAutocompleteInput({
                 <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
             )}
             {isOpen && (
-                <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[999] overflow-hidden rounded-xl border border-border bg-background shadow-2xl">
-                    <ul id={listboxId} role="listbox" className="max-h-64 overflow-y-auto py-2">
+                <div className="absolute left-0 right-0 top-full z-[999] overflow-hidden rounded-b-xl border border-t-0 border-border bg-background shadow-2xl">
+                    <ul id={listboxId} role="listbox" className="max-h-64 overflow-y-auto pb-2">
                         {suggestions.map((suggestion, index) => (
                             <li key={`${suggestion.kind}-${suggestion.placeId ?? suggestion.text}-${index}`} role="presentation">
                                 <button

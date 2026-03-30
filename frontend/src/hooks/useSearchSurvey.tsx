@@ -63,6 +63,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
     const [searchStatus, setSearchStatus] = useState<SearchStatus | null>(null);
     const [isSearchSurveyOpen, setIsSearchSurveyOpen] = useState(false);
     const [surveyStep, setSurveyStep] = useState(0);
+    const [autocompleteOpen, setAutocompleteOpen] = useState(false);
 
     const { data: settingsData } = useQuery({
         queryKey: ['public-settings'],
@@ -287,6 +288,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
             return;
         }
 
+        setAutocompleteOpen(false);
         setSurveyStep((current) => current + 1);
     };
 
@@ -491,7 +493,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, x: -18 }}
                                                 transition={{ duration: 0.2 }}
-                                                className="space-y-6 overflow-visible"
+                                                className={`space-y-6 overflow-visible transition-[padding] duration-200 ${autocompleteOpen ? 'pb-64' : ''}`}
                                             >
                                                 <div className="space-y-2">
                                                     <h2 className="text-xl font-semibold tracking-tight text-foreground">
@@ -514,6 +516,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                         onValueChange={setQuery}
                                                         icon={Search}
                                                         disabled={isLoading}
+                                                        onOpenChange={setAutocompleteOpen}
                                                     />
                                                 </div>
                                             </motion.div>
@@ -526,7 +529,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, x: -18 }}
                                                 transition={{ duration: 0.2 }}
-                                                className="space-y-6 overflow-visible"
+                                                className={`space-y-6 overflow-visible transition-[padding] duration-200 ${autocompleteOpen ? 'pb-64' : ''}`}
                                             >
                                                 <div className="space-y-2">
                                                     <h2 className="text-xl font-semibold tracking-tight text-foreground">
@@ -549,6 +552,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                         onValueChange={setLocation}
                                                         icon={MapPin}
                                                         disabled={isLoading}
+                                                        onOpenChange={setAutocompleteOpen}
                                                     />
                                                 </div>
                                             </motion.div>
@@ -677,7 +681,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                             <Button
                                                 type="button"
                                                 variant="outline"
-                                                onClick={() => setSurveyStep((current) => Math.max(current - 1, 0))}
+                                                onClick={() => { setAutocompleteOpen(false); setSurveyStep((current) => Math.max(current - 1, 0)); }}
                                                 disabled={isLoading}
                                             >
                                                 Back
