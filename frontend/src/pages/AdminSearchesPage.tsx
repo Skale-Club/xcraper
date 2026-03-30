@@ -283,6 +283,7 @@ export default function AdminSearchesPage() {
     const { data, isLoading } = useQuery({
         queryKey: ['admin', 'searches', page, statusFilter, debouncedSearch],
         queryFn: () => adminApi.getSearches(page, 20, statusFilter, debouncedSearch),
+        refetchInterval: 15000,
     });
 
     const { data: timelineData, isLoading: timelineLoading } = useQuery({

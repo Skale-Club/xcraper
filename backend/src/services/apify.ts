@@ -5,7 +5,7 @@ import { systemSettingsService } from './systemSettings.js';
 
 dotenv.config();
 
-const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
+const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN?.trim();
 
 if (!APIFY_API_TOKEN) {
     console.warn('Warning: APIFY_API_TOKEN is not set. Scraping functionality will not work.');
