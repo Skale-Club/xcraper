@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Force Vercel NFT to include proxy-agent and its dependency tree
+import 'proxy-agent';
+
 // Dynamic import of Express app
 let app: any;
 
