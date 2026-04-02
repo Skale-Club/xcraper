@@ -11,6 +11,7 @@ ALTER TABLE "subscription_plans" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "billing_events" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "billing_alerts" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "usage_summary" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "system_settings" ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if any (to make it idempotent)
 DO $$ 
@@ -168,6 +169,20 @@ USING (auth.uid() = user_id);
 
 CREATE POLICY "Admins can manage all usage summary"
 ON "usage_summary" FOR ALL
+USING (
+  EXISTS (
+    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+  )
+);
+
+-- 12. System Settings Table Policies
+CREATE POLICY "Admins can manage system settings"
+ON "system_settings" FOR ALL
 USING (
   EXISTS (
     SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
