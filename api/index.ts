@@ -32,6 +32,7 @@ async function getApp() {
         const gdprRoutes = (await import('../backend/dist/routes/gdpr.js')).default;
         const webhookRoutes = (await import('../backend/dist/routes/webhooks.js')).default;
         const adminBillingRoutes = (await import('../backend/dist/routes/adminBilling.js')).default;
+        const keepaliveRoutes = (await import('../backend/dist/routes/keepalive.js')).default;
 
         // Create Express app
         app = express.default();
@@ -79,6 +80,7 @@ async function getApp() {
         app.use('/api/sse', sseRoutes);
         app.use('/api/pnl', pnlRoutes);
         app.use('/api/user', gdprRoutes);
+        app.use('/api/keepalive', keepaliveRoutes);
 
         // Health check
         app.get('/api/health', (req: any, res: any) => {

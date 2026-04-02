@@ -23,6 +23,7 @@ import uploadRoutes from './routes/upload.js';
 import sseRoutes from './routes/sse.js';
 import pnlRoutes from './routes/pnl.js';
 import gdprRoutes from './routes/gdpr.js';
+import keepaliveRoutes from './routes/keepalive.js';
 import { requestLogger, errorLogger } from './middleware/requestLogger.js';
 import { logger, logError } from './utils/logger.js';
 
@@ -104,6 +105,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/sse', sseRoutes);
 app.use('/api/pnl', pnlRoutes);
 app.use('/api/user', gdprRoutes); // GDPR routes (data export, deletion)
+app.use('/api/keepalive', keepaliveRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

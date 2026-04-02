@@ -1,0 +1,39 @@
+name: Keepalive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit keepalive endpoint
+        env:
+          KEEPALIVE_URL: ${{ vars.KEEPALIVE_URL }}
+          KEEPALIVE_SECRET: ${{ secrets.KEEPALIVE_SECRET }}
+        run: |
+          if [ -z "$KEEPALIVE_URL" ]; then
+            echo "KEEPALIVE_URL repository variable is not set."
+            exit 1
+          fi
+
+          CURL_ARGS=(
+            --silent
+            --show-error
+            --fail-with-body
+            --max-time 25
+            "$KEEPALIVE_URL"
+          )
+
+          if [ -n "$KEEPALIVE_SECRET" ]; then
+            CURL_ARGS=(--header "Authorization: Bearer $KEEPALIVE_SECRET" "${CURL_ARGS[@]}")
+          fi
+
+          curl "${CURL_ARGS[@]}"
