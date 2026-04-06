@@ -603,14 +603,35 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                         disabled={isLoading || !canAffordMinimumSearch}
                                                         className="w-full cursor-pointer appearance-none bg-transparent outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:shadow-md"
                                                     />
-                                                    <div className="flex justify-between text-xs text-muted-foreground">
-                                                        <span>{minimumResults}</span>
-                                                        {sliderMax >= 50 && minimumResults < 50 && <span>50</span>}
-                                                        {sliderMax >= 100 && minimumResults < 100 && <span>100</span>}
-                                                        {sliderMax >= 200 && minimumResults < 200 && <span>200</span>}
-                                                        {sliderMax >= 300 && minimumResults < 300 && <span>300</span>}
-                                                        {sliderMax >= 400 && minimumResults < 400 && <span>400</span>}
-                                                        <span>{sliderMax}</span>
+                                                    <div className="relative mt-2 h-4 w-full text-xs text-muted-foreground">
+                                                        {[minimumResults, 50, 100, 200, 300, 400, sliderMax]
+                                                            .filter((val, i, arr) => {
+                                                                if (arr.indexOf(val) !== i) return false;
+                                                                if (val < minimumResults || val > sliderMax) return false;
+                                                                if (val !== minimumResults && val !== sliderMax) {
+                                                                    const distance = sliderMax - minimumResults;
+                                                                    if (distance === 0) return false;
+                                                                    const percent = ((val - minimumResults) / distance) * 100;
+                                                                    if (percent < 8 || percent > 92) return false;
+                                                                }
+                                                                return true;
+                                                            })
+                                                            .map((val) => {
+                                                                const percent = sliderMax === minimumResults ? 0 : ((val - minimumResults) / (sliderMax - minimumResults)) * 100;
+                                                                return (
+                                                                    <span
+                                                                        key={val}
+                                                                        className="absolute"
+                                                                        style={{
+                                                                            left: percent === 100 ? 'auto' : `${percent}%`,
+                                                                            right: percent === 100 ? '0' : 'auto',
+                                                                            transform: percent === 0 || percent === 100 ? 'none' : 'translateX(-50%)'
+                                                                        }}
+                                                                    >
+                                                                        {val}
+                                                                    </span>
+                                                                );
+                                                            })}
                                                     </div>
                                                     <p className="text-xs text-muted-foreground">
                                                         {isAdmin ? (

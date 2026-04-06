@@ -229,6 +229,15 @@ docker-compose.override.yml
 
 # Claude Code local settings (user-specific)
 .claude/settings.local.json
+.claude/settings.json
+
+# ============================================================
+# VERCEL / TEMP
+# ============================================================
+
+.env.vercel
+temp-config.json
+nul
 
 # ============================================================
 # ADDITIONAL IGNORES FOR THIS PROJECT
