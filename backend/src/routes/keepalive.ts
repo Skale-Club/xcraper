@@ -8,7 +8,7 @@ const router = Router();
 const KEEPALIVE_SECRET = process.env.KEEPALIVE_SECRET;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-const SUPABASE_REST_PROBE_TABLE = 'settings';
+const SUPABASE_REST_PROBE_TABLE = 'credit_packages';
 
 function verifySecret(req: Request, res: Response): boolean {
     if (!KEEPALIVE_SECRET) {
@@ -62,10 +62,11 @@ router.get('/', async (req: Request, res: Response) => {
             if (response.ok) {
                 results.supabaseRest = { ok: true, latencyMs: latency };
             } else {
+                const body = await response.text().catch(() => '');
                 results.supabaseRest = {
                     ok: false,
                     latencyMs: latency,
-                    error: `Supabase REST returned ${response.status} ${response.statusText}`,
+                    error: `Supabase REST returned ${response.status} ${response.statusText}: ${body.slice(0, 200)}`,
                 };
             }
         } else {
