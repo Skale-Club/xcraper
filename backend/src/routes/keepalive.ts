@@ -8,7 +8,7 @@ const router = Router();
 const KEEPALIVE_SECRET = process.env.KEEPALIVE_SECRET;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-const SUPABASE_AUTH_HEALTH_PATH = '/auth/v1/health';
+const SUPABASE_REST_PROBE_TABLE = 'settings';
 
 function verifySecret(req: Request, res: Response): boolean {
     if (!KEEPALIVE_SECRET) {
@@ -43,17 +43,20 @@ router.get('/', async (req: Request, res: Response) => {
     };
 
     try {
-        if (SUPABASE_URL) {
-            const probeUrl = new URL(SUPABASE_AUTH_HEALTH_PATH, SUPABASE_URL).toString();
-            const headers: Record<string, string> = {};
-
-            if (SUPABASE_ANON_KEY) {
-                headers.apikey = SUPABASE_ANON_KEY;
-                headers.Authorization = `Bearer ${SUPABASE_ANON_KEY}`;
-            }
+        if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+            const probeUrl = new URL(
+                `/rest/v1/${SUPABASE_REST_PROBE_TABLE}?select=id&limit=1`,
+                SUPABASE_URL,
+            ).toString();
 
             const start = Date.now();
-            const response = await fetch(probeUrl, { headers });
+            const response = await fetch(probeUrl, {
+                headers: {
+                    apikey: SUPABASE_ANON_KEY,
+                    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+                    Accept: 'application/json',
+                },
+            });
             const latency = Date.now() - start;
 
             if (response.ok) {
@@ -62,11 +65,11 @@ router.get('/', async (req: Request, res: Response) => {
                 results.supabaseRest = {
                     ok: false,
                     latencyMs: latency,
-                    error: `Supabase auth health returned ${response.status} ${response.statusText}`,
+                    error: `Supabase REST returned ${response.status} ${response.statusText}`,
                 };
             }
         } else {
-            results.supabaseRest = { ok: false, error: 'Supabase URL not configured' };
+            results.supabaseRest = { ok: false, error: 'Supabase URL or Anon Key not configured' };
         }
     } catch (err) {
         results.supabaseRest = {
