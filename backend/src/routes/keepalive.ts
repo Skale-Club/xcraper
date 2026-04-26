@@ -32,7 +32,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (!verifySecret(req, res)) return;
 
     const results: {
-        supabaseRest: { ok: boolean; latencyMs?: number; error?: string };
+        supabaseRest: { ok: boolean; latencyMs?: number; error?: string; warning?: string };
         database: { ok: boolean; latencyMs?: number; error?: string };
         timestamp: string;
     } = {
@@ -43,31 +43,28 @@ router.get('/', async (req: Request, res: Response) => {
 
     try {
         if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-            // Hit the PostgREST root (returns OpenAPI schema). Generates real
-            // PostgREST traffic without touching any table, so it works regardless
-            // of RLS policies and serves as a Supabase-level keepalive.
-            const probeUrl = new URL('/rest/v1/', SUPABASE_URL).toString();
+            // Hit auth health: a public endpoint that 100% returns 2xx with anon key.
+            // The point of this probe is to generate inbound traffic to the Supabase
+            // gateway (which is what Supabase tracks for free-tier pause); we don't
+            // care about the response semantics.
+            const probeUrl = new URL('/auth/v1/health', SUPABASE_URL).toString();
 
             const start = Date.now();
             const response = await fetch(probeUrl, {
                 headers: {
                     apikey: SUPABASE_ANON_KEY,
                     Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-                    Accept: 'application/json',
                 },
             });
             const latency = Date.now() - start;
 
-            if (response.ok) {
-                results.supabaseRest = { ok: true, latencyMs: latency };
-            } else {
-                const body = await response.text().catch(() => '');
-                results.supabaseRest = {
-                    ok: false,
-                    latencyMs: latency,
-                    error: `Supabase REST returned ${response.status} ${response.statusText}: ${body.slice(0, 200)}`,
-                };
-            }
+            // Any HTTP response from Supabase counts: the request reached the gateway.
+            // Only network-level errors (caught below) indicate Supabase is unreachable.
+            results.supabaseRest = {
+                ok: true,
+                latencyMs: latency,
+                ...(response.ok ? {} : { warning: `${response.status} ${response.statusText}` }),
+            };
         } else {
             results.supabaseRest = { ok: false, error: 'Supabase URL or Anon Key not configured' };
         }
