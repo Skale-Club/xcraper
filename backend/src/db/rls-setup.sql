@@ -1,4 +1,21 @@
 
+-- Helper: SECURITY DEFINER function to check admin status without
+-- triggering RLS recursion (bypasses RLS when reading users.role).
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.users
+        WHERE id = auth.uid() AND role = 'admin'
+    );
+$$;
+REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated, service_role;
+
 -- Enable Row Level Security
 ALTER TABLE "users" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "search_history" ENABLE ROW LEVEL SECURITY;
@@ -34,11 +51,7 @@ USING (auth.uid() = id);
 
 CREATE POLICY "Admins can manage all profiles" 
 ON "users" FOR ALL 
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin());
 
 -- 2. Search History Table Policies
 CREATE POLICY "Users can view own search history" 
@@ -51,11 +64,7 @@ WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Admins can manage all search history" 
 ON "search_history" FOR ALL 
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin());
 
 -- 3. Contacts Table Policies
 CREATE POLICY "Users can manage own contacts" 
@@ -64,11 +73,7 @@ USING (auth.uid() = user_id);
 
 CREATE POLICY "Admins can manage all contacts" 
 ON "contacts" FOR ALL 
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin());
 
 -- 4. Credit Transactions Table Policies
 CREATE POLICY "Users can view own transactions" 
@@ -77,11 +82,7 @@ USING (auth.uid() = user_id);
 
 CREATE POLICY "Admins can manage all transactions" 
 ON "credit_transactions" FOR ALL 
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin());
 
 -- 5. Settings Table Policies
 CREATE POLICY "Public can view settings" 
@@ -90,11 +91,7 @@ USING (true);
 
 CREATE POLICY "Admins can manage settings" 
 ON "settings" FOR ALL 
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin());
 
 -- 6. Credit Packages Table Policies
 CREATE POLICY "Public can view credit packages" 
@@ -103,11 +100,7 @@ USING (true);
 
 CREATE POLICY "Admins can manage credit packages" 
 ON "credit_packages" FOR ALL 
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin());
 
 -- 7. Session Table Policies
 -- By default, no access for anon/authenticated roles.
@@ -120,11 +113,7 @@ USING (is_active = true AND is_public = true);
 
 CREATE POLICY "Admins can manage subscription plans" 
 ON "subscription_plans" FOR ALL 
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin());
 
 -- 9. Billing Events Table Policies
 CREATE POLICY "Users can view own billing events"
@@ -133,16 +122,8 @@ USING (auth.uid() = user_id);
 
 CREATE POLICY "Admins can manage all billing events"
 ON "billing_events" FOR ALL
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin())
+WITH CHECK (public.is_admin());
 
 -- 10. Billing Alerts Table Policies
 CREATE POLICY "Users can view own billing alerts"
@@ -151,16 +132,8 @@ USING (auth.uid() = user_id);
 
 CREATE POLICY "Admins can manage all billing alerts"
 ON "billing_alerts" FOR ALL
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin())
+WITH CHECK (public.is_admin());
 
 -- 11. Usage Summary Table Policies
 CREATE POLICY "Users can view own usage summary"
@@ -169,27 +142,11 @@ USING (auth.uid() = user_id);
 
 CREATE POLICY "Admins can manage all usage summary"
 ON "usage_summary" FOR ALL
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin())
+WITH CHECK (public.is_admin());
 
 -- 12. System Settings Table Policies
 CREATE POLICY "Admins can manage system settings"
 ON "system_settings" FOR ALL
-USING (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-);
+USING (public.is_admin())
+WITH CHECK (public.is_admin());
