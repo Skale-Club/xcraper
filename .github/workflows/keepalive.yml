@@ -2,7 +2,9 @@ name: Keepalive
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    # Hourly. Supabase free tier pauses after 7 days of inactivity, so 24 pings/day
+    # gives ~6 days of headroom even if every ping fails.
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -12,28 +14,48 @@ concurrency:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Hit keepalive endpoint
         env:
           KEEPALIVE_URL: ${{ vars.KEEPALIVE_URL }}
           KEEPALIVE_SECRET: ${{ secrets.KEEPALIVE_SECRET }}
         run: |
-          if [ -z "$KEEPALIVE_URL" ]; then
+          set -uo pipefail
+
+          if [ -z "${KEEPALIVE_URL:-}" ]; then
             echo "KEEPALIVE_URL repository variable is not set."
             exit 1
           fi
 
+          # Retry up to 5 times with exponential backoff, tolerating any transient
+          # error (cold starts on Vercel, intermittent DNS, 5xx from upstream, etc.).
+          # --retry-all-errors covers connection failures + 4xx/5xx that --fail emits.
+          # --max-time per attempt is generous (60s) to absorb a Vercel cold start.
           CURL_ARGS=(
             --silent
             --show-error
             --fail-with-body
-            --max-time 25
+            --location
+            --max-time 60
+            --retry 5
+            --retry-delay 10
+            --retry-all-errors
+            --connect-timeout 15
             "$KEEPALIVE_URL"
           )
 
-          if [ -n "$KEEPALIVE_SECRET" ]; then
+          if [ -n "${KEEPALIVE_SECRET:-}" ]; then
             CURL_ARGS=(--header "Authorization: Bearer $KEEPALIVE_SECRET" "${CURL_ARGS[@]}")
           fi
 
-          curl "${CURL_ARGS[@]}"
+          # Capture body + status. If curl exhausts its retries we still want a
+          # readable failure summary in the logs rather than a bare exit code.
+          if ! response=$(curl "${CURL_ARGS[@]}"); then
+            echo "::error::Keepalive request failed after retries"
+            echo "Last response body: $response"
+            exit 1
+          fi
+
+          echo "Keepalive ok"
+          echo "$response"
