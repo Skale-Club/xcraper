@@ -28,20 +28,16 @@ jobs:
             exit 1
           fi
 
-          # Retry up to 5 times with exponential backoff, tolerating any transient
-          # error (cold starts on Vercel, intermittent DNS, 5xx from upstream, etc.).
-          # --retry-all-errors covers connection failures + 4xx/5xx that --fail emits.
-          # --max-time per attempt is generous (60s) to absorb a Vercel cold start.
           CURL_ARGS=(
             --silent
             --show-error
-            --fail-with-body
             --location
             --max-time 60
             --retry 5
             --retry-delay 10
             --retry-all-errors
             --connect-timeout 15
+            --write-out "\n%{http_code}"
             "$KEEPALIVE_URL"
           )
 
@@ -49,13 +45,47 @@ jobs:
             CURL_ARGS=(--header "Authorization: Bearer $KEEPALIVE_SECRET" "${CURL_ARGS[@]}")
           fi
 
-          # Capture body + status. If curl exhausts its retries we still want a
-          # readable failure summary in the logs rather than a bare exit code.
-          if ! response=$(curl "${CURL_ARGS[@]}"); then
-            echo "::error::Keepalive request failed after retries"
-            echo "Last response body: $response"
+          # Capture body + HTTP status code on the last line.
+          # We treat any HTTP response (even 5xx) as success — the point is to
+          # generate traffic to Supabase, not to verify app health.
+          # Only a network-level failure (HTTP 000, i.e. no connection at all)
+          # is treated as a real error worth alerting on.
+          output=$(curl "${CURL_ARGS[@]}" 2>&1) || true
+          http_status=$(echo "$output" | tail -1)
+          body=$(echo "$output" | head -n -1)
+
+          echo "Response body: $body"
+          echo "HTTP status: $http_status"
+
+          if [ "$http_status" = "000" ]; then
+            echo "::error::Keepalive failed — no HTTP response (network error or timeout after retries)"
             exit 1
           fi
 
-          echo "Keepalive ok"
-          echo "$response"
+          echo "Keepalive ok (HTTP $http_status)"
+
+      - name: Ping Supabase directly (independent fallback)
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "${SUPABASE_URL:-}" ]; then
+            echo "SUPABASE_URL not set — skipping direct ping"
+            exit 0
+          fi
+
+          # Query PostgREST directly — this generates real database activity,
+          # which is what Supabase's free-tier pause detection actually tracks.
+          # /auth/v1/health is a GoTrue health check that does NOT touch the
+          # database and does NOT reset the 7-day inactivity timer.
+          # || true means this step never fails the workflow.
+          curl --silent \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 5 \
+            --header "apikey: ${SUPABASE_ANON_KEY:-}" \
+            --header "Authorization: Bearer ${SUPABASE_ANON_KEY:-}" \
+            "${SUPABASE_URL}/rest/v1/credit_packages?limit=1" \
+            -o /dev/null || true
+
+          echo "Direct Supabase PostgREST ping complete"

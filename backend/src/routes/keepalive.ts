@@ -43,11 +43,12 @@ router.get('/', async (req: Request, res: Response) => {
 
     try {
         if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-            // Hit auth health: a public endpoint that 100% returns 2xx with anon key.
-            // The point of this probe is to generate inbound traffic to the Supabase
-            // gateway (which is what Supabase tracks for free-tier pause); we don't
-            // care about the response semantics.
-            const probeUrl = new URL('/auth/v1/health', SUPABASE_URL).toString();
+            // Hit PostgREST: this goes through the full Supabase query stack and
+            // generates real database activity, which is what Supabase's free-tier
+            // pause detection actually tracks. /auth/v1/health is a GoTrue health
+            // check that does NOT touch the database and therefore does NOT reset
+            // the 7-day inactivity timer.
+            const probeUrl = new URL('/rest/v1/credit_packages?limit=1', SUPABASE_URL).toString();
 
             const start = Date.now();
             const response = await fetch(probeUrl, {
@@ -88,8 +89,12 @@ router.get('/', async (req: Request, res: Response) => {
         };
     }
 
-    const allOk = results.supabaseRest.ok && results.database.ok;
-    const status = allOk ? 200 : 503;
+    // Always 200 — the purpose of this endpoint is to generate inbound traffic to
+    // Supabase (which resets the free-tier inactivity timer), not to act as a
+    // health gate. Returning 503 on probe failure caused the GitHub Actions workflow
+    // to fail, creating a circular situation where a paused Supabase prevented the
+    // keepalive from waking it back up.
+    const status = 200;
 
     logger.info('Keepalive check', {
         supabaseRest: results.supabaseRest.ok,
