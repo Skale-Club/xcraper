@@ -73,9 +73,13 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!activeSearchId) return;
 
+        let consecutiveFailures = 0;
+        const MAX_FAILURES = 3;
+
         const pollInterval = setInterval(async () => {
             try {
                 const status = await searchApi.getStatus(activeSearchId);
+                consecutiveFailures = 0;
                 setSearchStatus(status);
 
                 if (status.status === 'completed' || status.status === 'failed' || status.status === 'paused') {
@@ -104,7 +108,20 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                     }
                 }
             } catch (error) {
+                consecutiveFailures += 1;
                 console.error('Error polling status:', error);
+
+                if (consecutiveFailures >= MAX_FAILURES) {
+                    clearInterval(pollInterval);
+                    setActiveSearchId(null);
+                    setSearchStatus(null);
+                    queryClient.invalidateQueries({ queryKey: ['search-history'] });
+                    toast({
+                        variant: 'destructive',
+                        title: 'Connection lost',
+                        description: 'Unable to track search status. Check your connection or view it in Search History.',
+                    });
+                }
             }
         }, 5000);
 
