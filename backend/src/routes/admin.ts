@@ -8,6 +8,8 @@ import { z } from 'zod';
 
 const router = Router();
 
+const uuidParam = z.string().uuid();
+
 // All admin routes require authentication and admin role
 router.use(requireAuth);
 router.use(requireAdmin);
@@ -139,7 +141,11 @@ router.get('/users', async (req: Request, res: Response) => {
 // Get single user details
 router.get('/users/:id', async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const idResult = uuidParam.safeParse(req.params.id);
+        if (!idResult.success) {
+            return res.status(400).json({ error: 'Invalid user id' });
+        }
+        const id = idResult.data;
 
         const [user] = await db
             .select()
@@ -186,7 +192,11 @@ router.get('/users/:id', async (req: Request, res: Response) => {
 // Update user
 router.patch('/users/:id', async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const idResult = uuidParam.safeParse(req.params.id);
+        if (!idResult.success) {
+            return res.status(400).json({ error: 'Invalid user id' });
+        }
+        const id = idResult.data;
         const updates = updateUserSchema.parse(req.body);
 
         const [updatedUser] = await db
@@ -215,7 +225,11 @@ router.patch('/users/:id', async (req: Request, res: Response) => {
 // Add credits to user
 router.post('/users/:id/credits', async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const idResult = uuidParam.safeParse(req.params.id);
+        if (!idResult.success) {
+            return res.status(400).json({ error: 'Invalid user id' });
+        }
+        const id = idResult.data;
         const { amount, description } = addCreditsSchema.parse(req.body);
 
         // Get current user
@@ -469,7 +483,11 @@ router.get('/transactions', async (req: Request, res: Response) => {
 // Delete user (soft delete by setting isActive to false)
 router.delete('/users/:id', async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const idResult = uuidParam.safeParse(req.params.id);
+        if (!idResult.success) {
+            return res.status(400).json({ error: 'Invalid user id' });
+        }
+        const id = idResult.data;
 
         // Prevent deleting yourself
         if (id === req.user?.id) {

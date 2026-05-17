@@ -100,7 +100,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
             return res.status(401).json({ error: 'User not authenticated' });
         }
 
-        if (!req.user || req.user.role !== 'admin') {
+        if (req.user.role !== 'admin') {
             return res.status(403).json({ error: 'Admin access required' });
         }
 

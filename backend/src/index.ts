@@ -47,7 +47,20 @@ app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", 'data:', 'https:'],
+            connectSrc: ["'self'", 'https:'],
+            frameAncestors: ["'none'"],
+            objectSrc: ["'none'"],
+            upgradeInsecureRequests: [],
+        },
+    },
+    crossOriginEmbedderPolicy: false,
 }));
 
 // CORS configuration
@@ -78,26 +91,56 @@ app.use(morgan('combined', {
 }));
 
 // Rate limiting
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: process.env.NODE_ENV === 'production' ? 1000 : 5000,
-    message: { error: 'Too many requests, please try again later.' },
+const isProd = process.env.NODE_ENV === 'production';
+const defaultRateLimitOpts = {
     standardHeaders: true,
     legacyHeaders: false,
-});
-app.use('/api/', limiter);
+} as const;
 
-// API Routes
-app.use('/api/auth', authRoutes);
+// Strict limiter for auth endpoints (login/register/password reset) — prevents brute force
+const authLimiter = rateLimit({
+    ...defaultRateLimitOpts,
+    windowMs: 15 * 60 * 1000,
+    max: isProd ? 20 : 200,
+    message: { error: 'Too many authentication attempts, please try again later.' },
+});
+
+// Tight limiter for search (Apify quota / cost protection)
+const searchLimiter = rateLimit({
+    ...defaultRateLimitOpts,
+    windowMs: 60 * 1000,
+    max: isProd ? 30 : 300,
+    message: { error: 'Too many search requests, please slow down.' },
+});
+
+// Admin and billing endpoints — lower threshold than default
+const adminLimiter = rateLimit({
+    ...defaultRateLimitOpts,
+    windowMs: 15 * 60 * 1000,
+    max: isProd ? 200 : 2000,
+    message: { error: 'Too many admin requests, please try again later.' },
+});
+
+// General API limiter — catch-all
+const generalLimiter = rateLimit({
+    ...defaultRateLimitOpts,
+    windowMs: 15 * 60 * 1000,
+    max: isProd ? 1000 : 5000,
+    message: { error: 'Too many requests, please try again later.' },
+});
+app.use('/api/', generalLimiter);
+
+// API Routes (specific limiters mounted before route handlers)
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/search', searchRoutes);
+app.use('/api/search', searchLimiter, searchRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/credits', creditRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/onboarding', onboardingRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/admin/billing', adminBillingRoutes);
+app.use('/api/admin', adminLimiter, adminRoutes);
+app.use('/api/admin/billing', adminLimiter, adminBillingRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/places', placesRoutes);
 app.use('/api/webhooks', webhookRoutes);

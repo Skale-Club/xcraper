@@ -34,7 +34,7 @@ router.get('/packages', async (req, res: Response): Promise<void> => {
 
         const filteredPackages = packages.filter(pkg => {
             if (pkg.isHidden) return false;
-            if (pkg.purchaseType === 'admin_only' && !req.user?.role || req.user?.role !== 'admin') {
+            if (pkg.purchaseType === 'admin_only' && req.user?.role !== 'admin') {
                 return false;
             }
             if (pkg.validFrom && new Date() < pkg.validFrom) return false;
@@ -374,7 +374,12 @@ router.get('/admin/users', requireAuth, requireAdmin, async (req, res: Response)
 
 router.get('/admin/user/:userId/ledger', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { userId } = req.params;
+        const userIdResult = z.string().uuid().safeParse(req.params.userId);
+        if (!userIdResult.success) {
+            res.status(400).json({ error: 'Invalid user id' });
+            return;
+        }
+        const userId = userIdResult.data;
         const limit = parseInt(req.query.limit as string) || 100;
 
         const ledger = await auditLogService.getAuditTrail(userId, limit);
