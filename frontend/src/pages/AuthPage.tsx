@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
+
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
 import {
     Loader2,
     Mail,
@@ -66,6 +69,14 @@ export default function AuthPage() {
     const [forgotEmail, setForgotEmail] = useState('');
     const [resetSent, setResetSent] = useState(false);
 
+    // Turnstile captcha state (one per form, since tokens are single-use)
+    const loginCaptchaRef = useRef<TurnstileInstance | null>(null);
+    const registerCaptchaRef = useRef<TurnstileInstance | null>(null);
+    const forgotCaptchaRef = useRef<TurnstileInstance | null>(null);
+    const [loginCaptchaToken, setLoginCaptchaToken] = useState('');
+    const [registerCaptchaToken, setRegisterCaptchaToken] = useState('');
+    const [forgotCaptchaToken, setForgotCaptchaToken] = useState('');
+
     // Password validation
     const validatePassword = (password: string) => {
         const errors: string[] = [];
@@ -78,9 +89,23 @@ export default function AuthPage() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (TURNSTILE_SITE_KEY && !loginCaptchaToken) {
+            toast({
+                variant: 'destructive',
+                title: 'Verification required',
+                description: 'Please complete the captcha before continuing.',
+            });
+            return;
+        }
+
         setIsLoading(true);
 
-        const { error } = await signIn(loginEmail, loginPassword);
+        const { error } = await signIn(loginEmail, loginPassword, loginCaptchaToken || undefined);
+
+        // Turnstile tokens are single-use; reset for next attempt
+        loginCaptchaRef.current?.reset();
+        setLoginCaptchaToken('');
 
         if (error) {
             toast({
@@ -120,9 +145,26 @@ export default function AuthPage() {
             return;
         }
 
+        if (TURNSTILE_SITE_KEY && !registerCaptchaToken) {
+            toast({
+                variant: 'destructive',
+                title: 'Verification required',
+                description: 'Please complete the captcha before continuing.',
+            });
+            return;
+        }
+
         setIsLoading(true);
 
-        const { error, requiresEmailConfirmation } = await signUp(registerEmail, registerPassword, registerName);
+        const { error, requiresEmailConfirmation } = await signUp(
+            registerEmail,
+            registerPassword,
+            registerName,
+            registerCaptchaToken || undefined,
+        );
+
+        registerCaptchaRef.current?.reset();
+        setRegisterCaptchaToken('');
 
         if (error) {
             toast({
@@ -151,9 +193,22 @@ export default function AuthPage() {
 
     const handleForgotPassword = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (TURNSTILE_SITE_KEY && !forgotCaptchaToken) {
+            toast({
+                variant: 'destructive',
+                title: 'Verification required',
+                description: 'Please complete the captcha before continuing.',
+            });
+            return;
+        }
+
         setIsLoading(true);
 
-        const { error } = await resetPassword(forgotEmail);
+        const { error } = await resetPassword(forgotEmail, forgotCaptchaToken || undefined);
+
+        forgotCaptchaRef.current?.reset();
+        setForgotCaptchaToken('');
 
         if (error) {
             toast({
@@ -265,7 +320,20 @@ export default function AuthPage() {
                                                 />
                                             </div>
                                         </div>
-                                        <Button type="submit" className="w-full" disabled={isLoading}>
+                                        {TURNSTILE_SITE_KEY && (
+                                            <div className="flex justify-center">
+                                                <Turnstile
+                                                    ref={forgotCaptchaRef}
+                                                    siteKey={TURNSTILE_SITE_KEY}
+                                                    onSuccess={setForgotCaptchaToken}
+                                                    onError={() => setForgotCaptchaToken('')}
+                                                    onExpire={() => setForgotCaptchaToken('')}
+                                                    options={{ theme: 'auto' }}
+                                                />
+                                            </div>
+                                        )}
+
+                                        <Button type="submit" className="w-full" disabled={isLoading || (!!TURNSTILE_SITE_KEY && !forgotCaptchaToken)}>
                                             {isLoading ? (
                                                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
                                             ) : null}
@@ -362,7 +430,20 @@ export default function AuthPage() {
                                                 </div>
                                             </div>
 
-                                            <Button type="submit" className="w-full" disabled={isLoading}>
+                                            {TURNSTILE_SITE_KEY && (
+                                                <div className="flex justify-center">
+                                                    <Turnstile
+                                                        ref={loginCaptchaRef}
+                                                        siteKey={TURNSTILE_SITE_KEY}
+                                                        onSuccess={setLoginCaptchaToken}
+                                                        onError={() => setLoginCaptchaToken('')}
+                                                        onExpire={() => setLoginCaptchaToken('')}
+                                                        options={{ theme: 'auto' }}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            <Button type="submit" className="w-full" disabled={isLoading || (!!TURNSTILE_SITE_KEY && !loginCaptchaToken)}>
                                                 {isLoading ? (
                                                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
                                                 ) : null}
@@ -499,10 +580,23 @@ export default function AuthPage() {
                                                 )}
                                             </div>
 
+                                            {TURNSTILE_SITE_KEY && (
+                                                <div className="flex justify-center">
+                                                    <Turnstile
+                                                        ref={registerCaptchaRef}
+                                                        siteKey={TURNSTILE_SITE_KEY}
+                                                        onSuccess={setRegisterCaptchaToken}
+                                                        onError={() => setRegisterCaptchaToken('')}
+                                                        onExpire={() => setRegisterCaptchaToken('')}
+                                                        options={{ theme: 'auto' }}
+                                                    />
+                                                </div>
+                                            )}
+
                                             <Button
                                                 type="submit"
                                                 className="w-full"
-                                                disabled={isLoading || (registerPassword !== confirmPassword && confirmPassword !== '')}
+                                                disabled={isLoading || (registerPassword !== confirmPassword && confirmPassword !== '') || (!!TURNSTILE_SITE_KEY && !registerCaptchaToken)}
                                             >
                                                 {isLoading ? (
                                                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
