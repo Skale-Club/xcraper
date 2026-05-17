@@ -175,8 +175,8 @@ function buildSearchPayload(searchRecord: SearchRecord, isAdmin: boolean = false
 
     // Include error details only for admins
     if (isAdmin && searchRecord.apifyInput) {
-        const apifyInput = searchRecord.apifyInput as any;
-        if (apifyInput.errorDetails) {
+        const apifyInput = searchRecord.apifyInput as { errorDetails?: unknown } | null;
+        if (apifyInput?.errorDetails) {
             payload.errorDetails = apifyInput.errorDetails;
         }
     }
@@ -309,63 +309,75 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
     const resultsToSave = isAdmin ? eligibleResults : creditResult.acceptedResults;
 
     if (creditResult.creditsCharged > 0 && !isAdmin) {
-        let remainingCredits = creditResult.creditsCharged;
-        let newMonthly = user.credits;
-        let newRollover = user.rolloverCredits;
-        let newPurchased = user.purchasedCredits;
+        await db.transaction(async (tx) => {
+            const [freshUser] = await tx.select()
+                .from(users)
+                .where(eq(users.id, userId))
+                .for('update')
+                .limit(1);
 
-        if (newMonthly >= remainingCredits) {
-            newMonthly -= remainingCredits;
-            remainingCredits = 0;
-        } else {
-            remainingCredits -= newMonthly;
-            newMonthly = 0;
-        }
+            if (!freshUser) {
+                throw new Error('User not found during credit debit');
+            }
 
-        if (remainingCredits > 0 && newRollover >= remainingCredits) {
-            newRollover -= remainingCredits;
-            remainingCredits = 0;
-        } else if (remainingCredits > 0) {
-            remainingCredits -= newRollover;
-            newRollover = 0;
-        }
+            let remainingCredits = creditResult.creditsCharged;
+            let newMonthly = freshUser.credits;
+            let newRollover = freshUser.rolloverCredits;
+            let newPurchased = freshUser.purchasedCredits;
 
-        if (remainingCredits > 0) {
-            newPurchased = Math.max(0, newPurchased - remainingCredits);
-        }
+            if (newMonthly >= remainingCredits) {
+                newMonthly -= remainingCredits;
+                remainingCredits = 0;
+            } else {
+                remainingCredits -= newMonthly;
+                newMonthly = 0;
+            }
 
-        await db.update(users)
-            .set({
-                credits: newMonthly,
-                rolloverCredits: newRollover,
-                purchasedCredits: newPurchased,
-                monthlyCreditsUsed: user.monthlyCreditsUsed + creditResult.creditsCharged,
-                updatedAt: new Date(),
-            })
-            .where(eq(users.id, userId));
+            if (remainingCredits > 0 && newRollover >= remainingCredits) {
+                newRollover -= remainingCredits;
+                remainingCredits = 0;
+            } else if (remainingCredits > 0) {
+                remainingCredits -= newRollover;
+                newRollover = 0;
+            }
 
-        await db.insert(creditTransactions).values({
-            userId,
-            amount: -creditResult.creditsCharged,
-            type: 'usage',
-            description: `Search results: ${creditResult.standardResults} standard, ${creditResult.enrichedResults} enriched`,
-            searchId: currentSearchRecord.id,
-            metadata: {
-                standardResults: creditResult.standardResults,
-                enrichedResults: creditResult.enrichedResults,
-                breakdown: creditResult.breakdown,
-            },
-        });
+            if (remainingCredits > 0) {
+                newPurchased = Math.max(0, newPurchased - remainingCredits);
+            }
 
-        await db.insert(billingEvents).values({
-            userId,
-            eventType: 'consumption',
-            creditDelta: -creditResult.creditsCharged,
-            searchId: currentSearchRecord.id,
-            metadata: {
-                standardResults: creditResult.standardResults,
-                enrichedResults: creditResult.enrichedResults,
-            },
+            await tx.update(users)
+                .set({
+                    credits: newMonthly,
+                    rolloverCredits: newRollover,
+                    purchasedCredits: newPurchased,
+                    monthlyCreditsUsed: freshUser.monthlyCreditsUsed + creditResult.creditsCharged,
+                    updatedAt: new Date(),
+                })
+                .where(eq(users.id, userId));
+
+            await tx.insert(creditTransactions).values({
+                userId,
+                amount: -creditResult.creditsCharged,
+                type: 'usage',
+                description: `Search results: ${creditResult.standardResults} standard, ${creditResult.enrichedResults} enriched`,
+                searchId: currentSearchRecord.id,
+                metadata: {
+                    standardResults: creditResult.standardResults,
+                    enrichedResults: creditResult.enrichedResults,
+                    breakdown: creditResult.breakdown,
+                },
+            });
+
+            await tx.insert(billingEvents).values({
+                userId,
+                eventType: 'consumption',
+                creditDelta: -creditResult.creditsCharged,
+                searchId: currentSearchRecord.id,
+                metadata: {
+                    standardResults: creditResult.standardResults,
+                    enrichedResults: creditResult.enrichedResults,
+                },
+            });
         });
 
         await billingAlertService.checkCreditAlerts(userId);
@@ -801,7 +813,11 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
                     .where(eq(users.id, userId))
                     .limit(1);
 
-                const isAdmin = user?.role === 'admin';
+                if (!user) {
+                    throw new Error(`User ${userId} not found while finalizing paused search`);
+                }
+
+                const isAdmin = user.role === 'admin';
 
                 // Filter and process partial results
                 const requestEnrichment = isEnrichmentSearch(searchRecord);
@@ -818,67 +834,79 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
                     );
                     const resultsToSave = creditResult.acceptedResults;
 
-                    // Debit credits from user balance
-                    let remainingCredits = creditResult.creditsCharged;
-                    let newMonthly = user!.credits;
-                    let newRollover = user!.rolloverCredits;
-                    let newPurchased = user!.purchasedCredits;
+                    // Debit credits atomically inside a transaction with row lock
+                    await db.transaction(async (tx) => {
+                        const [freshUser] = await tx.select()
+                            .from(users)
+                            .where(eq(users.id, userId))
+                            .for('update')
+                            .limit(1);
 
-                    if (newMonthly >= remainingCredits) {
-                        newMonthly -= remainingCredits;
-                        remainingCredits = 0;
-                    } else {
-                        remainingCredits -= newMonthly;
-                        newMonthly = 0;
-                    }
+                        if (!freshUser) {
+                            throw new Error(`User ${userId} not found during paused credit debit`);
+                        }
 
-                    if (remainingCredits > 0 && newRollover >= remainingCredits) {
-                        newRollover -= remainingCredits;
-                        remainingCredits = 0;
-                    } else if (remainingCredits > 0) {
-                        remainingCredits -= newRollover;
-                        newRollover = 0;
-                    }
+                        let remainingCredits = creditResult.creditsCharged;
+                        let newMonthly = freshUser.credits;
+                        let newRollover = freshUser.rolloverCredits;
+                        let newPurchased = freshUser.purchasedCredits;
 
-                    if (remainingCredits > 0) {
-                        newPurchased = Math.max(0, newPurchased - remainingCredits);
-                    }
+                        if (newMonthly >= remainingCredits) {
+                            newMonthly -= remainingCredits;
+                            remainingCredits = 0;
+                        } else {
+                            remainingCredits -= newMonthly;
+                            newMonthly = 0;
+                        }
 
-                    await db.update(users)
-                        .set({
-                            credits: newMonthly,
-                            rolloverCredits: newRollover,
-                            purchasedCredits: newPurchased,
-                            monthlyCreditsUsed: user!.monthlyCreditsUsed + creditResult.creditsCharged,
-                            updatedAt: new Date(),
-                        })
-                        .where(eq(users.id, userId));
+                        if (remainingCredits > 0 && newRollover >= remainingCredits) {
+                            newRollover -= remainingCredits;
+                            remainingCredits = 0;
+                        } else if (remainingCredits > 0) {
+                            remainingCredits -= newRollover;
+                            newRollover = 0;
+                        }
 
-                    // Save transaction
-                    await db.insert(creditTransactions).values({
-                        userId,
-                        amount: -creditResult.creditsCharged,
-                        type: 'usage',
-                        description: `Partial results (paused): ${creditResult.standardResults} standard, ${creditResult.enrichedResults} enriched`,
-                        searchId: searchRecord.id,
-                        metadata: {
-                            standardResults: creditResult.standardResults,
-                            enrichedResults: creditResult.enrichedResults,
-                            breakdown: creditResult.breakdown,
-                            paused: true,
-                        },
-                    });
+                        if (remainingCredits > 0) {
+                            newPurchased = Math.max(0, newPurchased - remainingCredits);
+                        }
 
-                    await db.insert(billingEvents).values({
-                        userId,
-                        eventType: 'consumption',
-                        creditDelta: -creditResult.creditsCharged,
-                        searchId: searchRecord.id,
-                        metadata: {
-                            standardResults: creditResult.standardResults,
-                            enrichedResults: creditResult.enrichedResults,
-                            paused: true,
-                        },
+                        await tx.update(users)
+                            .set({
+                                credits: newMonthly,
+                                rolloverCredits: newRollover,
+                                purchasedCredits: newPurchased,
+                                monthlyCreditsUsed: freshUser.monthlyCreditsUsed + creditResult.creditsCharged,
+                                updatedAt: new Date(),
+                            })
+                            .where(eq(users.id, userId));
+
+                        // Save transaction
+                        await tx.insert(creditTransactions).values({
+                            userId,
+                            amount: -creditResult.creditsCharged,
+                            type: 'usage',
+                            description: `Partial results (paused): ${creditResult.standardResults} standard, ${creditResult.enrichedResults} enriched`,
+                            searchId: searchRecord.id,
+                            metadata: {
+                                standardResults: creditResult.standardResults,
+                                enrichedResults: creditResult.enrichedResults,
+                                breakdown: creditResult.breakdown,
+                                paused: true,
+                            },
+                        });
+
+                        await tx.insert(billingEvents).values({
+                            userId,
+                            eventType: 'consumption',
+                            creditDelta: -creditResult.creditsCharged,
+                            searchId: searchRecord.id,
+                            metadata: {
+                                standardResults: creditResult.standardResults,
+                                enrichedResults: creditResult.enrichedResults,
+                                paused: true,
+                            },
+                        });
                     });
 
                     partialLeadsSaved = resultsToSave.length;
