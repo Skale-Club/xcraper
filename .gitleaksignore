@@ -1,0 +1,14 @@
+# Apify run ID in debug script - not a secret, just a historical run ID
+228f3efd5ec77c049932b1851f98d381b367db50:backend/src/scripts/find-search-by-run.ts:generic-api-key:5
+
+# YOUR_JWT placeholder in documentation - not a real token
+44f605ce777e3e93a03b633e09f59c6e129c187e:plan/01-IMPLEMENTATION_SUMMARY.md:curl-auth-header:266
+44f605ce777e3e93a03b633e09f59c6e129c187e:plan/01-IMPLEMENTATION_SUMMARY.md:curl-auth-header:308
+44f605ce777e3e93a03b633e09f59c6e129c187e:plan/01-IMPLEMENTATION_SUMMARY.md:curl-auth-header:315
+bbf0b657ceea894f825508b79f067f2b2a792bd2:IMPLEMENTATION_SUMMARY.md:curl-auth-header:266
+bbf0b657ceea894f825508b79f067f2b2a792bd2:IMPLEMENTATION_SUMMARY.md:curl-auth-header:308
+bbf0b657ceea894f825508b79f067f2b2a792bd2:IMPLEMENTATION_SUMMARY.md:curl-auth-header:315
+
+# CLAUDE.md - file deleted, keys already rotated
+cc23876b4b8acb6a2a8733717c114bbd79490cdd:CLAUDE.md:generic-api-key:405
+cc23876b4b8acb6a2a8733717c114bbd79490cdd:CLAUDE.md:generic-api-key:428
