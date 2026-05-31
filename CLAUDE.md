@@ -104,6 +104,7 @@ DATABASE_URL                         # PostgreSQL connection string (Supabase po
 SUPABASE_URL                         # Supabase project URL
 SUPABASE_SERVICE_ROLE_KEY            # Supabase service role key (never commit)
 APIFY_API_TOKEN                      # Apify API token
+APIFY_WEBHOOK_SECRET                 # Shared secret for /api/webhooks/apify (sent as x-apify-webhook-secret header or ?secret= query)
 GOOGLE_PLACES_API_KEY                # Google Places API (backend)
 STRIPE_SECRET_KEY                    # Stripe secret key (sk_live_... in prod)
 STRIPE_PAYMENTS_WEBHOOK_SECRET       # Signing secret for /api/payments/webhook

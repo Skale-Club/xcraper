@@ -60,27 +60,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Fetch app-specific user data from backend
     const fetchAppUser = useCallback(async (accessToken: string): Promise<AppUser | null> => {
-        try {
-            const response = await fetch(getApiUrl('/auth/me'), {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                },
-            });
+        const response = await fetch(getApiUrl('/auth/me'), {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+            },
+        });
 
-            if (!response.ok) {
-                // User doesn't exist in our database, create them
-                if (response.status === 404) {
-                    return null;
-                }
-                throw new Error('Failed to fetch user');
-            }
-
-            const data = await response.json();
-            return data.user;
-        } catch (error) {
-            console.error('Error fetching app user:', error);
+        // 404 = user not yet provisioned in our DB; the caller will create them.
+        if (response.status === 404) {
             return null;
         }
+
+        // Any other non-OK response (network error, 5xx, transient 401) is treated
+        // as transient and thrown, so callers can keep the existing user instead of
+        // silently logging them out on a momentary backend hiccup.
+        if (!response.ok) {
+            throw new Error(`Failed to fetch user (${response.status})`);
+        }
+
+        const data = await response.json();
+        return data.user;
     }, []);
 
     // Create user in backend database
@@ -160,8 +159,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setSupabaseUser(newSession?.user ?? null);
 
             if (newSession) {
-                const appUser = await ensureAppUser(newSession.user, newSession.access_token);
-                setUser(appUser);
+                try {
+                    const appUser = await ensureAppUser(newSession.user, newSession.access_token);
+                    // Only overwrite on success. On a transient failure (caught below)
+                    // we keep the current user, so a token refresh during a network
+                    // blip doesn't spuriously sign the user out.
+                    if (appUser) {
+                        setUser(appUser);
+                    }
+                } catch (error) {
+                    console.error('Error syncing app user on auth change:', error);
+                }
             } else {
                 setUser(null);
             }
@@ -318,12 +326,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const refreshUser = async () => {
+    const refreshUser = useCallback(async () => {
         if (session?.access_token && supabaseUser) {
-            const appUser = await fetchAppUser(session.access_token);
-            setUser(appUser);
+            try {
+                const appUser = await fetchAppUser(session.access_token);
+                // null = account genuinely gone (404); otherwise keep the current
+                // user on a transient failure rather than forcing a logout.
+                if (appUser) {
+                    setUser(appUser);
+                }
+            } catch (error) {
+                console.error('Error refreshing user:', error);
+            }
         }
-    };
+    }, [session, supabaseUser, fetchAppUser]);
 
     const value: AuthContextType = {
         user,

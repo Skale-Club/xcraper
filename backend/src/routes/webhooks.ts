@@ -1,16 +1,56 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { db } from '../db/index.js';
 import { searchHistory } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { getTaskResults } from '../services/apify.js';
 
 const router = Router();
+
+/**
+ * Verify the shared secret Apify sends with each webhook. Configure
+ * APIFY_WEBHOOK_SECRET in the environment and add it to the Apify webhook (either
+ * as an `x-apify-webhook-secret` header or a `?secret=` query parameter on the
+ * target URL). Fails closed: if the secret is not configured the endpoint rejects
+ * every request — search state is still finalized by the regular status polling.
+ */
+function hasValidApifySecret(req: Request): boolean {
+    const expected = process.env.APIFY_WEBHOOK_SECRET;
+    if (!expected) {
+        return false;
+    }
+
+    const headerSecret = req.headers['x-apify-webhook-secret'];
+    const querySecret = req.query.secret;
+    const provided = typeof headerSecret === 'string'
+        ? headerSecret
+        : typeof querySecret === 'string'
+            ? querySecret
+            : '';
+
+    const expectedBuffer = Buffer.from(expected);
+    const providedBuffer = Buffer.from(provided);
+    if (expectedBuffer.length !== providedBuffer.length) {
+        return false;
+    }
+    return timingSafeEqual(expectedBuffer, providedBuffer);
+}
 
 // Webhook handler for Apify notifications
 // This endpoint is called by Apify when actor runs complete or fail
 router.post('/apify', async (req, res: Response): Promise<void> => {
     try {
-        const { eventType, eventData, resource } = req.body;
+        if (!hasValidApifySecret(req)) {
+            console.warn('⚠️ Rejected Apify webhook with missing/invalid secret');
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const { eventType, resource } = req.body ?? {};
+
+        if (!resource || typeof resource.id !== 'string') {
+            res.status(400).json({ error: 'Invalid webhook payload' });
+            return;
+        }
 
         console.log('📥 Apify webhook received:', {
             eventType,

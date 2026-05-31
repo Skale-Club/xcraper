@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { AvatarUpload } from '@/components/ui/avatar-upload';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { authApi, usersApi, ApiError } from '@/lib/api';
+import { usersApi, ApiError } from '@/lib/api';
 import {
     Loader2,
     Lock,
@@ -16,7 +16,7 @@ import {
 
 export default function ProfilePage() {
     const { toast } = useToast();
-    const { user, refreshUser } = useAuth();
+    const { user, refreshUser, updatePassword } = useAuth();
     const queryClient = useQueryClient();
 
     const [name, setName] = useState(user?.name || '');
@@ -45,17 +45,23 @@ export default function ProfilePage() {
     });
 
     const changePasswordMutation = useMutation({
-        mutationFn: (data: { currentPassword: string; newPassword: string }) =>
-            authApi.changePassword(data.currentPassword, data.newPassword),
+        // Password changes go through Supabase Auth (the active session proves
+        // identity); there is no backend /auth/change-password route. updatePassword
+        // shows its own success toast on completion.
+        mutationFn: async (data: { newPassword: string }) => {
+            const { error } = await updatePassword(data.newPassword);
+            if (error) {
+                throw new Error(error);
+            }
+        },
         onSuccess: () => {
-            toast({ title: 'Password changed successfully!' });
             setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
             setIsChangingPassword(false);
         },
         onError: (error: Error) => {
-            const message = error instanceof ApiError ? error.message : 'Failed to change password';
+            const message = error instanceof ApiError ? error.message : (error.message || 'Failed to change password');
             toast({ variant: 'destructive', title: 'Error', description: message });
             setIsChangingPassword(false);
         },
@@ -84,7 +90,7 @@ export default function ProfilePage() {
             return;
         }
         setIsChangingPassword(true);
-        changePasswordMutation.mutate({ currentPassword, newPassword });
+        changePasswordMutation.mutate({ newPassword });
     };
 
     return (

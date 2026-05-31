@@ -283,12 +283,6 @@ export const authApi = {
 
     adminGetUsers: () =>
         apiFetch<{ users: User[] }>('/auth/admin/users'),
-
-    changePassword: (currentPassword: string, newPassword: string) =>
-        apiFetch<{ message: string }>('/auth/change-password', {
-            method: 'POST',
-            body: JSON.stringify({ currentPassword, newPassword }),
-        }),
 };
 
  // Users API

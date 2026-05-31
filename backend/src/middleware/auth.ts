@@ -12,6 +12,7 @@ const authUserFields = {
     role: users.role,
     credits: users.credits,
     avatarUrl: users.avatarUrl,
+    isActive: users.isActive,
 };
 
 // Initialize Supabase client for server-side verification
@@ -74,6 +75,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Reject deactivated / suspended accounts even when their Supabase JWT is
+        // still valid, so admin deactivation and risk-based restriction take effect
+        // server-side immediately instead of only after the token expires.
+        if (!user.isActive) {
+            return res.status(403).json({ error: 'Account is deactivated' });
         }
 
         // Attach user to request
@@ -140,7 +148,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
             .where(eq(users.id, supabaseUser.id))
             .limit(1);
 
-        if (user) {
+        if (user && user.isActive) {
             req.user = {
                 id: user.id,
                 email: user.email,
