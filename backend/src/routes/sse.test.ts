@@ -13,33 +13,40 @@ vi.mock('../services/apify.js', () => ({
     })),
 }));
 
-vi.mock('../db/index.js', () => ({
-    db: {
-        select: vi.fn(() => ({
-            from: vi.fn(() => ({
-                where: vi.fn(() => ({
-                    limit: vi.fn(() => ({
-                        execute: vi.fn(() => Promise.resolve([{
-                            id: 'test-search-id',
-                            apifyRunId: 'test-run-id',
-                            status: 'running',
-                            userId: 'test-user-id',
-                            totalResults: 50,
-                            savedResults: 25,
-                            creditsUsed: 2,
-                        }])),
-                    })),
-                })),
-            })),
-        })),
-        update: vi.fn(() => ({
-            set: vi.fn(() => ({
-                where: vi.fn(() => ({
-                    execute: vi.fn(() => Promise.resolve()),
-                })),
-            })),
-        })),
-    },
+// Universal chainable query-builder mock that is awaitable (thenable). A terminal
+// (completed) search is returned so the SSE handler sends the initial payload + close
+// and ends the response deterministically — supertest can't drain an open stream.
+vi.mock('../db/index.js', () => {
+    const createQueryMock = (rows: Record<string, unknown>[]) => {
+        const chainable: Record<string, unknown> = {};
+        for (const m of ['from', 'where', 'leftJoin', 'groupBy', 'orderBy', 'limit', 'offset', 'for']) {
+            chainable[m] = () => chainable;
+        }
+        chainable.then = (resolve: (value: unknown) => unknown) => resolve(rows);
+        chainable.execute = () => Promise.resolve(rows);
+        return chainable;
+    };
+    const completedSearch = {
+        id: 'test-search-id',
+        apifyRunId: 'test-run-id',
+        status: 'completed',
+        userId: 'test-user-id',
+        totalResults: 50,
+        savedResults: 25,
+        creditsUsed: 2,
+        completedAt: new Date(),
+        apifyStatusMessage: null,
+    };
+    return {
+        db: {
+            select: () => createQueryMock([completedSearch]),
+            update: () => createQueryMock([]),
+        },
+    };
+});
+
+vi.mock('./search.js', () => ({
+    syncSearchRecordState: vi.fn(() => Promise.resolve({})),
 }));
 
 vi.mock('../middleware/auth.js', () => ({
@@ -60,7 +67,8 @@ describe('SSE Router', () => {
     });
 
     afterEach(() => {
-        vi.resetAllMocks();
+        // clearAllMocks (not resetAllMocks) so the vi.mock factories survive.
+        vi.clearAllMocks();
     });
 
     describe('GET /:searchId/stream', () => {

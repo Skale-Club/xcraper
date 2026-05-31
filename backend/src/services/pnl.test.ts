@@ -1,24 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { pnlService } from './pnl';
 
-// Mock the database
+// Mock the database with a universal chainable query builder. Every builder method
+// returns the same chainable, and the chainable is awaitable (thenable) resolving to
+// one empty row — so any combination of .where()/.groupBy()/.leftJoin()/.limit() the
+// service uses works, and `const [x] = await q` yields a defined (if empty) row.
+function createQueryMock(rows: Record<string, unknown>[] = [{}]) {
+    const chainable: Record<string, unknown> = {};
+    const methods = ['from', 'where', 'leftJoin', 'innerJoin', 'groupBy', 'orderBy', 'limit', 'offset', 'for', 'having'];
+    for (const m of methods) {
+        chainable[m] = () => chainable;
+    }
+    chainable.then = (resolve: (value: unknown) => unknown) => resolve(rows);
+    chainable.execute = () => Promise.resolve(rows);
+    return chainable;
+}
+
 vi.mock('../db/index.js', () => ({
     db: {
-        select: vi.fn(() => ({
-            from: vi.fn(() => ({
-                where: vi.fn(() => ({
-                    execute: vi.fn(() => Promise.resolve([])),
-                })),
-                leftJoin: vi.fn(() => ({
-                    groupBy: vi.fn(() => ({
-                        execute: vi.fn(() => Promise.resolve([])),
-                    })),
-                })),
-                groupBy: vi.fn(() => ({
-                    execute: vi.fn(() => Promise.resolve([])),
-                })),
-            })),
-        })),
+        select: vi.fn(() => createQueryMock([{}])),
     },
 }));
 
@@ -28,7 +28,8 @@ describe('P&L Service', () => {
     });
 
     afterEach(() => {
-        vi.resetAllMocks();
+        // clearAllMocks (not resetAllMocks) so the db mock implementation survives.
+        vi.clearAllMocks();
     });
 
     describe('getPnLMetrics', () => {
@@ -42,7 +43,7 @@ describe('P&L Service', () => {
             expect(result).toHaveProperty('totalRevenue');
             expect(result).toHaveProperty('subscriptionRevenue');
             expect(result).toHaveProperty('oneTimeRevenue');
-            expect(result).toHaveProperty('totalCosts');
+            expect(result).toHaveProperty('totalApifyCost');
             expect(result).toHaveProperty('grossProfit');
             expect(result).toHaveProperty('grossMargin');
         });
@@ -76,12 +77,12 @@ describe('P&L Service', () => {
         it('should return current month overview', async () => {
             const result = await pnlService.getCurrentMonthOverview();
 
-            // Verify structure
+            // Verify structure (matches the actual getCurrentMonthOverview shape)
             expect(result).toHaveProperty('mrr');
-            expect(result).toHaveProperty('activeSubscribers');
-            expect(result).toHaveProperty('totalSearches');
-            expect(result).toHaveProperty('totalLeads');
-            expect(result).toHaveProperty('creditsUsed');
+            expect(result).toHaveProperty('activeUsers');
+            expect(result).toHaveProperty('searchesThisMonth');
+            expect(result).toHaveProperty('revenueThisMonth');
+            expect(result).toHaveProperty('mrrChange');
         });
     });
 

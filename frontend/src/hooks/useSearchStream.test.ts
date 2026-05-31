@@ -6,13 +6,31 @@ import { useSearchStreamFetch } from './useSearchStream';
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+// The hook fetches a Supabase session token before opening the stream; without
+// these mocks it bails out with "No authentication token available" and never
+// reaches fetch, so onUpdate/onComplete would never fire.
+vi.mock('@/lib/supabase', () => ({
+    supabase: {
+        auth: {
+            getSession: vi.fn(async () => ({
+                data: { session: { access_token: 'test-token' } },
+            })),
+        },
+    },
+}));
+
+vi.mock('@/lib/api', () => ({
+    getApiUrl: (path: string) => `http://localhost/api${path}`,
+}));
+
 describe('useSearchStream Hook', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
     afterEach(() => {
-        vi.resetAllMocks();
+        // clearAllMocks (not resetAllMocks) so the vi.mock factories survive.
+        vi.clearAllMocks();
     });
 
     describe('useSearchStreamFetch', () => {

@@ -2,51 +2,35 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { deductCredits, addCredits, getCreditBalance, hasEnoughCredits } from './credits.js';
 
 // Mock the database
-vi.mock('../db/index.js', () => ({
-    db: {
-        transaction: vi.fn((fn) => fn({
-            select: vi.fn(() => ({
-                from: vi.fn(() => ({
-                    where: vi.fn(() => ({
-                        for: vi.fn(() => ({
-                            // Return mock user with credits
-                            then: vi.fn((cb) => cb([{
-                                credits: 100,
-                                rolloverCredits: 50,
-                                purchasedCredits: 25
-                            }]))
-                        }))
-                    }))
-                }))
-            })),
-            update: vi.fn(() => ({
-                set: vi.fn(() => ({
-                    where: vi.fn(() => ({
-                        then: vi.fn()
-                    }))
-                }))
-            })),
-            insert: vi.fn(() => ({
-                values: vi.fn(() => ({
-                    returning: vi.fn(() => [{
-                        id: 'test-transaction-id'
-                    }])
-                }))
-            }))
-        })),
-        select: vi.fn(() => ({
-            from: vi.fn(() => ({
-                where: vi.fn(() => ({
-                    then: vi.fn((cb) => cb([{
-                        credits: 100,
-                        rolloverCredits: 50,
-                        purchasedCredits: 25
-                    }]))
-                }))
-            }))
-        }))
-    }
-}));
+// Self-contained chainable query-builder mock. Every builder method returns the same
+// chainable, which is awaitable (thenable) resolving to a mock user row, and exposes
+// .returning() resolving to a transaction row. This matches whatever combination of
+// .for()/.limit()/.set()/.values()/.returning() the service uses, and—crucially—every
+// awaited statement actually resolves (the previous mock had a never-resolving
+// update().set().where().then, which hung the suite once mocks stopped being reset).
+vi.mock('../db/index.js', () => {
+    const userRow = { credits: 100, rolloverCredits: 50, purchasedCredits: 25 };
+    const makeChain = (rows: any[]): any => {
+        const chain: any = {};
+        for (const m of ['from', 'where', 'for', 'limit', 'set', 'values', 'orderBy', 'groupBy']) {
+            chain[m] = () => chain;
+        }
+        chain.returning = () => Promise.resolve([{ id: 'test-transaction-id' }]);
+        chain.then = (resolve: (value: any) => any) => resolve(rows);
+        return chain;
+    };
+    const tx = {
+        select: () => makeChain([userRow]),
+        update: () => makeChain([userRow]),
+        insert: () => makeChain([{ id: 'test-transaction-id' }]),
+    };
+    return {
+        db: {
+            transaction: (fn: (tx: any) => any) => fn(tx),
+            select: () => makeChain([userRow]),
+        },
+    };
+});
 
 describe('Credits Service', () => {
     beforeEach(() => {
@@ -54,7 +38,10 @@ describe('Credits Service', () => {
     });
 
     afterEach(() => {
-        vi.resetAllMocks();
+        // clearAllMocks (not resetAllMocks) so the vi.mock factory implementations
+        // survive between tests — resetAllMocks wiped them, breaking every test that
+        // ran after the first.
+        vi.clearAllMocks();
     });
 
     describe('deductCredits', () => {
