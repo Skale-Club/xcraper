@@ -54,25 +54,49 @@ async function getApp() {
         app.use(express.json({ limit: '10mb' }));
         app.use(express.urlencoded({ extended: true }));
 
-        // Rate limiting
-        const limiter = rateLimit({
+        // Rate limiting — mirrors backend/src/index.ts so the production
+        // (serverless) path enforces the same strict auth/search/admin limits, not
+        // just the generic catch-all that used to be the only limiter here.
+        const isProd = process.env.NODE_ENV === 'production';
+        const rateLimitOpts = { standardHeaders: true, legacyHeaders: false } as const;
+
+        const authLimiter = rateLimit({
+            ...rateLimitOpts,
             windowMs: 15 * 60 * 1000,
-            max: process.env.NODE_ENV === 'production' ? 1000 : 5000,
+            max: isProd ? 20 : 200,
+            message: { error: 'Too many authentication attempts, please try again later.' },
+        });
+        const searchLimiter = rateLimit({
+            ...rateLimitOpts,
+            windowMs: 60 * 1000,
+            max: isProd ? 30 : 300,
+            message: { error: 'Too many search requests, please slow down.' },
+        });
+        const adminLimiter = rateLimit({
+            ...rateLimitOpts,
+            windowMs: 15 * 60 * 1000,
+            max: isProd ? 200 : 2000,
+            message: { error: 'Too many admin requests, please try again later.' },
+        });
+        const generalLimiter = rateLimit({
+            ...rateLimitOpts,
+            windowMs: 15 * 60 * 1000,
+            max: isProd ? 1000 : 5000,
             message: { error: 'Too many requests, please try again later.' },
         });
-        app.use('/api/', limiter);
+        app.use('/api/', generalLimiter);
 
-        // API Routes
-        app.use('/api/auth', authRoutes);
+        // API Routes (specific limiters mounted before route handlers)
+        app.use('/api/auth', authLimiter, authRoutes);
         app.use('/api/users', userRoutes);
-        app.use('/api/search', searchRoutes);
+        app.use('/api/search', searchLimiter, searchRoutes);
         app.use('/api/contacts', contactRoutes);
         app.use('/api/credits', creditRoutes);
         app.use('/api/settings', settingsRoutes);
         app.use('/api/payments', paymentRoutes);
         app.use('/api/onboarding', onboardingRoutes);
-        app.use('/api/admin', adminRoutes);
-        app.use('/api/admin/billing', adminBillingRoutes);
+        app.use('/api/admin', adminLimiter, adminRoutes);
+        app.use('/api/admin/billing', adminLimiter, adminBillingRoutes);
         app.use('/api/subscriptions', subscriptionRoutes);
         app.use('/api/places', placesRoutes);
         app.use('/api/webhooks', webhookRoutes);

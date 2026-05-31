@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { users, creditTransactions, creditPackages, billingEvents } from '../db/schema.js';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, sql } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { creditRulesService } from '../services/creditRules.js';
 import { autoTopUpService } from '../services/autoTopUp.js';
@@ -97,7 +97,20 @@ router.get('/history', requireAuth, async (req, res: Response): Promise<void> =>
             .limit(limit)
             .offset(offset);
 
-        res.json({ transactions });
+        const [countResult] = await db.select({
+            count: sql<number>`count(*)::int`,
+        })
+            .from(creditTransactions)
+            .where(eq(creditTransactions.userId, req.user.id));
+
+        const total = countResult?.count || 0;
+
+        res.json({
+            transactions,
+            total,
+            page,
+            totalPages: Math.max(1, Math.ceil(total / limit)),
+        });
     } catch (error) {
         console.error('Get history error:', error);
         res.status(500).json({ error: 'Internal server error' });

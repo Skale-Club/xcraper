@@ -4,6 +4,11 @@ import { searchHistory } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
 import { getTaskStatus, type TaskStatus } from '../services/apify.js';
+import { syncSearchRecordState } from './search.js';
+
+const TERMINAL_STATUSES = ['completed', 'failed', 'paused'];
+const TERMINAL_APIFY_STATUSES = ['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT'];
+const HEARTBEAT_INTERVAL_MS = 20000;
 
 const router = Router();
 
@@ -78,11 +83,53 @@ router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
     res.flushHeaders();
 
+    const isAdmin = req.user?.role === 'admin';
+
     // Register this connection
     if (!activeConnections.has(searchId)) {
         activeConnections.set(searchId, new Set());
     }
     activeConnections.get(searchId)!.add(res);
+
+    let pollInterval: NodeJS.Timeout | null = null;
+    let heartbeatInterval: NodeJS.Timeout | null = null;
+    let lastStatus = searchRecord.status;
+    let lastItemsCount = searchRecord.totalResults || 0;
+    let closed = false;
+
+    const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        if (pollInterval) clearInterval(pollInterval);
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        const connections = activeConnections.get(searchId);
+        if (connections) {
+            connections.delete(res);
+            if (connections.size === 0) {
+                activeConnections.delete(searchId);
+            }
+        }
+        try {
+            res.end();
+        } catch {
+            // Connection might already be closed
+        }
+    };
+
+    const sendCloseEvent = (reason: string) => {
+        if (closed) return;
+        try {
+            res.write(`event: close\ndata: ${JSON.stringify({ reason })}\n\n`);
+        } catch {
+            // ignore write failures on a dying connection
+        }
+        cleanup();
+    };
+
+    // Register disconnect handlers before any async work so we never leak.
+    req.on('close', cleanup);
+    req.socket.on('close', cleanup);
+    req.socket.on('error', cleanup);
 
     // Send initial status
     const initialPayload: SSEStatusPayload = {
@@ -95,14 +142,17 @@ router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise
     };
     res.write(`data: ${JSON.stringify(initialPayload)}\n\n`);
 
-    // Poll for updates if search is active
-    let pollInterval: NodeJS.Timeout | null = null;
-    let lastStatus = searchRecord.status;
-    let lastItemsCount = searchRecord.totalResults || 0;
+    // Already finished: send the close event immediately instead of leaving the
+    // connection (and, formerly, no poller) hanging open forever.
+    if (TERMINAL_STATUSES.includes(searchRecord.status)) {
+        sendCloseEvent(`Search ${searchRecord.status}`);
+        return;
+    }
 
     const pollForUpdates = async () => {
+        if (closed) return;
         try {
-            const [currentSearch] = await db
+            let [currentSearch] = await db
                 .select()
                 .from(searchHistory)
                 .where(eq(searchHistory.id, searchId))
@@ -115,11 +165,35 @@ router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise
 
             // If we have an Apify run ID, get live status
             let apifyStatus: TaskStatus | null = null;
-            if (currentSearch.apifyRunId && !['completed', 'failed', 'paused'].includes(currentSearch.status)) {
+            if (currentSearch.apifyRunId && !TERMINAL_STATUSES.includes(currentSearch.status)) {
                 try {
                     apifyStatus = await getTaskStatus(currentSearch.apifyRunId);
                 } catch (error) {
                     console.error('Error fetching Apify status:', error);
+                }
+            }
+
+            // Drive finalization ourselves when Apify reports a terminal state but
+            // the DB row hasn't been finalized. Previously the poller only mirrored
+            // the DB, so an SSE-only client would poll forever and the search would
+            // never be charged or have its contacts saved.
+            if (
+                apifyStatus &&
+                TERMINAL_APIFY_STATUSES.includes(apifyStatus.status) &&
+                !TERMINAL_STATUSES.includes(currentSearch.status)
+            ) {
+                try {
+                    await syncSearchRecordState(currentSearch, userId, isAdmin);
+                    const [refreshed] = await db
+                        .select()
+                        .from(searchHistory)
+                        .where(eq(searchHistory.id, searchId))
+                        .limit(1);
+                    if (refreshed) {
+                        currentSearch = refreshed;
+                    }
+                } catch (error) {
+                    console.error('Error finalizing search from SSE poller:', error);
                 }
             }
 
@@ -143,12 +217,8 @@ router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise
                 res.write(`data: ${JSON.stringify(payload)}\n\n`);
             }
 
-            // Stop polling if search is complete
-            if (['completed', 'failed', 'paused'].includes(currentSearch.status)) {
-                if (pollInterval) {
-                    clearInterval(pollInterval);
-                    pollInterval = null;
-                }
+            // Stop polling once the search reaches a terminal state.
+            if (TERMINAL_STATUSES.includes(currentSearch.status)) {
                 sendCloseEvent(`Search ${currentSearch.status}`);
             }
         } catch (error) {
@@ -156,38 +226,18 @@ router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise
         }
     };
 
-    const sendCloseEvent = (reason: string) => {
-        res.write(`event: close\ndata: ${JSON.stringify({ reason })}\n\n`);
-        cleanup();
-    };
-
-    const cleanup = () => {
-        if (pollInterval) {
-            clearInterval(pollInterval);
-        }
-        const connections = activeConnections.get(searchId);
-        if (connections) {
-            connections.delete(res);
-            if (connections.size === 0) {
-                activeConnections.delete(searchId);
-            }
-        }
+    // Heartbeat keeps idle connections alive through proxies/load balancers.
+    heartbeatInterval = setInterval(() => {
+        if (closed) return;
         try {
-            res.end();
-        } catch (error) {
-            // Connection might already be closed
+            res.write(': ping\n\n');
+        } catch {
+            cleanup();
         }
-    };
+    }, HEARTBEAT_INTERVAL_MS);
 
     // Start polling for active searches (every 2 seconds)
-    if (!['completed', 'failed', 'paused'].includes(searchRecord.status)) {
-        pollInterval = setInterval(pollForUpdates, 2000);
-    }
-
-    // Handle client disconnect
-    req.on('close', cleanup);
-    req.socket.on('close', cleanup);
-    req.socket.on('error', cleanup);
+    pollInterval = setInterval(pollForUpdates, 2000);
 });
 
 export default router;

@@ -135,9 +135,9 @@ class PnLService {
         searchCosts.forEach((row) => {
             const cost = parseFloat(row.totalCost) || 0;
             if (row.requestEnrichment) {
-                enrichedApifyCost = cost;
+                enrichedApifyCost += cost;
             } else {
-                standardApifyCost = cost;
+                standardApifyCost += cost;
             }
         });
 

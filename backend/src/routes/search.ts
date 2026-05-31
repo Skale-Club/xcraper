@@ -13,7 +13,7 @@ import {
 } from '../db/schema.js';
 import { eq, desc, and, asc, sql } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
-import { limitConcurrentSearches, incrementUserSearchCount } from '../middleware/userRateLimit.js';
+import { limitConcurrentSearches } from '../middleware/userRateLimit.js';
 import {
     startScrapingTask,
     getTaskStatus,
@@ -503,7 +503,7 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
     };
 }
 
-async function syncSearchRecordState(searchRecord: SearchRecord, userId: string, isAdmin: boolean = false): Promise<SearchStatusPayload> {
+export async function syncSearchRecordState(searchRecord: SearchRecord, userId: string, isAdmin: boolean = false): Promise<SearchStatusPayload> {
     if (isTerminalStatus(searchRecord.status) || !searchRecord.apifyRunId) {
         return buildSearchPayload(searchRecord, isAdmin);
     }
@@ -755,9 +755,6 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
                     ...buildApifyTrackingUpdate(startedTask),
                 })
                 .where(eq(searchHistory.id, searchRecord.id));
-
-            // Increment concurrent search counter
-            incrementUserSearchCount(userId);
         } catch (apifyError) {
             await saveSearchError(searchRecord.id, apifyError, 'Failed to start search');
             searchErrorSaved = true;

@@ -261,46 +261,51 @@ class AutoTopUpService {
         amount: number,
         paymentIntentId: string
     ): Promise<void> {
-        const [user] = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, userId))
-            .limit(1);
+        // Lock the user row and do the balance change + ledger inserts in one
+        // transaction so concurrent top-ups can't lose each other's updates.
+        await db.transaction(async (tx) => {
+            const [user] = await tx
+                .select()
+                .from(users)
+                .where(eq(users.id, userId))
+                .for('update')
+                .limit(1);
 
-        if (!user) return;
+            if (!user) return;
 
-        const newSpend = parseFloat(user.currentMonthTopUpSpend ?? '0') + amount;
+            const newSpend = parseFloat(user.currentMonthTopUpSpend ?? '0') + amount;
 
-        await db
-            .update(users)
-            .set({
-                purchasedCredits: user.purchasedCredits + credits,
-                currentMonthTopUpSpend: newSpend.toString(),
-                topUpsThisCycle: user.topUpsThisCycle + 1,
-                updatedAt: new Date(),
-            })
-            .where(eq(users.id, userId));
+            await tx
+                .update(users)
+                .set({
+                    purchasedCredits: user.purchasedCredits + credits,
+                    currentMonthTopUpSpend: newSpend.toFixed(2),
+                    topUpsThisCycle: user.topUpsThisCycle + 1,
+                    updatedAt: new Date(),
+                })
+                .where(eq(users.id, userId));
 
-        await db.insert(creditTransactions).values({
-            userId,
-            amount: credits,
-            type: 'top_up',
-            description: `Auto top-up: ${credits} credits for $${amount.toFixed(2)}`,
-            moneyAmount: amount.toString(),
-            stripePaymentIntentId: paymentIntentId,
-        });
+            await tx.insert(creditTransactions).values({
+                userId,
+                amount: credits,
+                type: 'top_up',
+                description: `Auto top-up: ${credits} credits for $${amount.toFixed(2)}`,
+                moneyAmount: amount.toString(),
+                stripePaymentIntentId: paymentIntentId,
+            });
 
-        await db.insert(billingEvents).values({
-            userId,
-            eventType: 'top_up',
-            creditDelta: credits,
-            moneyAmount: amount.toString(),
-            stripePaymentIntentId: paymentIntentId,
-            metadata: {
-                source: 'auto_top_up',
-                topUpBlockCredits: credits,
-                topUpBlockPrice: amount.toString(),
-            },
+            await tx.insert(billingEvents).values({
+                userId,
+                eventType: 'top_up',
+                creditDelta: credits,
+                moneyAmount: amount.toString(),
+                stripePaymentIntentId: paymentIntentId,
+                metadata: {
+                    source: 'auto_top_up',
+                    topUpBlockCredits: credits,
+                    topUpBlockPrice: amount.toString(),
+                },
+            });
         });
     }
 
@@ -311,47 +316,61 @@ class AutoTopUpService {
         paymentIntentId: string,
         adminId?: string
     ): Promise<TopUpResult> {
-        const [user] = await db
-            .select()
+        const [existing] = await db
+            .select({ id: users.id })
             .from(users)
             .where(eq(users.id, userId))
             .limit(1);
 
-        if (!user) {
+        if (!existing) {
             return { success: false, error: 'User not found' };
         }
 
-        const newSpend = parseFloat(user.currentMonthTopUpSpend ?? '0') + amount;
+        // Lock the user row and do the balance change + ledger inserts atomically.
+        await db.transaction(async (tx) => {
+            const [user] = await tx
+                .select()
+                .from(users)
+                .where(eq(users.id, userId))
+                .for('update')
+                .limit(1);
 
-        await db
-            .update(users)
-            .set({
-                purchasedCredits: user.purchasedCredits + credits,
-                currentMonthTopUpSpend: newSpend.toString(),
-                topUpsThisCycle: user.topUpsThisCycle + 1,
-                updatedAt: new Date(),
-            })
-            .where(eq(users.id, userId));
+            if (!user) {
+                throw new Error('User not found');
+            }
 
-        await db.insert(creditTransactions).values({
-            userId,
-            amount: credits,
-            type: 'purchase',
-            description: `Manual purchase: ${credits} credits for $${amount.toFixed(2)}`,
-            moneyAmount: amount.toString(),
-            stripePaymentIntentId: paymentIntentId,
-        });
+            const newSpend = parseFloat(user.currentMonthTopUpSpend ?? '0') + amount;
 
-        await db.insert(billingEvents).values({
-            userId,
-            eventType: 'purchase',
-            creditDelta: credits,
-            moneyAmount: amount.toString(),
-            stripePaymentIntentId: paymentIntentId,
-            adminId,
-            metadata: {
-                source: adminId ? 'admin_manual' : 'manual_purchase',
-            },
+            await tx
+                .update(users)
+                .set({
+                    purchasedCredits: user.purchasedCredits + credits,
+                    currentMonthTopUpSpend: newSpend.toFixed(2),
+                    topUpsThisCycle: user.topUpsThisCycle + 1,
+                    updatedAt: new Date(),
+                })
+                .where(eq(users.id, userId));
+
+            await tx.insert(creditTransactions).values({
+                userId,
+                amount: credits,
+                type: 'purchase',
+                description: `Manual purchase: ${credits} credits for $${amount.toFixed(2)}`,
+                moneyAmount: amount.toString(),
+                stripePaymentIntentId: paymentIntentId,
+            });
+
+            await tx.insert(billingEvents).values({
+                userId,
+                eventType: 'purchase',
+                creditDelta: credits,
+                moneyAmount: amount.toString(),
+                stripePaymentIntentId: paymentIntentId,
+                adminId,
+                metadata: {
+                    source: adminId ? 'admin_manual' : 'manual_purchase',
+                },
+            });
         });
 
         return {

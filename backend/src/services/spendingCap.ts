@@ -69,23 +69,27 @@ class SpendingCapService {
     }
 
     async recordSpending(userId: string, amount: number): Promise<void> {
-        const [user] = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, userId))
-            .limit(1);
+        // Lock the row so the read-modify-write can't lose a concurrent update.
+        await db.transaction(async (tx) => {
+            const [user] = await tx
+                .select({ currentMonthTopUpSpend: users.currentMonthTopUpSpend })
+                .from(users)
+                .where(eq(users.id, userId))
+                .for('update')
+                .limit(1);
 
-        if (!user) return;
+            if (!user) return;
 
-        const newSpend = parseFloat(user.currentMonthTopUpSpend ?? '0') + amount;
+            const newSpend = parseFloat(user.currentMonthTopUpSpend ?? '0') + amount;
 
-        await db
-            .update(users)
-            .set({
-                currentMonthTopUpSpend: newSpend.toString(),
-                updatedAt: new Date(),
-            })
-            .where(eq(users.id, userId));
+            await tx
+                .update(users)
+                .set({
+                    currentMonthTopUpSpend: newSpend.toFixed(2),
+                    updatedAt: new Date(),
+                })
+                .where(eq(users.id, userId));
+        });
     }
 
     async getCapStatus(userId: string): Promise<CapStatus> {

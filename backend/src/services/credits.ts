@@ -194,7 +194,11 @@ export async function addCredits(params: CreditAdditionParams): Promise<CreditTr
         const result = await db.transaction(async (tx) => {
             // Lock the user row and get current balance
             const [user] = await tx
-                .select({ credits: users.credits })
+                .select({
+                    credits: users.credits,
+                    rolloverCredits: users.rolloverCredits,
+                    purchasedCredits: users.purchasedCredits,
+                })
                 .from(users)
                 .where(eq(users.id, userId))
                 .for('update');
@@ -203,7 +207,10 @@ export async function addCredits(params: CreditAdditionParams): Promise<CreditTr
                 throw new Error('User not found');
             }
 
-            const previousBalance = user.credits;
+            // Total across all buckets, consistent with newBalance below (previously
+            // this read only the monthly bucket, so the recorded delta was wrong for
+            // purchase/top_up/rollover additions).
+            const previousBalance = user.credits + user.rolloverCredits + user.purchasedCredits;
 
             // Determine which credit bucket to add to
             let updateData: Record<string, unknown> = {
