@@ -92,7 +92,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                     if (status.status === 'completed') {
                         toast({
                             title: 'Search Completed!',
-                            description: `Found ${status.totalResults} results, saved ${status.savedResults} contacts.`,
+                            description: `Found ${status.totalResults ?? 0} results, saved ${status.savedResults ?? 0} contacts.`,
                         });
                     } else if (status.status === 'paused') {
                         toast({

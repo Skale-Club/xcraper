@@ -118,7 +118,10 @@ export default function AuthPage() {
                 title: 'Welcome back!',
                 description: 'You have been logged in successfully.',
             });
-            setLocation('/onboarding');
+            // Send users to the dashboard; the route guard bounces them to
+            // onboarding only if it's actually incomplete (avoids an onboarding
+            // flash for returning, already-onboarded users).
+            setLocation('/dashboard');
         }
 
         setIsLoading(false);

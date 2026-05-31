@@ -185,7 +185,16 @@ router.post('/user/:userId/pause', requireAuth, requireAdmin, async (req, res: R
     try {
         const { userId } = req.params;
 
-        await db.update(users).set({ isActive: false, accountRiskFlag: 'restricted', updatedAt: new Date() }).where(eq(users.id, userId));
+        if (!z.string().uuid().safeParse(userId).success) {
+            res.status(400).json({ error: 'Invalid user id' });
+            return;
+        }
+
+        const result = await db.update(users).set({ isActive: false, accountRiskFlag: 'restricted', updatedAt: new Date() }).where(eq(users.id, userId)).returning({ id: users.id });
+        if (result.length === 0) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
         await auditLogService.logAdminAction(req.user!.id, 'pause_account', userId, null, null, 'Account paused');
         res.json({ message: 'Account paused' });
     } catch (error) {
@@ -198,7 +207,16 @@ router.post('/user/:userId/resume', requireAuth, requireAdmin, async (req, res: 
     try {
         const { userId } = req.params;
 
-        await db.update(users).set({ isActive: true, accountRiskFlag: 'none', updatedAt: new Date() }).where(eq(users.id, userId));
+        if (!z.string().uuid().safeParse(userId).success) {
+            res.status(400).json({ error: 'Invalid user id' });
+            return;
+        }
+
+        const result = await db.update(users).set({ isActive: true, accountRiskFlag: 'none', updatedAt: new Date() }).where(eq(users.id, userId)).returning({ id: users.id });
+        if (result.length === 0) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
         await auditLogService.logAdminAction(req.user!.id, 'resume_account', userId, null, null, 'Account resumed');
         res.json({ message: 'Account resumed' });
     } catch (error) {
@@ -210,6 +228,12 @@ router.post('/user/:userId/resume', requireAuth, requireAdmin, async (req, res: 
 router.post('/user/:userId/cap', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
         const { userId } = req.params;
+
+        if (!z.string().uuid().safeParse(userId).success) {
+            res.status(400).json({ error: 'Invalid user id' });
+            return;
+        }
+
         const { cap } = z.object({ cap: z.number().min(0) }).parse(req.body);
 
         await spendingCapService.setCapOverride(userId, cap, req.user!.id);
@@ -224,6 +248,12 @@ router.post('/user/:userId/cap', requireAuth, requireAdmin, async (req, res: Res
 router.delete('/user/:userId/cap', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
         const { userId } = req.params;
+
+        if (!z.string().uuid().safeParse(userId).success) {
+            res.status(400).json({ error: 'Invalid user id' });
+            return;
+        }
+
         await spendingCapService.removeCapOverride(userId);
         await auditLogService.logAdminAction(req.user!.id, 'remove_cap', userId, null, null, 'Removed cap override');
         res.json({ message: 'Cap override removed' });

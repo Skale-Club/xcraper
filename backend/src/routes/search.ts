@@ -303,10 +303,9 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
         return buildSearchPayload(currentSearchRecord, isAdmin);
     }
 
-    const results = await getTaskResults(currentSearchRecord.apifyRunId!);
+    const results = await getTaskResults(currentSearchRecord.apifyRunId!, currentSearchRecord.requestedMaxResults);
     const requestEnrichment = isEnrichmentSearch(currentSearchRecord);
-    const cappedResults = results.slice(0, currentSearchRecord.requestedMaxResults);
-    const eligibleResults = cappedResults;
+    const eligibleResults = results.slice(0, currentSearchRecord.requestedMaxResults);
 
     const [user] = await db.select()
         .from(users)
@@ -848,7 +847,7 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
         const completedAt = new Date();
 
         try {
-            const partialResults = await getTaskResults(searchRecord.apifyRunId);
+            const partialResults = await getTaskResults(searchRecord.apifyRunId, searchRecord.requestedMaxResults);
             const requestEnrichment = isEnrichmentSearch(searchRecord);
             const eligibleResults = partialResults.slice(0, searchRecord.requestedMaxResults);
 

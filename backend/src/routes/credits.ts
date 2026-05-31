@@ -280,38 +280,49 @@ router.post('/admin/add', requireAuth, requireAdmin, async (req, res: Response):
 
         const { userId, amount, type, description } = validationResult.data;
 
-        const [user] = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, userId))
-            .limit(1);
-
-        if (!user) {
-            res.status(404).json({ error: 'User not found' });
-            return;
-        }
-
         const absAmount = Math.abs(amount);
         const signedAmount = amount >= 0 ? absAmount : -absAmount;
 
-        const [updatedUser] = await db.update(users)
-            .set({
-                credits: user.credits + signedAmount,
-                updatedAt: new Date()
-            })
-            .where(eq(users.id, userId))
-            .returning();
+        // Lock the row and apply the adjustment + ledger insert atomically (was a
+        // non-transactional read-modify-write that could lose concurrent updates).
+        const updatedUser = await db.transaction(async (tx) => {
+            const [existing] = await tx
+                .select({ id: users.id })
+                .from(users)
+                .where(eq(users.id, userId))
+                .for('update')
+                .limit(1);
 
-        await db.insert(creditTransactions).values({
-            userId,
-            amount: signedAmount,
-            type: type,
-            description: description || `Admin ${type}: ${signedAmount > 0 ? '+' : ''}${signedAmount} credits`,
-            metadata: {
-                adminId: req.user!.id,
-                source: 'admin_adjustment',
-            },
+            if (!existing) {
+                return null;
+            }
+
+            const [updated] = await tx.update(users)
+                .set({
+                    credits: sql`${users.credits} + ${signedAmount}`,
+                    updatedAt: new Date(),
+                })
+                .where(eq(users.id, userId))
+                .returning();
+
+            await tx.insert(creditTransactions).values({
+                userId,
+                amount: signedAmount,
+                type: type,
+                description: description || `Admin ${type}: ${signedAmount > 0 ? '+' : ''}${signedAmount} credits`,
+                metadata: {
+                    adminId: req.user!.id,
+                    source: 'admin_adjustment',
+                },
+            });
+
+            return updated;
         });
+
+        if (!updatedUser) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
 
         await auditLogService.logCreditChange(
             userId,

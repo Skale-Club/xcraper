@@ -228,7 +228,11 @@ export async function startScrapingTask(params: SearchParams): Promise<StartedTa
     const webhookUrl = `${backendUrl}/api/webhooks/apify`;
 
     try {
-        const run = await retryWithBackoff(async () => apifyClient.actor(config.id).start(input, startOptions));
+        // Starting an actor is NOT idempotent: retrying an ambiguous failure (e.g. a
+        // dropped response after the run was actually created) would spawn a second
+        // paid Apify run. So we deliberately do not wrap start() in retryWithBackoff —
+        // a transient failure surfaces to the caller, who can retry explicitly.
+        const run = await apifyClient.actor(config.id).start(input, startOptions);
 
         console.log(`Started ${config.name} - Run ID: ${run.id}`);
         console.log(`Actor: ${config.id}`);
@@ -310,13 +314,16 @@ export async function abortTask(runId: string): Promise<void> {
     }
 }
 
-export async function getTaskResults(runId: string): Promise<ScrapedPlace[]> {
+export async function getTaskResults(runId: string, limit?: number): Promise<ScrapedPlace[]> {
     if (!apifyClient) {
         throw new Error('Apify client is not initialized. Please set APIFY_API_TOKEN.');
     }
 
     try {
-        const { items } = await retryWithBackoff(async () => apifyClient.run(runId).dataset().listItems());
+        // Only fetch as many items as the caller will keep, so we don't materialize
+        // an entire large dataset (with full rawData blobs) into memory.
+        const listOptions = limit && limit > 0 ? { limit } : undefined;
+        const { items } = await retryWithBackoff(async () => apifyClient.run(runId).dataset().listItems(listOptions));
 
         return items.map((item: Record<string, unknown>) => {
             const location =
@@ -337,11 +344,11 @@ export async function getTaskResults(runId: string): Promise<ScrapedPlace[]> {
                     : undefined;
 
             return {
-                title: String(item.title || item.name || ''),
-                category: String(item.categoryName || item.category || ''),
-                address: String(item.address || ''),
+                title: getFirstString(item.title) || getFirstString(item.name) || '',
+                category: getFirstString(item.categoryName) || getFirstString(item.category) || '',
+                address: getFirstString(item.address) || '',
                 phone: getFirstString(item.phone) || getFirstString(item.phoneNumber) || getFirstString(item.phones),
-                website: item.website || item.url ? String(item.website || item.url) : undefined,
+                website: getFirstString(item.website) || getFirstString(item.url),
                 email: getFirstString(item.email) || getFirstString(item.emails),
                 rating: typeof item.totalScore === 'number'
                     ? item.totalScore
@@ -357,12 +364,10 @@ export async function getTaskResults(runId: string): Promise<ScrapedPlace[]> {
                 longitude: lng,
                 openingHours: item.hours
                     ? JSON.stringify(item.hours)
-                    : item.openingHours
-                        ? String(item.openingHours)
-                        : undefined,
-                imageUrl: item.image || item.imageUrl ? String(item.image || item.imageUrl) : undefined,
-                googleMapsUrl: item.url || item.googleMapsUrl ? String(item.url || item.googleMapsUrl) : undefined,
-                placeId: item.placeId ? String(item.placeId) : undefined,
+                    : getFirstString(item.openingHours),
+                imageUrl: getFirstString(item.image) || getFirstString(item.imageUrl),
+                googleMapsUrl: getFirstString(item.url) || getFirstString(item.googleMapsUrl),
+                placeId: getFirstString(item.placeId),
                 rawData: item,
             };
         });

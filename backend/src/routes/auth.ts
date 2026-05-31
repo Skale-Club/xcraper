@@ -187,7 +187,11 @@ router.post('/sync', async (req: Request, res: Response) => {
         const body = syncUserSchema.parse(req.body);
         const email = supabaseUser.email ?? body.email;
         const adminEmail = process.env.ADMIN_EMAIL;
-        const isAdmin = adminEmail ? email.toLowerCase() === adminEmail.toLowerCase() : false;
+        // Base the admin decision ONLY on the Supabase-verified email — never on the
+        // client-supplied body.email — so a request body cannot escalate to admin.
+        const isAdmin = !!adminEmail
+            && !!supabaseUser.email
+            && supabaseUser.email.toLowerCase() === adminEmail.toLowerCase();
 
         // Check if user already exists
         const [existingUser] = await db

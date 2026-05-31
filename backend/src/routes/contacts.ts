@@ -2,10 +2,27 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { contacts, searchHistory } from '../db/schema.js';
-import { eq, and, desc, or, like, sql } from 'drizzle-orm';
+import { eq, and, desc, or, like, sql, inArray } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// Escape LIKE wildcards so a user searching for "%" or "_" matches those literal
+// characters instead of "anything" (Postgres treats backslash as the escape char).
+function escapeLikePattern(input: string): string {
+    return input.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+// Build a CSV cell: quote/escape per RFC 4180 and neutralize spreadsheet formula
+// injection (values starting with = + - @ tab/CR are treated as formulas by Excel
+// and Google Sheets; scraped business data is attacker-influenceable).
+function csvCell(value: unknown): string {
+    let str = value === null || value === undefined ? '' : String(value);
+    if (/^[=+\-@\t\r]/.test(str)) {
+        str = `'${str}`;
+    }
+    return `"${str.replace(/"/g, '""')}"`;
+}
 
 // Get all contacts for the current user
 router.get('/', requireAuth, async (req, res: Response): Promise<void> => {
@@ -33,11 +50,11 @@ router.get('/', requireAuth, async (req, res: Response): Promise<void> => {
                 .where(and(
                     eq(contacts.userId, userId),
                     or(
-                        like(contacts.title, `%${search}%`),
-                        like(contacts.address, `%${search}%`),
-                        like(contacts.phone, `%${search}%`),
-                        like(contacts.email, `%${search}%`),
-                        like(contacts.category, `%${search}%`)
+                        like(contacts.title, `%${escapeLikePattern(search)}%`),
+                        like(contacts.address, `%${escapeLikePattern(search)}%`),
+                        like(contacts.phone, `%${escapeLikePattern(search)}%`),
+                        like(contacts.email, `%${escapeLikePattern(search)}%`),
+                        like(contacts.category, `%${escapeLikePattern(search)}%`)
                     )
                 ));
         }
@@ -268,17 +285,25 @@ router.post('/bulk-delete', requireAuth, async (req, res: Response): Promise<voi
             return;
         }
 
-        // Delete only contacts belonging to the user
-        for (const contactId of contactIds) {
-            await db.delete(contacts)
-                .where(and(
-                    eq(contacts.id, contactId),
-                    eq(contacts.userId, req.user.id)
-                ));
+        const ids = contactIds.filter((id): id is string => typeof id === 'string');
+
+        if (ids.length === 0) {
+            res.status(400).json({ error: 'contactIds must contain valid ids' });
+            return;
         }
 
+        // Delete only the caller's contacts in a single atomic statement, and report
+        // the actual number removed (ids not owned by the user simply won't match).
+        const deleted = await db.delete(contacts)
+            .where(and(
+                eq(contacts.userId, req.user.id),
+                inArray(contacts.id, ids)
+            ))
+            .returning({ id: contacts.id });
+
         res.json({
-            message: `${contactIds.length} contact(s) deleted successfully`
+            message: `${deleted.length} contact(s) deleted successfully`,
+            deleted: deleted.length,
         });
     } catch (error) {
         console.error('Bulk delete error:', error);
@@ -357,17 +382,17 @@ router.get('/export/csv/search/:searchId', requireAuth, async (req, res: Respons
 
         for (const contact of searchContacts) {
             const row = [
-                `"${(contact.title || '').replace(/"/g, '""')}"`,
-                `"${(contact.category || '').replace(/"/g, '""')}"`,
-                `"${(contact.address || '').replace(/"/g, '""')}"`,
-                `"${(contact.phone || '').replace(/"/g, '""')}"`,
-                `"${(contact.website || '').replace(/"/g, '""')}"`,
-                `"${(contact.email || '').replace(/"/g, '""')}"`,
-                contact.rating || '',
-                contact.reviewCount || '',
-                contact.latitude || '',
-                contact.longitude || '',
-                `"${(contact.googleMapsUrl || '').replace(/"/g, '""')}"`,
+                csvCell(contact.title),
+                csvCell(contact.category),
+                csvCell(contact.address),
+                csvCell(contact.phone),
+                csvCell(contact.website),
+                csvCell(contact.email),
+                csvCell(contact.rating),
+                csvCell(contact.reviewCount),
+                csvCell(contact.latitude),
+                csvCell(contact.longitude),
+                csvCell(contact.googleMapsUrl),
             ];
             csvRows.push(row.join(','));
         }
@@ -410,17 +435,17 @@ router.get('/export/csv', requireAuth, async (req, res: Response): Promise<void>
 
         for (const contact of userContacts) {
             const row = [
-                `"${(contact.title || '').replace(/"/g, '""')}"`,
-                `"${(contact.category || '').replace(/"/g, '""')}"`,
-                `"${(contact.address || '').replace(/"/g, '""')}"`,
-                `"${(contact.phone || '').replace(/"/g, '""')}"`,
-                `"${(contact.website || '').replace(/"/g, '""')}"`,
-                `"${(contact.email || '').replace(/"/g, '""')}"`,
-                contact.rating || '',
-                contact.reviewCount || '',
-                contact.latitude || '',
-                contact.longitude || '',
-                `"${(contact.googleMapsUrl || '').replace(/"/g, '""')}"`,
+                csvCell(contact.title),
+                csvCell(contact.category),
+                csvCell(contact.address),
+                csvCell(contact.phone),
+                csvCell(contact.website),
+                csvCell(contact.email),
+                csvCell(contact.rating),
+                csvCell(contact.reviewCount),
+                csvCell(contact.latitude),
+                csvCell(contact.longitude),
+                csvCell(contact.googleMapsUrl),
             ];
             csvRows.push(row.join(','));
         }
