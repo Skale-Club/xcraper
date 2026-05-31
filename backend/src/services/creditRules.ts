@@ -195,10 +195,11 @@ class CreditRulesService {
             }
 
             if (requestEnrichment) {
-                const creditCost = rules.enrichmentPricingMode === 'base_plus_enrichment'
-                    ? rules.creditsPerEnrichedResult
-                    : rules.creditsPerEnrichedResult;
-                
+                // Both pricing modes charge the same total per enriched result; the
+                // mode only changes how that total is split between the base and
+                // enrichment buckets for reporting (see the accumulation below).
+                const creditCost = rules.creditsPerEnrichedResult;
+
                 const potentialTotal = baseCredits + enrichmentCredits + creditCost;
                 if (potentialTotal > totalCredits) {
                     break;

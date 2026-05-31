@@ -107,6 +107,34 @@ function isEnrichmentSearch(searchRecord: SearchRecord): boolean {
     return searchRecord.requestEnrichment;
 }
 
+/**
+ * Drains a charge across the credit buckets (monthly → rollover → purchased),
+ * flooring every bucket at zero. Returns the new bucket values and the amount
+ * that was *actually* drained — which is min(charge, total balance), so a debit
+ * can never push a balance negative nor record a charge larger than what existed.
+ * Must be called with the user row locked (SELECT ... FOR UPDATE) by the caller.
+ */
+function applyCreditWaterfall(
+    balance: { credits: number; rolloverCredits: number; purchasedCredits: number },
+    charge: number,
+): { newMonthly: number; newRollover: number; newPurchased: number; actuallyCharged: number } {
+    let remaining = Math.max(0, charge);
+
+    const fromMonthly = Math.min(balance.credits, remaining);
+    remaining -= fromMonthly;
+    const fromRollover = Math.min(balance.rolloverCredits, remaining);
+    remaining -= fromRollover;
+    const fromPurchased = Math.min(balance.purchasedCredits, remaining);
+    remaining -= fromPurchased;
+
+    return {
+        newMonthly: balance.credits - fromMonthly,
+        newRollover: balance.rolloverCredits - fromRollover,
+        newPurchased: balance.purchasedCredits - fromPurchased,
+        actuallyCharged: fromMonthly + fromRollover + fromPurchased,
+    };
+}
+
 function buildErrorDetails(error: any): ErrorDetails {
     const errorDetails: ErrorDetails = {
         type: error?.constructor?.name || 'Error',
@@ -308,8 +336,38 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
 
     const resultsToSave = isAdmin ? eligibleResults : creditResult.acceptedResults;
 
-    if (creditResult.creditsCharged > 0 && !isAdmin) {
-        await db.transaction(async (tx) => {
+    const completedAt = new Date();
+
+    // All state mutations happen inside ONE transaction. We claim the search row
+    // with SELECT ... FOR UPDATE and re-check its status inside the lock so two
+    // concurrent finalizers (the client polls /status and /history at the same
+    // time) cannot both debit credits and insert duplicate contacts for the same
+    // search. The Apify fetch and credit estimation above are read-only/idempotent
+    // and were intentionally done outside the lock to avoid holding it across IO.
+    const finalized = await db.transaction(async (tx) => {
+        const [lockedSearch] = await tx.select()
+            .from(searchHistory)
+            .where(eq(searchHistory.id, currentSearchRecord.id))
+            .for('update')
+            .limit(1);
+
+        if (!lockedSearch) {
+            throw new Error('Search not found');
+        }
+
+        // A concurrent request already finalized this search — return its state
+        // without charging again.
+        if (isTerminalStatus(lockedSearch.status)) {
+            return {
+                alreadyFinalizedRecord: lockedSearch as SearchRecord,
+                recordedCharge: lockedSearch.creditsUsed,
+                savedResults: lockedSearch.savedResults ?? 0,
+            };
+        }
+
+        let recordedCharge = 0;
+
+        if (!isAdmin && creditResult.creditsCharged > 0) {
             const [freshUser] = await tx.select()
                 .from(users)
                 .where(eq(users.id, userId))
@@ -320,44 +378,23 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
                 throw new Error('User not found during credit debit');
             }
 
-            let remainingCredits = creditResult.creditsCharged;
-            let newMonthly = freshUser.credits;
-            let newRollover = freshUser.rolloverCredits;
-            let newPurchased = freshUser.purchasedCredits;
-
-            if (newMonthly >= remainingCredits) {
-                newMonthly -= remainingCredits;
-                remainingCredits = 0;
-            } else {
-                remainingCredits -= newMonthly;
-                newMonthly = 0;
-            }
-
-            if (remainingCredits > 0 && newRollover >= remainingCredits) {
-                newRollover -= remainingCredits;
-                remainingCredits = 0;
-            } else if (remainingCredits > 0) {
-                remainingCredits -= newRollover;
-                newRollover = 0;
-            }
-
-            if (remainingCredits > 0) {
-                newPurchased = Math.max(0, newPurchased - remainingCredits);
-            }
+            const { newMonthly, newRollover, newPurchased, actuallyCharged } =
+                applyCreditWaterfall(freshUser, creditResult.creditsCharged);
+            recordedCharge = actuallyCharged;
 
             await tx.update(users)
                 .set({
                     credits: newMonthly,
                     rolloverCredits: newRollover,
                     purchasedCredits: newPurchased,
-                    monthlyCreditsUsed: freshUser.monthlyCreditsUsed + creditResult.creditsCharged,
+                    monthlyCreditsUsed: freshUser.monthlyCreditsUsed + actuallyCharged,
                     updatedAt: new Date(),
                 })
                 .where(eq(users.id, userId));
 
             await tx.insert(creditTransactions).values({
                 userId,
-                amount: -creditResult.creditsCharged,
+                amount: -actuallyCharged,
                 type: 'usage',
                 description: `Search results: ${creditResult.standardResults} standard, ${creditResult.enrichedResults} enriched`,
                 searchId: currentSearchRecord.id,
@@ -371,86 +408,93 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
             await tx.insert(billingEvents).values({
                 userId,
                 eventType: 'consumption',
-                creditDelta: -creditResult.creditsCharged,
+                creditDelta: -actuallyCharged,
                 searchId: currentSearchRecord.id,
                 metadata: {
                     standardResults: creditResult.standardResults,
                     enrichedResults: creditResult.enrichedResults,
                 },
             });
-        });
+        }
 
+        const savedResults = resultsToSave.length;
+
+        if (savedResults > 0) {
+            const contactsToInsert = resultsToSave
+                .map((place) => {
+                    const socialMedia = extractSocialMediaFromRawData(place.rawData);
+                    return {
+                        searchId: currentSearchRecord.id,
+                        userId,
+                        title: place.title,
+                        category: place.category,
+                        address: place.address,
+                        phone: place.phone,
+                        website: place.website,
+                        email: place.email,
+                        rating: place.rating?.toString(),
+                        reviewCount: place.reviewCount,
+                        latitude: place.latitude?.toString(),
+                        longitude: place.longitude?.toString(),
+                        openingHours: place.openingHours,
+                        imageUrl: place.imageUrl,
+                        googleMapsUrl: place.googleMapsUrl,
+                        placeId: place.placeId,
+                        rawData: place.rawData,
+                        isEnriched: !!place.email,
+                        enrichmentCreditsCharged: isAdmin
+                            ? 0
+                            : place.email
+                                ? creditResult.breakdown.enrichment
+                                : 0,
+                        // Social media
+                        facebook: socialMedia.facebook,
+                        instagram: socialMedia.instagram,
+                        twitter: socialMedia.twitter,
+                        linkedin: socialMedia.linkedin,
+                        youtube: socialMedia.youtube,
+                        tiktok: socialMedia.tiktok,
+                        pinterest: socialMedia.pinterest,
+                    };
+                });
+
+            await tx.insert(contacts).values(contactsToInsert);
+        }
+
+        await tx.update(searchHistory)
+            .set({
+                status: 'completed',
+                totalResults: eligibleResults.length,
+                savedResults,
+                standardResultsCount: creditResult.standardResults,
+                enrichedResultsCount: creditResult.enrichedResults,
+                creditsUsed: isAdmin ? 0 : recordedCharge,
+                completedAt,
+                apifyFinishedAt: currentSearchRecord.apifyFinishedAt ?? completedAt,
+            })
+            .where(eq(searchHistory.id, currentSearchRecord.id));
+
+        return { alreadyFinalizedRecord: null as SearchRecord | null, recordedCharge, savedResults };
+    });
+
+    if (finalized.alreadyFinalizedRecord) {
+        return buildSearchPayload(finalized.alreadyFinalizedRecord, isAdmin);
+    }
+
+    // Non-critical, post-commit side effect.
+    if (!isAdmin && finalized.recordedCharge > 0) {
         await billingAlertService.checkCreditAlerts(userId);
     }
-
-    const savedResults = resultsToSave.length;
-
-    if (savedResults > 0) {
-        const contactsToInsert = resultsToSave
-            .map((place) => {
-                const socialMedia = extractSocialMediaFromRawData(place.rawData);
-                return {
-                    searchId: currentSearchRecord.id,
-                    userId,
-                    title: place.title,
-                    category: place.category,
-                    address: place.address,
-                    phone: place.phone,
-                    website: place.website,
-                    email: place.email,
-                    rating: place.rating?.toString(),
-                    reviewCount: place.reviewCount,
-                    latitude: place.latitude?.toString(),
-                    longitude: place.longitude?.toString(),
-                    openingHours: place.openingHours,
-                    imageUrl: place.imageUrl,
-                    googleMapsUrl: place.googleMapsUrl,
-                    placeId: place.placeId,
-                    rawData: place.rawData,
-                    isEnriched: !!place.email,
-                    enrichmentCreditsCharged: isAdmin
-                        ? 0
-                        : place.email
-                            ? creditResult.breakdown.enrichment
-                            : 0,
-                    // Social media
-                    facebook: socialMedia.facebook,
-                    instagram: socialMedia.instagram,
-                    twitter: socialMedia.twitter,
-                    linkedin: socialMedia.linkedin,
-                    youtube: socialMedia.youtube,
-                    tiktok: socialMedia.tiktok,
-                    pinterest: socialMedia.pinterest,
-                };
-            });
-
-        await db.insert(contacts).values(contactsToInsert);
-    }
-
-    const completedAt = new Date();
-
-    await db.update(searchHistory)
-        .set({
-            status: 'completed',
-            totalResults: eligibleResults.length,
-            savedResults,
-            standardResultsCount: creditResult.standardResults,
-            enrichedResultsCount: creditResult.enrichedResults,
-            creditsUsed: isAdmin ? 0 : creditResult.creditsCharged,
-            completedAt,
-            apifyFinishedAt: currentSearchRecord.apifyFinishedAt ?? completedAt,
-        })
-        .where(eq(searchHistory.id, currentSearchRecord.id));
 
     return {
         ...buildSearchPayload({
             ...currentSearchRecord,
             status: 'completed',
             totalResults: eligibleResults.length,
-            savedResults,
+            savedResults: finalized.savedResults,
             standardResultsCount: creditResult.standardResults,
             enrichedResultsCount: creditResult.enrichedResults,
-            creditsUsed: isAdmin ? 0 : creditResult.creditsCharged,
+            creditsUsed: isAdmin ? 0 : finalized.recordedCharge,
             completedAt,
             apifyFinishedAt: currentSearchRecord.apifyFinishedAt ?? completedAt,
         }),
@@ -797,164 +841,114 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
         // Abort the Apify task
         await abortTask(searchRecord.apifyRunId);
 
-        // Try to get partial results that were collected before pause
+        // Collect any partial results gathered before the abort, then persist
+        // everything — credit debit, contacts, and the paused status — inside ONE
+        // transaction that claims the search row. This guarantees a charge can't
+        // commit without its contacts (no charge-without-delivery) and a concurrent
+        // finalize can't be silently double-charged.
         let partialLeadsSaved = 0;
         let creditsCharged = 0;
+        const completedAt = new Date();
 
         try {
             const partialResults = await getTaskResults(searchRecord.apifyRunId);
+            const requestEnrichment = isEnrichmentSearch(searchRecord);
+            const eligibleResults = partialResults.slice(0, searchRecord.requestedMaxResults);
 
-            if (partialResults.length > 0) {
-                console.log(`📊 Found ${partialResults.length} partial results for paused search ${searchRecord.id}`);
+            const [user] = await db.select()
+                .from(users)
+                .where(eq(users.id, userId))
+                .limit(1);
 
-                // Get user to check if admin
-                const [user] = await db.select()
-                    .from(users)
-                    .where(eq(users.id, userId))
+            if (!user) {
+                throw new Error(`User ${userId} not found while finalizing paused search`);
+            }
+
+            const isAdmin = user.role === 'admin';
+
+            // Estimate the charge / accepted results outside the lock (reads only).
+            const creditResult = (!isAdmin && eligibleResults.length > 0)
+                ? await creditRulesService.consumeCredits(
+                    userId,
+                    eligibleResults,
+                    searchRecord.id,
+                    requestEnrichment,
+                )
+                : null;
+            const resultsToSave = isAdmin ? eligibleResults : (creditResult?.acceptedResults ?? []);
+
+            await db.transaction(async (tx) => {
+                const [lockedSearch] = await tx.select()
+                    .from(searchHistory)
+                    .where(eq(searchHistory.id, searchRecord.id))
+                    .for('update')
                     .limit(1);
 
-                if (!user) {
-                    throw new Error(`User ${userId} not found while finalizing paused search`);
+                if (!lockedSearch) {
+                    throw new Error('Search not found');
                 }
 
-                const isAdmin = user.role === 'admin';
+                // A concurrent finalize already terminalized this search — respect it.
+                if (isTerminalStatus(lockedSearch.status)) {
+                    partialLeadsSaved = lockedSearch.savedResults ?? 0;
+                    creditsCharged = lockedSearch.creditsUsed;
+                    return;
+                }
 
-                // Filter and process partial results
-                const requestEnrichment = isEnrichmentSearch(searchRecord);
-                const cappedResults = partialResults.slice(0, searchRecord.requestedMaxResults);
-                const eligibleResults = cappedResults;
+                if (creditResult && creditResult.creditsCharged > 0) {
+                    const [freshUser] = await tx.select()
+                        .from(users)
+                        .where(eq(users.id, userId))
+                        .for('update')
+                        .limit(1);
 
-                if (eligibleResults.length > 0 && !isAdmin) {
-                    // Calculate and charge credits for partial results
-                    const creditResult = await creditRulesService.consumeCredits(
-                        userId,
-                        eligibleResults,
-                        searchRecord.id,
-                        requestEnrichment,
-                    );
-                    const resultsToSave = creditResult.acceptedResults;
-
-                    // Debit credits atomically inside a transaction with row lock
-                    await db.transaction(async (tx) => {
-                        const [freshUser] = await tx.select()
-                            .from(users)
-                            .where(eq(users.id, userId))
-                            .for('update')
-                            .limit(1);
-
-                        if (!freshUser) {
-                            throw new Error(`User ${userId} not found during paused credit debit`);
-                        }
-
-                        let remainingCredits = creditResult.creditsCharged;
-                        let newMonthly = freshUser.credits;
-                        let newRollover = freshUser.rolloverCredits;
-                        let newPurchased = freshUser.purchasedCredits;
-
-                        if (newMonthly >= remainingCredits) {
-                            newMonthly -= remainingCredits;
-                            remainingCredits = 0;
-                        } else {
-                            remainingCredits -= newMonthly;
-                            newMonthly = 0;
-                        }
-
-                        if (remainingCredits > 0 && newRollover >= remainingCredits) {
-                            newRollover -= remainingCredits;
-                            remainingCredits = 0;
-                        } else if (remainingCredits > 0) {
-                            remainingCredits -= newRollover;
-                            newRollover = 0;
-                        }
-
-                        if (remainingCredits > 0) {
-                            newPurchased = Math.max(0, newPurchased - remainingCredits);
-                        }
-
-                        await tx.update(users)
-                            .set({
-                                credits: newMonthly,
-                                rolloverCredits: newRollover,
-                                purchasedCredits: newPurchased,
-                                monthlyCreditsUsed: freshUser.monthlyCreditsUsed + creditResult.creditsCharged,
-                                updatedAt: new Date(),
-                            })
-                            .where(eq(users.id, userId));
-
-                        // Save transaction
-                        await tx.insert(creditTransactions).values({
-                            userId,
-                            amount: -creditResult.creditsCharged,
-                            type: 'usage',
-                            description: `Partial results (paused): ${creditResult.standardResults} standard, ${creditResult.enrichedResults} enriched`,
-                            searchId: searchRecord.id,
-                            metadata: {
-                                standardResults: creditResult.standardResults,
-                                enrichedResults: creditResult.enrichedResults,
-                                breakdown: creditResult.breakdown,
-                                paused: true,
-                            },
-                        });
-
-                        await tx.insert(billingEvents).values({
-                            userId,
-                            eventType: 'consumption',
-                            creditDelta: -creditResult.creditsCharged,
-                            searchId: searchRecord.id,
-                            metadata: {
-                                standardResults: creditResult.standardResults,
-                                enrichedResults: creditResult.enrichedResults,
-                                paused: true,
-                            },
-                        });
-                    });
-
-                    partialLeadsSaved = resultsToSave.length;
-                    creditsCharged = creditResult.creditsCharged;
-
-                    // Save partial contacts
-                    const contactsToInsert = resultsToSave
-                        .map((place) => {
-                            const socialMedia = extractSocialMediaFromRawData(place.rawData);
-                            return {
-                                searchId: searchRecord.id,
-                                userId,
-                                title: place.title,
-                                category: place.category,
-                                address: place.address,
-                                phone: place.phone,
-                                website: place.website,
-                                email: place.email,
-                                rating: place.rating?.toString(),
-                                reviewCount: place.reviewCount,
-                                latitude: place.latitude?.toString(),
-                                longitude: place.longitude?.toString(),
-                                openingHours: place.openingHours,
-                                imageUrl: place.imageUrl,
-                                googleMapsUrl: place.googleMapsUrl,
-                                placeId: place.placeId,
-                                rawData: place.rawData,
-                                isEnriched: !!place.email,
-                                enrichmentCreditsCharged: place.email ? creditResult.breakdown.enrichment : 0,
-                                // Social media
-                                facebook: socialMedia.facebook,
-                                instagram: socialMedia.instagram,
-                                twitter: socialMedia.twitter,
-                                linkedin: socialMedia.linkedin,
-                                youtube: socialMedia.youtube,
-                                tiktok: socialMedia.tiktok,
-                                pinterest: socialMedia.pinterest,
-                            };
-                        });
-
-                    if (contactsToInsert.length > 0) {
-                        await db.insert(contacts).values(contactsToInsert);
+                    if (!freshUser) {
+                        throw new Error(`User ${userId} not found during paused credit debit`);
                     }
 
-                    console.log(`✅ Saved ${partialLeadsSaved} partial leads, charged ${creditsCharged} credits`);
-                } else if (isAdmin && eligibleResults.length > 0) {
-                    // Admin: Save contacts but don't charge
-                    const contactsToInsert = eligibleResults.map((place) => {
+                    const { newMonthly, newRollover, newPurchased, actuallyCharged } =
+                        applyCreditWaterfall(freshUser, creditResult.creditsCharged);
+                    creditsCharged = actuallyCharged;
+
+                    await tx.update(users)
+                        .set({
+                            credits: newMonthly,
+                            rolloverCredits: newRollover,
+                            purchasedCredits: newPurchased,
+                            monthlyCreditsUsed: freshUser.monthlyCreditsUsed + actuallyCharged,
+                            updatedAt: new Date(),
+                        })
+                        .where(eq(users.id, userId));
+
+                    await tx.insert(creditTransactions).values({
+                        userId,
+                        amount: -actuallyCharged,
+                        type: 'usage',
+                        description: `Partial results (paused): ${creditResult.standardResults} standard, ${creditResult.enrichedResults} enriched`,
+                        searchId: searchRecord.id,
+                        metadata: {
+                            standardResults: creditResult.standardResults,
+                            enrichedResults: creditResult.enrichedResults,
+                            breakdown: creditResult.breakdown,
+                            paused: true,
+                        },
+                    });
+
+                    await tx.insert(billingEvents).values({
+                        userId,
+                        eventType: 'consumption',
+                        creditDelta: -actuallyCharged,
+                        searchId: searchRecord.id,
+                        metadata: {
+                            standardResults: creditResult.standardResults,
+                            enrichedResults: creditResult.enrichedResults,
+                            paused: true,
+                        },
+                    });
+                }
+
+                if (resultsToSave.length > 0) {
+                    const contactsToInsert = resultsToSave.map((place) => {
                         const socialMedia = extractSocialMediaFromRawData(place.rawData);
                         return {
                             searchId: searchRecord.id,
@@ -975,7 +969,11 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
                             placeId: place.placeId,
                             rawData: place.rawData,
                             isEnriched: !!place.email,
-                            enrichmentCreditsCharged: 0,
+                            enrichmentCreditsCharged: isAdmin
+                                ? 0
+                                : place.email
+                                    ? (creditResult?.breakdown.enrichment ?? 0)
+                                    : 0,
                             // Social media
                             facebook: socialMedia.facebook,
                             instagram: socialMedia.instagram,
@@ -987,28 +985,45 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
                         };
                     });
 
-                    await db.insert(contacts).values(contactsToInsert);
-                    partialLeadsSaved = contactsToInsert.length;
-                    console.log(`✅ Admin: Saved ${partialLeadsSaved} partial leads (no charge)`);
+                    await tx.insert(contacts).values(contactsToInsert);
                 }
+
+                partialLeadsSaved = resultsToSave.length;
+
+                await tx.update(searchHistory)
+                    .set({
+                        status: 'paused',
+                        completedAt,
+                        apifyFinishedAt: completedAt,
+                        totalResults: partialLeadsSaved,
+                        savedResults: partialLeadsSaved,
+                        creditsUsed: creditsCharged,
+                    })
+                    .where(eq(searchHistory.id, searchRecord.id));
+            });
+
+            if (!isAdmin && creditsCharged > 0) {
+                await billingAlertService.checkCreditAlerts(userId);
             }
+
+            console.log(`✅ Paused search ${searchRecord.id}: saved ${partialLeadsSaved} leads, charged ${creditsCharged} credits`);
         } catch (resultsError) {
-            console.error('Error fetching partial results:', resultsError);
-            // Continue with pause even if can't get partial results
+            console.error('Error finalizing paused search:', resultsError);
+            // Even if partial-result processing failed, still mark the search paused.
+            await db.update(searchHistory)
+                .set({
+                    status: 'paused',
+                    completedAt,
+                    apifyFinishedAt: completedAt,
+                    totalResults: partialLeadsSaved,
+                    savedResults: partialLeadsSaved,
+                    creditsUsed: creditsCharged,
+                })
+                .where(eq(searchHistory.id, searchRecord.id))
+                .catch((updateError) => {
+                    console.error('Failed to mark search paused after error:', updateError);
+                });
         }
-
-        const completedAt = new Date();
-
-        await db.update(searchHistory)
-            .set({
-                status: 'paused',
-                completedAt,
-                apifyFinishedAt: completedAt,
-                totalResults: partialLeadsSaved,
-                savedResults: partialLeadsSaved,
-                creditsUsed: creditsCharged,
-            })
-            .where(eq(searchHistory.id, searchRecord.id));
 
         res.json({
             message: 'Search paused successfully',

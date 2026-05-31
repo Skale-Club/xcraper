@@ -2,7 +2,7 @@ import 'dotenv/config';
 import Stripe from 'stripe';
 import { db } from '../db/index.js';
 import { users, creditTransactions, creditPackages } from '../db/schema.js';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 // Initialize Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -89,69 +89,76 @@ async function applyPurchasedCreditsFromSession(
 
     const creditsAmount = parseInt(credits, 10);
 
-    const [existingTransaction] = await db
-        .select({
-            id: creditTransactions.id,
-        })
-        .from(creditTransactions)
-        .where(and(
-            eq(creditTransactions.type, 'purchase'),
-            eq(creditTransactions.stripePaymentIntentId, paymentIntentId)
-        ))
-        .limit(1);
+    // The whole grant runs in a single transaction that locks the user row, so a
+    // duplicate Stripe delivery (webhook retry) racing the /verify endpoint cannot
+    // both pass the idempotency check and grant credits twice — the second caller
+    // blocks on the lock, then sees the existing transaction and no-ops.
+    return await db.transaction(async (tx) => {
+        const [user] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, userId))
+            .for('update')
+            .limit(1);
 
-    if (existingTransaction) {
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        const [existingTransaction] = await tx
+            .select({
+                id: creditTransactions.id,
+            })
+            .from(creditTransactions)
+            .where(and(
+                eq(creditTransactions.type, 'purchase'),
+                eq(creditTransactions.stripePaymentIntentId, paymentIntentId)
+            ))
+            .limit(1);
+
+        if (existingTransaction) {
+            return {
+                userId,
+                credits: creditsAmount,
+                alreadyProcessed: true,
+            };
+        }
+
+        await tx
+            .update(users)
+            .set({
+                purchasedCredits: sql`${users.purchasedCredits} + ${creditsAmount}`,
+                stripeCustomerId: typeof session.customer === 'string'
+                    ? session.customer
+                    : user.stripeCustomerId,
+                updatedAt: new Date(),
+            })
+            .where(eq(users.id, userId));
+
+        await tx.insert(creditTransactions).values({
+            userId,
+            amount: creditsAmount,
+            type: 'purchase',
+            description: `Purchased ${creditsAmount} credits via Stripe`,
+            stripePaymentIntentId: paymentIntentId,
+            moneyAmount: session.amount_total !== null && session.amount_total !== undefined
+                ? (session.amount_total / 100).toFixed(2)
+                : null,
+            currency: session.currency ?? 'usd',
+            metadata: {
+                source: 'stripe_checkout',
+                packageId,
+                checkoutSessionId: session.id,
+                stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
+            },
+        });
+
         return {
             userId,
             credits: creditsAmount,
-            alreadyProcessed: true,
+            alreadyProcessed: false,
         };
-    }
-
-    const [user] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-    if (!user) {
-        throw new Error('User not found');
-    }
-
-    await db
-        .update(users)
-        .set({
-            purchasedCredits: user.purchasedCredits + creditsAmount,
-            stripeCustomerId: typeof session.customer === 'string'
-                ? session.customer
-                : user.stripeCustomerId,
-            updatedAt: new Date(),
-        })
-        .where(eq(users.id, userId));
-
-    await db.insert(creditTransactions).values({
-        userId,
-        amount: creditsAmount,
-        type: 'purchase',
-        description: `Purchased ${creditsAmount} credits via Stripe`,
-        stripePaymentIntentId: paymentIntentId,
-        moneyAmount: session.amount_total !== null && session.amount_total !== undefined
-            ? (session.amount_total / 100).toFixed(2)
-            : null,
-        currency: session.currency ?? 'usd',
-        metadata: {
-            source: 'stripe_checkout',
-            packageId,
-            checkoutSessionId: session.id,
-            stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
-        },
     });
-
-    return {
-        userId,
-        credits: creditsAmount,
-        alreadyProcessed: false,
-    };
 }
 
 // Create a Stripe Checkout session for credit purchase

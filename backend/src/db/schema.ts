@@ -1,5 +1,5 @@
-import { pgTable, text, timestamp, integer, boolean, uuid, decimal, jsonb, pgEnum } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { pgTable, text, timestamp, integer, boolean, uuid, decimal, jsonb, pgEnum, uniqueIndex } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
 // Subscription status enum
@@ -301,7 +301,17 @@ export const creditTransactions = pgTable('credit_transactions', {
 
     // Timestamps
     createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (table) => ({
+    // Idempotency guarantees for Stripe-driven grants (defense-in-depth on top of
+    // the application-level, row-locked dedup): at most one credit grant per Stripe
+    // payment intent (one-time purchases) and per invoice (subscription renewals).
+    uniquePurchasePaymentIntent: uniqueIndex('credit_transactions_purchase_payment_intent_unique')
+        .on(table.stripePaymentIntentId)
+        .where(sql`${table.type} = 'purchase' AND ${table.stripePaymentIntentId} IS NOT NULL`),
+    uniqueMonthlyGrantInvoice: uniqueIndex('credit_transactions_monthly_grant_invoice_unique')
+        .on(table.stripeInvoiceId)
+        .where(sql`${table.type} = 'monthly_grant' AND ${table.stripeInvoiceId} IS NOT NULL`),
+}));
 
 // Credit packages (for manual purchase)
 export const creditPackages = pgTable('credit_packages', {

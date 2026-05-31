@@ -212,19 +212,7 @@ async function applyPaidInvoiceToUser(
         return 0;
     }
 
-    const [existingGrant] = await db
-        .select({ id: creditTransactions.id })
-        .from(creditTransactions)
-        .where(and(
-            eq(creditTransactions.type, 'monthly_grant'),
-            eq(creditTransactions.stripeInvoiceId, invoice.id)
-        ))
-        .limit(1);
-
-    if (existingGrant) {
-        return 0;
-    }
-
+    // Network call done outside the transaction so we never hold a row lock across IO.
     const resolvedSubscription = stripeSubscription ?? (
         typeof invoice.subscription === 'string'
             ? await stripe?.subscriptions.retrieve(invoice.subscription)
@@ -238,39 +226,87 @@ async function applyPaidInvoiceToUser(
         ? new Date(resolvedSubscription.current_period_end * 1000)
         : null;
 
-    await db
-        .update(users)
-        .set({
-            billingCycleStart: periodStart,
-            billingCycleEnd: periodEnd,
-            monthlyCreditsUsed: 0,
-            credits: plan.monthlyCredits,
-            subscriptionStatus: normalizeSubscriptionStatus(resolvedSubscription?.status ?? 'active'),
-            stripeCustomerId: typeof invoice.customer === 'string' ? invoice.customer : null,
-            stripeSubscriptionId: resolvedSubscription?.id ?? null,
-            updatedAt: new Date(),
-        })
-        .where(eq(users.id, userId));
+    // Idempotency check + grant + cycle reset all run under the user-row lock so a
+    // duplicate Stripe delivery (webhook retry racing the /verify endpoint) cannot
+    // both pass the check and grant the monthly credits twice.
+    return await db.transaction(async (tx) => {
+        const [user] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, userId))
+            .for('update')
+            .limit(1);
 
-    await db.insert(creditTransactions).values({
-        userId,
-        amount: plan.monthlyCredits,
-        type: 'monthly_grant',
-        description: `Monthly credits from ${plan.name} subscription`,
-        subscriptionPlanId: plan.id,
-        stripeInvoiceId: invoice.id,
-        moneyAmount: invoice.amount_paid !== null && invoice.amount_paid !== undefined
-            ? (invoice.amount_paid / 100).toFixed(2)
-            : null,
-        currency: invoice.currency ?? 'usd',
-        metadata: {
-            billingCycleStart: periodStart.toISOString(),
-            billingCycleEnd: periodEnd?.toISOString(),
-            invoiceId: invoice.id,
-        },
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        const [existingGrant] = await tx
+            .select({ id: creditTransactions.id })
+            .from(creditTransactions)
+            .where(and(
+                eq(creditTransactions.type, 'monthly_grant'),
+                eq(creditTransactions.stripeInvoiceId, invoice.id)
+            ))
+            .limit(1);
+
+        if (existingGrant) {
+            return 0;
+        }
+
+        // Preserve unused monthly credits when the plan allows rollover (capped by
+        // maxRolloverCredits); otherwise they are discarded at renewal as before.
+        const leftoverMonthly = Math.max(0, user.credits);
+        let newRollover = user.rolloverCredits;
+        let rolledOver = 0;
+        if (plan.allowRollover && leftoverMonthly > 0) {
+            const targetRollover = plan.maxRolloverCredits != null
+                ? Math.min(user.rolloverCredits + leftoverMonthly, plan.maxRolloverCredits)
+                : user.rolloverCredits + leftoverMonthly;
+            rolledOver = Math.max(0, targetRollover - user.rolloverCredits);
+            newRollover = user.rolloverCredits + rolledOver;
+        }
+
+        await tx
+            .update(users)
+            .set({
+                billingCycleStart: periodStart,
+                billingCycleEnd: periodEnd,
+                monthlyCreditsUsed: 0,
+                credits: plan.monthlyCredits,
+                rolloverCredits: newRollover,
+                // Reset per-cycle top-up accounting so the spending cap and the
+                // auto-top-up counter don't stay maxed out across renewals.
+                currentMonthTopUpSpend: '0.00',
+                topUpsThisCycle: 0,
+                subscriptionStatus: normalizeSubscriptionStatus(resolvedSubscription?.status ?? 'active'),
+                stripeCustomerId: typeof invoice.customer === 'string' ? invoice.customer : user.stripeCustomerId,
+                stripeSubscriptionId: resolvedSubscription?.id ?? user.stripeSubscriptionId,
+                updatedAt: new Date(),
+            })
+            .where(eq(users.id, userId));
+
+        await tx.insert(creditTransactions).values({
+            userId,
+            amount: plan.monthlyCredits,
+            type: 'monthly_grant',
+            description: `Monthly credits from ${plan.name} subscription`,
+            subscriptionPlanId: plan.id,
+            stripeInvoiceId: invoice.id,
+            moneyAmount: invoice.amount_paid !== null && invoice.amount_paid !== undefined
+                ? (invoice.amount_paid / 100).toFixed(2)
+                : null,
+            currency: invoice.currency ?? 'usd',
+            metadata: {
+                billingCycleStart: periodStart.toISOString(),
+                billingCycleEnd: periodEnd?.toISOString(),
+                invoiceId: invoice.id,
+                rolledOverCredits: rolledOver,
+            },
+        });
+
+        return plan.monthlyCredits;
     });
-
-    return plan.monthlyCredits;
 }
 
 async function syncSubscriptionCheckoutSession(
@@ -1099,20 +1135,6 @@ router.post('/webhook', async (req: Request, res: Response) => {
                 const user = await findUserByStripeReference(customerId, subscriptionId);
 
                 if (user && user.subscriptionPlanId) {
-                    const [existingGrant] = await db
-                        .select({ id: creditTransactions.id })
-                        .from(creditTransactions)
-                        .where(and(
-                            eq(creditTransactions.type, 'monthly_grant'),
-                            eq(creditTransactions.stripeInvoiceId, invoice.id)
-                        ))
-                        .limit(1);
-
-                    if (existingGrant) {
-                        console.log(`Invoice ${invoice.id} already processed for user ${user.id}`);
-                        break;
-                    }
-
                     // Get the plan
                     const [plan] = await db
                         .select()
@@ -1124,48 +1146,17 @@ router.post('/webhook', async (req: Request, res: Response) => {
                         const stripeSubscription = subscriptionId
                             ? await stripe.subscriptions.retrieve(subscriptionId)
                             : null;
-                        const periodStart = stripeSubscription?.current_period_start
-                            ? new Date(stripeSubscription.current_period_start * 1000)
-                            : new Date();
-                        const periodEnd = stripeSubscription?.current_period_end
-                            ? new Date(stripeSubscription.current_period_end * 1000)
-                            : null;
 
-                        // Reset billing cycle and grant credits
-                        await db
-                            .update(users)
-                            .set({
-                                billingCycleStart: periodStart,
-                                billingCycleEnd: periodEnd,
-                                monthlyCreditsUsed: 0,
-                                credits: plan.monthlyCredits,
-                                subscriptionStatus: normalizeSubscriptionStatus(stripeSubscription?.status ?? 'active'),
-                                stripeCustomerId: customerId,
-                                stripeSubscriptionId: subscriptionId ?? user.stripeSubscriptionId,
-                                updatedAt: new Date(),
-                            })
-                            .where(eq(users.id, user.id));
+                        // Reuse the single, idempotent, row-locked grant path so the
+                        // webhook and the /verify endpoint can't double-grant and the
+                        // billing-cycle reset (incl. top-up cap counters) is consistent.
+                        const granted = await applyPaidInvoiceToUser(user.id, plan, invoice, stripeSubscription);
 
-                        // Log credit grant
-                        await db.insert(creditTransactions).values({
-                            userId: user.id,
-                            amount: plan.monthlyCredits,
-                            type: 'monthly_grant',
-                            description: `Monthly credits from ${plan.name} subscription`,
-                            subscriptionPlanId: plan.id,
-                            stripeInvoiceId: invoice.id,
-                            moneyAmount: invoice.amount_paid !== null && invoice.amount_paid !== undefined
-                                ? (invoice.amount_paid / 100).toFixed(2)
-                                : null,
-                            currency: invoice.currency ?? 'usd',
-                            metadata: {
-                                billingCycleStart: periodStart.toISOString(),
-                                billingCycleEnd: periodEnd?.toISOString(),
-                                invoiceId: invoice.id,
-                            },
-                        });
-
-                        console.log(`Monthly credits granted to user ${user.id}: ${plan.monthlyCredits}`);
+                        if (granted > 0) {
+                            console.log(`Monthly credits granted to user ${user.id}: ${granted}`);
+                        } else {
+                            console.log(`Invoice ${invoice.id} already processed for user ${user.id}`);
+                        }
                     }
                 }
                 break;
