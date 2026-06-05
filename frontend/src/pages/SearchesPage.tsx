@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { searchApi, contactsApi, settingsApi, ApiError, type SearchHistory, type SearchResultsSortBy, type SortDirection } from '@/lib/api';
+import { searchApi, contactsApi, settingsApi, integrationsApi, ApiError, type SearchHistory, type SearchResultsSortBy, type SortDirection } from '@/lib/api';
 import {
     Search,
     Star,
@@ -34,6 +34,7 @@ import {
     ArrowUpDown,
     Archive,
     ArchiveRestore,
+    Send,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ContactsMapDialog } from '@/components/ContactsMapDialog';
@@ -95,6 +96,14 @@ export default function SearchesPage() {
         queryFn: () => settingsApi.getPublic(),
     });
 
+    // Whether this deployment can push runs into an Xphere workspace.
+    const { data: xphereStatus } = useQuery({
+        queryKey: ['xphere-status'],
+        queryFn: () => integrationsApi.xphereStatus(),
+        refetchOnWindowFocus: false,
+        staleTime: 5 * 60 * 1000,
+    });
+
     const toggleFavoriteMutation = useMutation({
         mutationFn: (contactId: string) => contactsApi.toggleFavorite(contactId),
         onSuccess: () => {
@@ -113,6 +122,20 @@ export default function SearchesPage() {
         },
         onError: (error) => {
             const message = error instanceof ApiError ? error.message : 'Failed to archive contact';
+            toast({ variant: 'destructive', title: 'Error', description: message });
+        },
+    });
+
+    const pushToXphereMutation = useMutation({
+        mutationFn: (searchId: string) => integrationsApi.pushToXphere(searchId),
+        onSuccess: (result) => {
+            toast({
+                title: 'Pushed to Xphere',
+                description: `${result.created} created · ${result.updated} updated · ${result.skipped} skipped`,
+            });
+        },
+        onError: (error) => {
+            const message = error instanceof ApiError ? error.message : 'Failed to push to Xphere';
             toast({ variant: 'destructive', title: 'Error', description: message });
         },
     });
@@ -448,6 +471,21 @@ export default function SearchesPage() {
                                 <Download className="mr-2 h-4 w-4" />
                                 Export CSV
                             </Button>
+                            {xphereStatus?.configured && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => pushToXphereMutation.mutate(selectedSearch.id)}
+                                    disabled={pushToXphereMutation.isPending || contacts.length === 0}
+                                    title="Push these leads into your Xphere workspace as prospects"
+                                >
+                                    {pushToXphereMutation.isPending ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Send className="mr-2 h-4 w-4" />
+                                    )}
+                                    Push to Xphere
+                                </Button>
+                            )}
                         </div>
 
                         {totalPages > 1 && (

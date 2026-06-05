@@ -359,6 +359,27 @@ export const searchApi = {
         ),
 };
 
+// Integrations API
+export interface XpherePushResult {
+    message: string;
+    total: number;
+    created: number;
+    updated: number;
+    skipped: number;
+}
+
+export const integrationsApi = {
+    // Whether this deployment has the Xphere integration configured.
+    xphereStatus: () =>
+        apiFetch<{ configured: boolean }>('/integrations/xphere/status'),
+
+    // Push a completed run's leads into Xphere as prospects.
+    pushToXphere: (searchId: string) =>
+        apiFetch<XpherePushResult>(`/integrations/xphere/push/${searchId}`, {
+            method: 'POST',
+        }),
+};
+
 export const placesApi = {
     autocomplete: (mode: 'query' | 'location', input: string) => {
         const params = new URLSearchParams({
