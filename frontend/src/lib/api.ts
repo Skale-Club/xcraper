@@ -86,6 +86,7 @@ export interface SearchHistory {
     location: string;
     requestedMaxResults: number;
     requestEnrichment: boolean;
+    scrapeType?: string;
     status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
     apifyRunId?: string | null;
     apifyActorId?: string | null;

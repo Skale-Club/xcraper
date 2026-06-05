@@ -35,6 +35,10 @@ import {
     Archive,
     ArchiveRestore,
     Send,
+    Building2,
+    DollarSign,
+    TrendingUp,
+    Briefcase,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ContactsMapDialog } from '@/components/ContactsMapDialog';
@@ -407,6 +411,11 @@ export default function SearchesPage() {
     const totalPages = contactsData?.totalPages ?? 1;
     const archivedCount = contactsData?.archivedCount ?? 0;
 
+    // B2B lead searches reinterpret the result columns (person/company/details)
+    // instead of the Google Maps columns (business/location/rating).
+    const isB2B = selectedSearch.scrapeType === 'b2b_leads'
+        || contacts.some((c) => c.contactType === 'b2b_lead');
+
     return (
         <div className="w-full space-y-8">
             <div className="flex flex-col gap-4">
@@ -459,14 +468,16 @@ export default function SearchesPage() {
                                     Pause
                                 </Button>
                             )}
-                            <Button
-                                variant="outline"
-                                onClick={() => setIsMapDialogOpen(true)}
-                                disabled={contacts.length === 0}
-                            >
-                                <Map className="mr-2 h-4 w-4" />
-                                View Map
-                            </Button>
+                            {!isB2B && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setIsMapDialogOpen(true)}
+                                    disabled={contacts.length === 0}
+                                >
+                                    <Map className="mr-2 h-4 w-4" />
+                                    View Map
+                                </Button>
+                            )}
                             <Button variant="outline" onClick={() => handleExportCsv(selectedSearch.id)}>
                                 <Download className="mr-2 h-4 w-4" />
                                 Export CSV
@@ -553,7 +564,7 @@ export default function SearchesPage() {
                                             onClick={() => handleSort('business')}
                                             className="flex items-center gap-1.5 transition-colors hover:text-foreground"
                                         >
-                                            <span>Business</span>
+                                            <span>{isB2B ? 'Person' : 'Business'}</span>
                                             <ArrowUpDown className={`h-3.5 w-3.5 ${sortBy === 'business' ? 'text-foreground' : ''}`} />
                                         </button>
                                     </th>
@@ -573,11 +584,11 @@ export default function SearchesPage() {
                                             onClick={() => handleSort('location')}
                                             className="flex items-center gap-1.5 transition-colors hover:text-foreground"
                                         >
-                                            <span>Location</span>
+                                            <span>{isB2B ? 'Company' : 'Location'}</span>
                                             <ArrowUpDown className={`h-3.5 w-3.5 ${sortBy === 'location' ? 'text-foreground' : ''}`} />
                                         </button>
                                     </th>
-                                    <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rating</th>
+                                    <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{isB2B ? 'Details' : 'Rating'}</th>
                                     <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Links</th>
                                     <th className="w-10 px-2 py-3.5 text-right">
                                         {archivedCount > 0 && (
@@ -644,12 +655,28 @@ export default function SearchesPage() {
                                             </Button>
                                         </td>
 
-                                        {/* Business Name & Category */}
+                                        {/* Business name / Person */}
                                         <td className="px-4 py-4 align-middle">
                                             <div className="max-w-xs">
                                                 <p className="font-semibold text-foreground leading-tight">{contact.title}</p>
-                                                {contact.category && (
-                                                    <p className="mt-1 text-xs text-muted-foreground truncate">{contact.category}</p>
+                                                {isB2B ? (
+                                                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                                        {contact.jobTitle && (
+                                                            <span className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+                                                                <Briefcase className="h-3 w-3 shrink-0" />
+                                                                {contact.jobTitle}
+                                                            </span>
+                                                        )}
+                                                        {contact.seniority && (
+                                                            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                                                {contact.seniority}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    contact.category && (
+                                                        <p className="mt-1 text-xs text-muted-foreground truncate">{contact.category}</p>
+                                                    )
                                                 )}
                                             </div>
                                         </td>
@@ -680,6 +707,18 @@ export default function SearchesPage() {
                                                         )}
                                                     </div>
                                                 )}
+                                                {contact.personalEmail && contact.personalEmail !== contact.email && (
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <Mail className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                                                        <a
+                                                            href={`mailto:${contact.personalEmail}`}
+                                                            className="hover:text-primary transition-colors truncate"
+                                                            title="Personal email"
+                                                        >
+                                                            {contact.personalEmail}
+                                                        </a>
+                                                    </div>
+                                                )}
                                                 {contact.website && (
                                                     <div className="flex items-center gap-2 text-muted-foreground">
                                                         <Globe className="h-3.5 w-3.5 shrink-0" />
@@ -699,33 +738,87 @@ export default function SearchesPage() {
                                             </div>
                                         </td>
 
-                                        {/* Address */}
+                                        {/* Address / Company */}
                                         <td className="px-4 py-4 align-middle">
-                                            {contact.address ? (
-                                                <a
-                                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex items-center gap-2 text-sm text-muted-foreground max-w-xs hover:text-primary transition-colors group"
-                                                >
-                                                    <MapPin className="h-3.5 w-3.5 shrink-0 group-hover:text-primary transition-colors" />
-                                                    <span className="line-clamp-2 leading-tight">{contact.address}</span>
-                                                </a>
+                                            {isB2B ? (
+                                                (contact.companyName || contact.industry || contact.companySize) ? (
+                                                    <div className="max-w-xs space-y-1">
+                                                        {contact.companyName && (
+                                                            contact.website ? (
+                                                                <a
+                                                                    href={contact.website}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-primary transition-colors"
+                                                                >
+                                                                    <Building2 className="h-3.5 w-3.5 shrink-0" />
+                                                                    <span className="truncate">{contact.companyName}</span>
+                                                                </a>
+                                                            ) : (
+                                                                <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                                                                    <Building2 className="h-3.5 w-3.5 shrink-0" />
+                                                                    <span className="truncate">{contact.companyName}</span>
+                                                                </div>
+                                                            )
+                                                        )}
+                                                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                                                            {contact.industry && <span className="truncate">{contact.industry}</span>}
+                                                            {contact.companySize && (
+                                                                <span className="rounded bg-muted px-1.5 py-0.5">{contact.companySize}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground/50">No company</span>
+                                                )
                                             ) : (
-                                                <span className="text-xs text-muted-foreground/50">No address</span>
+                                                contact.address ? (
+                                                    <a
+                                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex items-center gap-2 text-sm text-muted-foreground max-w-xs hover:text-primary transition-colors group"
+                                                    >
+                                                        <MapPin className="h-3.5 w-3.5 shrink-0 group-hover:text-primary transition-colors" />
+                                                        <span className="line-clamp-2 leading-tight">{contact.address}</span>
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground/50">No address</span>
+                                                )
                                             )}
                                         </td>
 
-                                        {/* Rating */}
+                                        {/* Rating / Company details */}
                                         <td className="px-4 py-4 align-middle">
-                                            {contact.rating ? (
-                                                <div className="flex items-center gap-1.5 text-sm">
-                                                    <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                                                    <span className="font-medium text-foreground">{contact.rating}</span>
-                                                    <span className="text-xs text-muted-foreground">({contact.reviewCount})</span>
-                                                </div>
+                                            {isB2B ? (
+                                                (contact.companyRevenue || contact.companyFunding) ? (
+                                                    <div className="space-y-1 text-xs">
+                                                        {contact.companyRevenue && (
+                                                            <div className="flex items-center gap-1.5 text-muted-foreground" title="Annual revenue">
+                                                                <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                                                                <span className="truncate">{contact.companyRevenue}</span>
+                                                            </div>
+                                                        )}
+                                                        {contact.companyFunding && (
+                                                            <div className="flex items-center gap-1.5 text-muted-foreground" title="Total funding">
+                                                                <TrendingUp className="h-3.5 w-3.5 shrink-0" />
+                                                                <span className="truncate">{contact.companyFunding}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground/50">—</span>
+                                                )
                                             ) : (
-                                                <span className="text-xs text-muted-foreground/50">No rating</span>
+                                                contact.rating ? (
+                                                    <div className="flex items-center gap-1.5 text-sm">
+                                                        <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                                                        <span className="font-medium text-foreground">{contact.rating}</span>
+                                                        <span className="text-xs text-muted-foreground">({contact.reviewCount})</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground/50">No rating</span>
+                                                )
                                             )}
                                         </td>
 
