@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS "settings" (
 	"twitter_handle" text,
 	"hero_title" text DEFAULT 'Extract Business Leads from Google Maps' NOT NULL,
 	"hero_subtitle" text DEFAULT 'Get phone numbers, emails, and addresses from millions of businesses worldwide.' NOT NULL,
-	"hero_cta_text" text DEFAULT 'Start Free Trial' NOT NULL,
+	"hero_cta_text" text DEFAULT 'Start' NOT NULL,
 	"features_title" text DEFAULT 'Powerful Features' NOT NULL,
 	"features_subtitle" text DEFAULT 'Everything you need for effective lead generation' NOT NULL,
 	"pricing_title" text DEFAULT 'Simple, Transparent Pricing' NOT NULL,

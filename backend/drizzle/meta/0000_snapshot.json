@@ -528,7 +528,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'Start Free Trial'"
+          "default": "'Start'"
         },
         "features_title": {
           "name": "features_title",

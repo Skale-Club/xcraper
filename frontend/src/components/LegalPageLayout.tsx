@@ -4,6 +4,7 @@ import { Link } from 'wouter';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { settingsApi, type PublicSettings } from '@/lib/api';
+import { useAuthDialog } from '@/hooks/useAuthDialog';
 import { ArrowRight, Menu, ShieldCheck, X } from 'lucide-react';
 
 interface LegalPageLayoutProps {
@@ -19,6 +20,7 @@ export default function LegalPageLayout({
 }: LegalPageLayoutProps) {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const currentYear = new Date().getFullYear();
+    const { openAuth } = useAuthDialog();
     const { data } = useQuery({
         queryKey: ['public-settings'],
         queryFn: () => settingsApi.getPublic(),
@@ -90,13 +92,9 @@ export default function LegalPageLayout({
                             <a href="/#features" className="text-gray-600 hover:text-gray-900">Features</a>
                             <a href="/#pricing" className="text-gray-600 hover:text-gray-900">Pricing</a>
                             <a href="/#faq" className="text-gray-600 hover:text-gray-900">FAQ</a>
-                            <Link href="/login">
-                                <Button variant="ghost">Login</Button>
-                            </Link>
+                            <Button variant="ghost" onClick={() => openAuth('login')}>Login</Button>
                             {settings.registrationEnabled && (
-                                <Link href="/login">
-                                    <Button>{settings.heroCtaText}</Button>
-                                </Link>
+                                <Button onClick={() => openAuth('register')}>{settings.heroCtaText}</Button>
                             )}
                         </div>
 
@@ -114,13 +112,26 @@ export default function LegalPageLayout({
                                 <a href="/#features" className="text-gray-600 hover:text-gray-900">Features</a>
                                 <a href="/#pricing" className="text-gray-600 hover:text-gray-900">Pricing</a>
                                 <a href="/#faq" className="text-gray-600 hover:text-gray-900">FAQ</a>
-                                <Link href="/login">
-                                    <Button variant="ghost" className="w-full">Login</Button>
-                                </Link>
+                                <Button
+                                    variant="ghost"
+                                    className="w-full"
+                                    onClick={() => {
+                                        setMobileMenuOpen(false);
+                                        openAuth('login');
+                                    }}
+                                >
+                                    Login
+                                </Button>
                                 {settings.registrationEnabled && (
-                                    <Link href="/login">
-                                        <Button className="w-full">{settings.heroCtaText}</Button>
-                                    </Link>
+                                    <Button
+                                        className="w-full"
+                                        onClick={() => {
+                                            setMobileMenuOpen(false);
+                                            openAuth('register');
+                                        }}
+                                    >
+                                        {settings.heroCtaText}
+                                    </Button>
                                 )}
                             </div>
                         </div>
@@ -161,12 +172,15 @@ export default function LegalPageLayout({
                         Create an account, run your first search, and organize business contacts in one place.
                     </p>
                     {settings.registrationEnabled && (
-                        <Link href="/login">
-                            <Button size="lg" variant="secondary" className="mt-6">
-                                {settings.heroCtaText}
-                                <ArrowRight className="ml-2 h-5 w-5" />
-                            </Button>
-                        </Link>
+                        <Button
+                            size="lg"
+                            variant="secondary"
+                            className="mt-6"
+                            onClick={() => openAuth('register')}
+                        >
+                            {settings.heroCtaText}
+                            <ArrowRight className="ml-2 h-5 w-5" />
+                        </Button>
                     )}
                 </div>
             </section>

@@ -19,7 +19,7 @@ async function seedSettings() {
             seoKeywords: 'google maps scraper, lead generation, business contacts, email extractor, phone number scraper, b2b leads, sales leads',
             heroTitle: 'Extract Business Leads from Google Maps',
             heroSubtitle: 'Get phone numbers, emails, addresses, and social media links from millions of businesses worldwide. Start with 10 free credits.',
-            heroCtaText: 'Start Free Trial',
+            heroCtaText: 'Start',
             featuresTitle: 'Powerful Features',
             featuresSubtitle: 'Everything you need to generate high-quality leads',
             pricingTitle: 'Simple, Credit-Based Pricing',

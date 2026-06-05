@@ -5,6 +5,7 @@ import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { settingsApi, subscriptionApi } from '@/lib/api';
+import { useAuthDialog } from '@/hooks/useAuthDialog';
 import {
     Search,
     Shield,
@@ -56,6 +57,7 @@ export default function LandingPage() {
     const [openFaq, setOpenFaq] = useState<number | null>(null);
     const [scrolled, setScrolled] = useState(false);
     const currentYear = new Date().getFullYear();
+    const { openAuth } = useAuthDialog();
 
     useEffect(() => {
         const handleScroll = () => {
@@ -86,7 +88,7 @@ export default function LandingPage() {
         seoKeywords: 'google maps scraper, lead generation, business contacts',
         heroTitle: 'Turn Google Maps Into Your Lead Machine',
         heroSubtitle: 'Extract verified phone numbers, emails, and social profiles from millions of businesses worldwide in minutes.',
-        heroCtaText: 'Start Scraping Free',
+        heroCtaText: 'Start',
         featuresTitle: 'Everything You Need to Scale Your Outreach',
         featuresSubtitle: 'Powerful tools designed for precision lead generation and data enrichment.',
         pricingTitle: 'Simple, Transparent Pricing',
@@ -233,15 +235,19 @@ export default function LandingPage() {
                             <a href="#pricing" className="text-sm font-medium text-slate-400 hover:text-primary transition-colors">Pricing</a>
                             <a href="#faq" className="text-sm font-medium text-slate-400 hover:text-primary transition-colors">FAQ</a>
                             <div className="h-4 w-px bg-slate-800 mx-2"></div>
-                            <Link href="/login">
-                                <button className="text-sm font-semibold text-slate-300 hover:text-primary transition-colors">Login</button>
-                            </Link>
+                            <button
+                                onClick={() => openAuth('login')}
+                                className="text-sm font-semibold text-slate-300 hover:text-primary transition-colors"
+                            >
+                                Login
+                            </button>
                             {settings.registrationEnabled && (
-                                <Link href="/login">
-                                    <Button className="rounded-full px-6 shadow-lg shadow-primary/20">
-                                        Get Started
-                                    </Button>
-                                </Link>
+                                <Button
+                                    onClick={() => openAuth('register')}
+                                    className="rounded-full px-6 shadow-lg shadow-primary/20"
+                                >
+                                    Start
+                                </Button>
                             )}
                         </div>
 
@@ -267,13 +273,26 @@ export default function LandingPage() {
                             <div className="px-4 pt-8 pb-6 flex flex-col gap-6">
                                 <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="text-lg font-medium">Pricing</a>
                                 <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="text-lg font-medium">FAQ</a>
-                                <Link href="/login">
-                                    <Button variant="outline" className="w-full rounded-xl">Login</Button>
-                                </Link>
+                                <Button
+                                    variant="outline"
+                                    className="w-full rounded-xl"
+                                    onClick={() => {
+                                        setMobileMenuOpen(false);
+                                        openAuth('login');
+                                    }}
+                                >
+                                    Login
+                                </Button>
                                 {settings.registrationEnabled && (
-                                    <Link href="/login">
-                                        <Button className="w-full rounded-xl">{settings.heroCtaText}</Button>
-                                    </Link>
+                                    <Button
+                                        className="w-full rounded-xl"
+                                        onClick={() => {
+                                            setMobileMenuOpen(false);
+                                            openAuth('register');
+                                        }}
+                                    >
+                                        {settings.heroCtaText}
+                                    </Button>
                                 )}
                             </div>
                         </motion.div>
@@ -305,12 +324,14 @@ export default function LandingPage() {
                             </p>
                             <div className="flex flex-col sm:flex-row gap-7 sm:gap-4 items-start sm:items-center">
                                 {settings.registrationEnabled && (
-                                    <Link href="/login" className="w-full sm:w-auto">
-                                        <Button size="lg" className="h-14 w-full sm:w-auto px-10 text-lg rounded-2xl shadow-xl shadow-primary/20 transition-transform hover:scale-105 active:scale-95">
-                                            {settings.heroCtaText}
-                                            <ArrowRight className="ml-2 w-5 h-5" />
-                                        </Button>
-                                    </Link>
+                                    <Button
+                                        size="lg"
+                                        onClick={() => openAuth('register')}
+                                        className="h-14 w-full sm:w-auto px-10 text-lg rounded-2xl shadow-xl shadow-primary/20 transition-transform hover:scale-105 active:scale-95"
+                                    >
+                                        {settings.heroCtaText}
+                                        <ArrowRight className="ml-2 w-5 h-5" />
+                                    </Button>
                                 )}
                                 <div className="flex -space-x-2 items-center self-start">
                                     {[1, 2, 3, 4].map((i) => (
@@ -521,18 +542,17 @@ export default function LandingPage() {
                                         </div>
 
                                         {/* CTA Button */}
-                                        <Link href="/login" className="block">
-                                            <Button
-                                                className={`w-full h-14 text-base font-black rounded-2xl transition-all duration-300 ${
-                                                    plan.isPopular || displayPlans.length === 1
-                                                        ? 'bg-primary hover:bg-primary/90 text-white shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1'
-                                                        : 'bg-white/5 hover:bg-white/10 text-white border border-white/10'
-                                                }`}
-                                                variant="ghost"
-                                            >
-                                                Start with {plan.name}
-                                            </Button>
-                                        </Link>
+                                        <Button
+                                            onClick={() => openAuth('register')}
+                                            className={`w-full h-14 text-base font-black rounded-2xl transition-all duration-300 ${
+                                                plan.isPopular || displayPlans.length === 1
+                                                    ? 'bg-primary hover:bg-primary/90 text-white shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1'
+                                                    : 'bg-white/5 hover:bg-white/10 text-white border border-white/10'
+                                            }`}
+                                            variant="ghost"
+                                        >
+                                                Start
+                                        </Button>
                                     </div>
                                 </motion.div>
                             ))}
@@ -685,11 +705,14 @@ export default function LandingPage() {
                                     {settings.brandDescription || "Start your free trial today and extract your first 10 leads in less than 60 seconds."}
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
-                                    <Link href="/login">
-                                        <Button size="lg" variant="secondary" className="h-16 px-12 text-xl font-bold rounded-2xl shadow-2xl transition-transform hover:scale-105 active:scale-95">
-                                            {settings.heroCtaText || "Get Started Free"}
-                                        </Button>
-                                    </Link>
+                                    <Button
+                                        size="lg"
+                                        variant="secondary"
+                                        onClick={() => openAuth('register')}
+                                        className="h-16 px-12 text-xl font-bold rounded-2xl shadow-2xl transition-transform hover:scale-105 active:scale-95"
+                                    >
+                                        {settings.heroCtaText || "Start"}
+                                    </Button>
                                     <div className="flex items-center gap-2 text-primary-foreground font-medium">
                                         <Shield className="w-5 h-5" /> No credit card required
                                     </div>

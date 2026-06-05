@@ -39,7 +39,7 @@ interface AuthContextType {
     supabaseUser: User | null;
     isLoading: boolean;
     isAuthenticated: boolean;
-    signUp: (email: string, password: string, name: string, captchaToken?: string) => Promise<{ error: string | null; requiresEmailConfirmation: boolean }>;
+    signUp: (email: string, password: string, name?: string, captchaToken?: string) => Promise<{ error: string | null; requiresEmailConfirmation: boolean }>;
     signIn: (email: string, password: string, captchaToken?: string) => Promise<{ error: string | null }>;
     signInWithGoogle: () => Promise<{ error: string | null }>;
     signInWithGithub: () => Promise<{ error: string | null }>;
@@ -186,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const signUp = async (
         email: string,
         password: string,
-        name: string,
+        name?: string,
         captchaToken?: string
     ): Promise<{ error: string | null; requiresEmailConfirmation: boolean }> => {
         try {
@@ -195,7 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 password,
                 options: {
                     data: {
-                        name,
+                        name: name || email.split('@')[0],
                     },
                     captchaToken,
                 },

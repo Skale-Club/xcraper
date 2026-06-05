@@ -481,7 +481,7 @@ export const settings = pgTable('settings', {
     // Landing Page Content
     heroTitle: text('hero_title').notNull().default('Extract Business Leads from Google Maps'),
     heroSubtitle: text('hero_subtitle').notNull().default('Get phone numbers, emails, and addresses from millions of businesses worldwide.'),
-    heroCtaText: text('hero_cta_text').notNull().default('Start Free Trial'),
+    heroCtaText: text('hero_cta_text').notNull().default('Start'),
 
     featuresTitle: text('features_title').notNull().default('Powerful Features'),
     featuresSubtitle: text('features_subtitle').notNull().default('Everything you need for effective lead generation'),

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Route, Switch, Redirect } from 'wouter';
 import { Suspense, lazy, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { AuthDialogProvider } from '@/hooks/useAuthDialog';
 import AppShell from '@/components/app/AppShell';
 import { Toaster } from '@/components/ui/toaster';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -371,10 +372,12 @@ function App() {
         <ThemeProvider defaultTheme="system" storageKey="xcraper-theme">
             <QueryClientProvider client={queryClient}>
                 <AuthProvider>
-                    <SearchSurveyProvider>
-                        <AppRoutes />
-                        <Toaster />
-                    </SearchSurveyProvider>
+                    <AuthDialogProvider>
+                        <SearchSurveyProvider>
+                            <AppRoutes />
+                            <Toaster />
+                        </SearchSurveyProvider>
+                    </AuthDialogProvider>
                 </AuthProvider>
                 {ReactQueryDevtools ? (
                     <Suspense fallback={null}>
