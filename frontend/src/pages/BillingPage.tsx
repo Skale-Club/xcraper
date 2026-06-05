@@ -451,7 +451,7 @@ export default function BillingPage() {
                                             </div>
                                         </div>
                                         <Button
-                                            className="w-full"
+                                            className="w-full rounded-full text-white"
                                             type="button"
                                             onClick={() => void handleSubscribe(plan.id)}
                                             disabled={processing}

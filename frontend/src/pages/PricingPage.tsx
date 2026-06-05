@@ -170,7 +170,7 @@ const PricingPage = () => {
                                     </ul>
                                 </div>
                                 <Button
-                                    className="w-full mt-6"
+                                    className="w-full mt-6 rounded-full text-white"
                                     onClick={() => handleSubscribe(plan.id)}
                                     disabled={processingId === plan.id || user?.subscriptionPlanId === plan.id}
                                 >
@@ -178,7 +178,7 @@ const PricingPage = () => {
                                         ? 'Processing...'
                                         : user?.subscriptionPlanId === plan.id
                                             ? 'Current Plan'
-                                            : 'Get Started'}
+                                            : 'Start'}
                                 </Button>
                             </CardContent>
                         </Card>
@@ -234,7 +234,7 @@ const PricingPage = () => {
                                                 </ul>
                                             </div>
                                             <Button
-                                                className="w-full mt-6"
+                                                className="w-full mt-6 rounded-full text-white"
                                                 onClick={() => handleSubscribe(plan.id)}
                                                 disabled={processingId === plan.id || user?.subscriptionPlanId === plan.id}
                                             >
@@ -242,7 +242,7 @@ const PricingPage = () => {
                                                     ? 'Processing...'
                                                     : user?.subscriptionPlanId === plan.id
                                                         ? 'Current Plan'
-                                                        : 'Get Started'}
+                                                        : 'Start'}
                                             </Button>
                                         </CardContent>
                                     </Card>

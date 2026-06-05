@@ -35,7 +35,7 @@ export default function LegalPageLayout({
         seoKeywords: 'google maps scraper, lead generation, business contacts',
         heroTitle: 'Extract Business Leads from Google Maps',
         heroSubtitle: 'Get phone numbers, emails, and addresses from millions of businesses worldwide.',
-        heroCtaText: 'Start Free Trial',
+        heroCtaText: 'Start',
         featuresTitle: 'Powerful Features',
         featuresSubtitle: 'Everything you need for effective lead generation',
         pricingTitle: 'Simple, Transparent Pricing',

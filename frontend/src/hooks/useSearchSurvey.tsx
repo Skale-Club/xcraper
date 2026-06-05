@@ -730,7 +730,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                             >
                                                 Back
                                             </Button>
-                                            <Button type="submit" disabled={!canMoveForward || isLoading}>
+                                            <Button type="submit" disabled={!canMoveForward || isLoading} className="rounded-full text-white">
                                                 {isLoading ? (
                                                     <>
                                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

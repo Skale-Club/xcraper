@@ -244,7 +244,7 @@ export default function LandingPage() {
                             {settings.registrationEnabled && (
                                 <Button
                                     onClick={() => openAuth('register')}
-                                    className="rounded-full px-6 shadow-lg shadow-primary/20"
+                                    className="rounded-full px-6 shadow-lg shadow-primary/20 text-white"
                                 >
                                     Start
                                 </Button>
@@ -285,7 +285,7 @@ export default function LandingPage() {
                                 </Button>
                                 {settings.registrationEnabled && (
                                     <Button
-                                        className="w-full rounded-xl"
+                                        className="w-full rounded-full text-white"
                                         onClick={() => {
                                             setMobileMenuOpen(false);
                                             openAuth('register');
@@ -302,40 +302,40 @@ export default function LandingPage() {
 
             <main className="relative z-10">
                 {/* Hero Section */}
-                <section className="pt-32 pb-10 md:pb-16 overflow-hidden">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-16 items-center">
+                <section className="pt-28 pb-12 md:pb-20 overflow-hidden">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-10 items-center">
                         <motion.div
                             initial={{ opacity: 0, x: -30 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ duration: 0.8, ease: 'easeOut' }}
                         >
-                            <Badge variant="outline" className="mb-6 py-1 px-4 rounded-full bg-primary/5 text-primary border-primary/20 animate-bounce">
+                            <Badge variant="outline" className="mb-4 py-1 px-4 rounded-full bg-primary/5 text-primary border-primary/20 animate-bounce">
                                 New: AI-Powered Email Enrichment
                             </Badge>
-                            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-[1.1] font-heading">
+                            <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 leading-[1.1] font-heading">
                                 {settings.heroTitle.split(' ').map((word, i) => (
                                     <span key={i} className={i >= settings.heroTitle.split(' ').length - 2 ? 'text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-400' : ''}>
                                         {word}{' '}
                                     </span>
                                 ))}
                             </h1>
-                            <p className="text-xl text-slate-400 mb-10 leading-relaxed max-w-xl">
+                            <p className="text-xl text-slate-400 mb-6 leading-relaxed max-w-xl">
                                 {settings.heroSubtitle}
                             </p>
-                            <div className="flex flex-col sm:flex-row gap-7 sm:gap-4 items-start sm:items-center">
+                            <div className="flex flex-col sm:flex-row gap-4 sm:gap-4 items-center">
                                 {settings.registrationEnabled && (
                                     <Button
                                         size="lg"
                                         onClick={() => openAuth('register')}
-                                        className="h-14 w-full sm:w-auto px-10 text-lg rounded-2xl shadow-xl shadow-primary/20 transition-transform hover:scale-105 active:scale-95"
+                                        className="h-12 w-full sm:w-auto px-8 text-base rounded-full shadow-xl shadow-primary/20 transition-transform hover:scale-105 active:scale-95 text-white"
                                     >
                                         {settings.heroCtaText}
                                         <ArrowRight className="ml-2 w-5 h-5" />
                                     </Button>
                                 )}
-                                <div className="flex -space-x-2 items-center self-start">
+                                    <div className="flex -space-x-2 items-center">
                                     {[1, 2, 3, 4].map((i) => (
-                                        <div key={i} className="w-10 h-10 aspect-square shrink-0 rounded-full border-2 border-slate-900 bg-slate-700 overflow-hidden">
+                                        <div key={i} className="w-8 h-8 aspect-square shrink-0 rounded-full border-2 border-slate-900 bg-slate-700 overflow-hidden">
                                             <img
                                                 src={`https://i.pravatar.cc/100?u=${i + 10}`}
                                                 alt="User"
@@ -343,7 +343,7 @@ export default function LandingPage() {
                                             />
                                         </div>
                                     ))}
-                                    <div className="pl-6 text-sm text-slate-500 font-medium">
+                                    <div className="pl-4 text-xs text-slate-500 font-medium">
                                         Trusted by <span className="text-white font-bold">growing teams</span>
                                     </div>
                                 </div>
@@ -357,57 +357,57 @@ export default function LandingPage() {
                             className="relative lg:block lg:pr-10"
                         >
                             {/* Visual Demo Visualizer */}
-                            <div className="relative bg-slate-900 rounded-[2.5rem] p-4 shadow-2xl border border-slate-800/50 backdrop-blur-sm">
-                                <div className="absolute -inset-1 bg-gradient-to-tr from-primary/30 to-indigo-600/30 rounded-[2.6rem] blur-xl opacity-50 -z-10 animate-pulse"></div>
+                            <div className="relative bg-slate-900 rounded-[2rem] p-3 shadow-2xl border border-slate-800/50 backdrop-blur-sm max-w-lg mx-auto">
+                                <div className="absolute -inset-1 bg-gradient-to-tr from-primary/30 to-indigo-600/30 rounded-[2.1rem] blur-xl opacity-50 -z-10 animate-pulse"></div>
                                 
-                                <div className="bg-slate-800 rounded-[1.8rem] overflow-hidden border border-slate-700">
+                                <div className="bg-slate-800 rounded-[1.5rem] overflow-hidden border border-slate-700">
                                     {/* Mock Browser Header */}
-                                    <div className="flex items-center gap-2 px-6 py-4 bg-slate-700/50 border-b border-slate-600/50">
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-700/50 border-b border-slate-600/50">
                                         <div className="flex gap-1.5">
                                             <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
                                             <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
                                             <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
                                         </div>
-                                        <div className="flex-1 ml-4 h-7 bg-slate-900/50 rounded-lg flex items-center px-3 text-[10px] text-slate-500 font-mono">
+                                        <div className="flex-1 ml-3 h-6 bg-slate-900/50 rounded-lg flex items-center px-3 text-[10px] text-slate-500 font-mono">
                                             xcraper.skale.club/app/search
                                         </div>
                                     </div>
 
                                     {/* Mock Content */}
-                                    <div className="p-8">
-                                        <div className="space-y-6">
+                                    <div className="p-5">
+                                        <div className="space-y-4">
                                             <div className="flex gap-3">
-                                                <div className="flex-1 h-12 bg-slate-700/50 rounded-xl border border-slate-600/50 flex items-center px-4 gap-3">
+                                                <div className="flex-1 h-10 bg-slate-700/50 rounded-lg border border-slate-600/50 flex items-center px-3 gap-2">
                                                     <Search className="w-4 h-4 text-slate-500" />
-                                                    <div className="text-sm text-slate-300">Coffee shops in San Francisco</div>
+                                                    <div className="text-xs text-slate-300">Coffee shops in San Francisco</div>
                                                 </div>
-                                                <div className="w-32 h-12 bg-primary rounded-xl flex items-center justify-center font-bold text-sm shadow-lg shadow-primary/20">
+                                                <div className="w-24 h-10 bg-primary rounded-lg flex items-center justify-center font-bold text-xs shadow-lg shadow-primary/20">
                                                     Scrape
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-2 gap-4">
+                                            <div className="grid grid-cols-2 gap-3">
                                                 {[1, 2, 3, 4].map((i) => (
                                                     <motion.div
                                                         key={i}
                                                         initial={{ opacity: 0, y: 10 }}
                                                         animate={{ opacity: 1, y: 0 }}
                                                         transition={{ delay: 0.5 + (i * 0.1) }}
-                                                        className="p-4 bg-slate-700/30 rounded-2xl border border-slate-600/30"
+                                                        className="p-3 bg-slate-700/30 rounded-xl border border-slate-600/30"
                                                     >
-                                                        <div className="h-2 w-20 bg-slate-600 rounded-full mb-3"></div>
-                                                        <div className="h-1.5 w-full bg-slate-600/50 rounded-full mb-2"></div>
-                                                        <div className="h-1.5 w-2/3 bg-slate-600/50 rounded-full mb-4"></div>
+                                                        <div className="h-1.5 w-16 bg-slate-600 rounded-full mb-2"></div>
+                                                        <div className="h-1 w-full bg-slate-600/50 rounded-full mb-1.5"></div>
+                                                        <div className="h-1 w-2/3 bg-slate-600/50 rounded-full mb-3"></div>
                                                         <div className="flex gap-2">
-                                                            <div className="h-4 w-12 bg-green-500/20 rounded-full border border-green-500/30"></div>
-                                                            <div className="h-4 w-16 bg-blue-500/20 rounded-full border border-blue-500/30"></div>
+                                                            <div className="h-3 w-10 bg-green-500/20 rounded-full border border-green-500/30"></div>
+                                                            <div className="h-3 w-12 bg-blue-500/20 rounded-full border border-blue-500/30"></div>
                                                         </div>
                                                     </motion.div>
                                                 ))}
                                             </div>
 
                                             {/* Progress Bar Animation */}
-                                            <div className="pt-4">
+                                            <div className="pt-2">
                                                 <div className="flex justify-between text-[10px] text-slate-500 font-mono mb-2 uppercase tracking-widest">
                                                     <span>Extracting Contacts...</span>
                                                     <span>84%</span>
@@ -429,15 +429,15 @@ export default function LandingPage() {
                                 <motion.div
                                     animate={{ y: [0, -10, 0] }}
                                     transition={{ duration: 3, repeat: Infinity }}
-                                    className="absolute -right-4 top-1/2 bg-slate-800 px-3 py-3 rounded-2xl shadow-2xl border border-slate-700 hidden sm:block"
+                                    className="absolute -right-2 top-1/2 bg-slate-800 px-2 py-2 rounded-xl shadow-2xl border border-slate-700 hidden sm:block"
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
-                                            <CheckCircle className="w-4 h-4 text-green-500" />
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full bg-green-500/10 flex items-center justify-center">
+                                            <CheckCircle className="w-3 h-3 text-green-500" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] text-slate-500 font-bold uppercase">Status</p>
-                                            <p className="text-xs font-bold text-white">1,240 leads found</p>
+                                            <p className="text-[9px] text-slate-500 font-bold uppercase">Status</p>
+                                            <p className="text-[10px] font-bold text-white">1,240 leads found</p>
                                         </div>
                                     </div>
                                 </motion.div>
@@ -456,7 +456,7 @@ export default function LandingPage() {
                             <Badge variant="outline" className="mb-4 py-1 px-4 rounded-full bg-primary/10 text-primary border-primary/20 font-semibold tracking-wide uppercase text-[10px]">
                                 Transparent Pricing
                             </Badge>
-                            <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight font-heading">
+                            <h2 className="text-4xl md:text-5xl font-black mb-6 tracking-tight font-heading">
                                 {settings.pricingTitle}
                             </h2>
                             <p className="text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
@@ -544,14 +544,14 @@ export default function LandingPage() {
                                         {/* CTA Button */}
                                         <Button
                                             onClick={() => openAuth('register')}
-                                            className={`w-full h-14 text-base font-black rounded-2xl transition-all duration-300 ${
+                                            className={`w-full h-14 text-base font-black rounded-full transition-all duration-300 ${
                                                 plan.isPopular || displayPlans.length === 1
                                                     ? 'bg-primary hover:bg-primary/90 text-white shadow-2xl shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1'
                                                     : 'bg-white/5 hover:bg-white/10 text-white border border-white/10'
                                             }`}
                                             variant="ghost"
                                         >
-                                                Start
+                                            Start with {plan.name}
                                         </Button>
                                     </div>
                                 </motion.div>
@@ -687,9 +687,9 @@ export default function LandingPage() {
                 </section>
 
                 {/* Final CTA */}
-                <section className="py-24">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div className="relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-primary to-indigo-700 p-12 md:p-24 text-center text-white shadow-2xl">
+                <section className="py-16 md:py-20">
+                    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary to-indigo-700 p-8 md:p-14 text-center text-white shadow-2xl">
                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20 pointer-events-none"></div>
                             
                             <motion.div
@@ -698,10 +698,10 @@ export default function LandingPage() {
                                 viewport={{ once: true }}
                                 className="relative z-10"
                             >
-                                <h2 className="text-4xl md:text-6xl font-black mb-8 tracking-tight font-heading">
+                                <h2 className="text-3xl md:text-4xl font-black mb-4 tracking-tight font-heading">
                                     {settings.brandTagline || "Ready to automate your lead generation?"}
                                 </h2>
-                                <p className="text-xl text-primary-foreground/80 mb-12 max-w-2xl mx-auto">
+                                <p className="text-lg text-primary-foreground/80 mb-8 max-w-xl mx-auto">
                                     {settings.brandDescription || "Start your free trial today and extract your first 10 leads in less than 60 seconds."}
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
@@ -709,7 +709,7 @@ export default function LandingPage() {
                                         size="lg"
                                         variant="secondary"
                                         onClick={() => openAuth('register')}
-                                        className="h-16 px-12 text-xl font-bold rounded-2xl shadow-2xl transition-transform hover:scale-105 active:scale-95"
+                                        className="h-12 px-8 text-base font-bold rounded-full shadow-2xl transition-transform hover:scale-105 active:scale-95 text-white"
                                     >
                                         {settings.heroCtaText || "Start"}
                                     </Button>

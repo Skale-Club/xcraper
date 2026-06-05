@@ -41,7 +41,7 @@ export default function ContentPage() {
                             id="heroCtaText"
                             defaultValue={settings.heroCtaText}
                             onBlur={(e) => saveSetting({ heroCtaText: e.target.value })}
-                            placeholder="Start Free Trial"
+                            placeholder="Start"
                             disabled={isSaving}
                         />
                     </div>

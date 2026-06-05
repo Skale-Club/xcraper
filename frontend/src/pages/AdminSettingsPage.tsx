@@ -338,7 +338,7 @@ export default function AdminSettingsPage() {
                                             id="heroCtaText"
                                             defaultValue={settings.heroCtaText}
                                             onBlur={(e) => handleSave({ heroCtaText: e.target.value })}
-                                            placeholder="Start Free Trial"
+                                            placeholder="Start"
                                         />
                                     </div>
                                 </div>

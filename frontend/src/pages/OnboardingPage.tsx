@@ -407,6 +407,7 @@ export default function OnboardingPage() {
                                     <Button
                                         onClick={handleComplete}
                                         disabled={completeMutation.isPending}
+                                        className="rounded-full text-white"
                                     >
                                         {completeMutation.isPending ? (
                                             <>
@@ -415,7 +416,7 @@ export default function OnboardingPage() {
                                             </>
                                         ) : (
                                             <>
-                                                Get Started
+                                                Start
                                                 <Check className="w-4 h-4 ml-2" />
                                             </>
                                         )}
