@@ -8,6 +8,7 @@ import {
     Globe,
     LayoutDashboard,
     Palette,
+    Radar,
     Receipt,
     Settings as SettingsIcon,
     TrendingUp,
@@ -26,6 +27,7 @@ type SettingsPage =
     | 'pricing'
     | 'advanced'
     | 'system'
+    | 'scrapers'
     | 'pnl';
 
 interface SettingsLayoutProps {
@@ -46,6 +48,7 @@ const tabs: { id: SettingsPage; label: string; icon: typeof Globe; path: string 
     { id: 'pricing', label: 'Pricing', icon: DollarSign, path: '/admin/settings/pricing' },
     { id: 'advanced', label: 'Advanced', icon: Cpu, path: '/admin/settings/advanced' },
     { id: 'system', label: 'System', icon: SettingsIcon, path: '/admin/settings/system' },
+    { id: 'scrapers', label: 'Scrapers', icon: Radar, path: '/admin/settings/scrapers' },
 ];
 
 export function SettingsLayout({ children, currentPage }: SettingsLayoutProps) {

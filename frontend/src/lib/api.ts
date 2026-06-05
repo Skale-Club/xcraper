@@ -672,6 +672,40 @@ export interface PublicSettingsResponse {
     packages: CreditPackage[];
 }
 
+export interface AdminScraperTemplate {
+    key: string;
+    source: ScraperSource;
+    label: string;
+    description: string;
+    billing: 'pay_per_result' | 'pay_per_event';
+    extractsEmails: boolean;
+    inputSchema: ScraperFormField[];
+    seeded: boolean;
+    actorId: string;
+    actorName: string;
+    costPerResultUsd: string;
+    fixedStartCostUsd: string;
+    memoryMb: number;
+    creditsPerResult: number;
+    minResults: number;
+    maxResults: number;
+    isActive: boolean;
+    displayOrder: number;
+}
+
+export interface ScraperTemplateUpdate {
+    actorId?: string;
+    actorName?: string;
+    costPerResultUsd?: number;
+    fixedStartCostUsd?: number;
+    memoryMb?: number;
+    creditsPerResult?: number;
+    minResults?: number;
+    maxResults?: number;
+    isActive?: boolean;
+    displayOrder?: number;
+}
+
 export interface AdminCreditPackage {
     id: string;
     name: string;
@@ -738,7 +772,16 @@ export const settingsApi = {
     deletePackage: (packageId: string) =>
         apiFetch<{ message: string }>(`/settings/packages/${packageId}`, {
             method: 'DELETE'
-        })
+        }),
+
+    getScrapers: () =>
+        apiFetch<{ scrapers: AdminScraperTemplate[] }>('/settings/scrapers'),
+
+    updateScraper: (key: string, data: ScraperTemplateUpdate) =>
+        apiFetch<{ message: string; scraper: AdminScraperTemplate }>(`/settings/scrapers/${key}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        }),
 };
 
 // Subscription API

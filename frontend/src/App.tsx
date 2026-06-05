@@ -31,6 +31,7 @@ const AdminSettingsContentPage = lazy(() => import('@/pages/admin/settings/Conte
 const AdminSettingsPricingPage = lazy(() => import('@/pages/admin/settings/PricingPage'));
 const AdminSettingsAdvancedPage = lazy(() => import('@/pages/admin/settings/AdvancedPage'));
 const AdminSettingsSystemPage = lazy(() => import('@/pages/admin/settings/SystemPage'));
+const AdminSettingsScrapersPage = lazy(() => import('@/pages/admin/settings/ScrapersPage'));
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
 const AdminPnLPage = lazy(() => import('@/pages/AdminPnLPage'));
 
@@ -124,6 +125,7 @@ type SettingsPage =
     | 'pricing'
     | 'advanced'
     | 'system'
+    | 'scrapers'
     | 'pnl';
 
 function SettingsLayoutWrapper({ page, children }: { page: SettingsPage; children: ReactNode }) {
@@ -345,6 +347,14 @@ function AppRoutes() {
                 <AdminRoute>
                     <SettingsLayoutWrapper page="system">
                         <AdminSettingsSystemPage />
+                    </SettingsLayoutWrapper>
+                </AdminRoute>
+            </Route>
+
+            <Route path="/admin/settings/scrapers">
+                <AdminRoute>
+                    <SettingsLayoutWrapper page="scrapers">
+                        <AdminSettingsScrapersPage />
                     </SettingsLayoutWrapper>
                 </AdminRoute>
             </Route>

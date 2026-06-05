@@ -1,10 +1,11 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { settings, creditPackages } from '../db/schema.js';
+import { settings, creditPackages, scraperTemplates } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { systemSettingsService } from '../services/systemSettings.js';
+import { scraperRegistry, templateToSeedRow } from '../services/scrapers/registry.js';
 
 const router = Router();
 const DEFAULT_ID = 'default';
@@ -398,6 +399,117 @@ router.delete('/packages/:packageId', requireAuth, requireAdmin, async (req, res
         res.json({ message: 'Package deleted successfully' });
     } catch (error) {
         console.error('Delete package error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ── Scraper templates (hybrid registry: logic in code, params here) ────────────
+
+const updateScraperSchema = z.object({
+    actorId: z.string().min(1).optional(),
+    actorName: z.string().min(1).optional(),
+    costPerResultUsd: z.coerce.number().min(0).optional(),
+    fixedStartCostUsd: z.coerce.number().min(0).optional(),
+    memoryMb: z.number().int().min(128).max(32768).optional(),
+    creditsPerResult: z.number().int().min(0).max(100000).optional(),
+    minResults: z.number().int().min(1).max(100000).optional(),
+    maxResults: z.number().int().min(1).max(100000).optional(),
+    isActive: z.boolean().optional(),
+    displayOrder: z.number().int().optional(),
+});
+
+// GET /api/settings/scrapers — code templates merged with editable DB params (admin).
+router.get('/scrapers', requireAuth, requireAdmin, async (_req, res: Response): Promise<void> => {
+    try {
+        const rows = await db.select().from(scraperTemplates);
+        const rowMap = new Map(rows.map((r) => [r.key, r]));
+
+        const scrapers = scraperRegistry.listTemplates().map((t) => {
+            const row = rowMap.get(t.key);
+            const d = t.defaults;
+            return {
+                key: t.key,
+                source: t.source,
+                label: t.label,
+                description: t.description,
+                billing: t.billing,
+                extractsEmails: t.extractsEmails,
+                inputSchema: t.inputSchema,
+                seeded: !!row,
+                // Editable params (DB row, falling back to code defaults)
+                actorId: row?.actorId ?? d.actorId,
+                actorName: row?.actorName ?? d.actorName,
+                costPerResultUsd: row?.costPerResultUsd ?? d.costPerResultUsd.toFixed(6),
+                fixedStartCostUsd: row?.fixedStartCostUsd ?? d.fixedStartCostUsd.toFixed(6),
+                memoryMb: row?.memoryMb ?? d.memoryMb,
+                creditsPerResult: row?.creditsPerResult ?? d.creditsPerResult,
+                minResults: row?.minResults ?? d.minResults,
+                maxResults: row?.maxResults ?? d.maxResults,
+                isActive: row?.isActive ?? d.isActive,
+                displayOrder: row?.displayOrder ?? 0,
+            };
+        });
+
+        res.json({ scrapers });
+    } catch (error) {
+        console.error('List scraper templates error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PATCH /api/settings/scrapers/:key — update editable params (admin). Upserts the
+// row from code defaults if it wasn't seeded yet. Logic (key/source/inputSchema) is
+// code-owned and not editable here.
+router.patch('/scrapers/:key', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
+    try {
+        const { key } = req.params;
+        const template = scraperRegistry.getTemplate(key);
+        if (!template) {
+            res.status(404).json({ error: 'Unknown scraper template' });
+            return;
+        }
+
+        const parsed = updateScraperSchema.safeParse(req.body);
+        if (!parsed.success) {
+            res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() });
+            return;
+        }
+
+        const updates: Record<string, unknown> = { updatedAt: new Date() };
+        const v = parsed.data;
+        if (v.actorId !== undefined) updates.actorId = v.actorId;
+        if (v.actorName !== undefined) updates.actorName = v.actorName;
+        if (v.costPerResultUsd !== undefined) updates.costPerResultUsd = v.costPerResultUsd.toFixed(6);
+        if (v.fixedStartCostUsd !== undefined) updates.fixedStartCostUsd = v.fixedStartCostUsd.toFixed(6);
+        if (v.memoryMb !== undefined) updates.memoryMb = v.memoryMb;
+        if (v.creditsPerResult !== undefined) updates.creditsPerResult = v.creditsPerResult;
+        if (v.minResults !== undefined) updates.minResults = v.minResults;
+        if (v.maxResults !== undefined) updates.maxResults = v.maxResults;
+        if (v.isActive !== undefined) updates.isActive = v.isActive;
+        if (v.displayOrder !== undefined) updates.displayOrder = v.displayOrder;
+
+        const [existing] = await db.select({ key: scraperTemplates.key })
+            .from(scraperTemplates)
+            .where(eq(scraperTemplates.key, key))
+            .limit(1);
+
+        let row;
+        if (!existing) {
+            const seed = templateToSeedRow(template, 0);
+            [row] = await db.insert(scraperTemplates)
+                .values({ ...seed, ...updates })
+                .returning();
+        } else {
+            [row] = await db.update(scraperTemplates)
+                .set(updates)
+                .where(eq(scraperTemplates.key, key))
+                .returning();
+        }
+
+        scraperRegistry.invalidate();
+        res.json({ message: 'Scraper updated', scraper: row });
+    } catch (error) {
+        console.error('Update scraper template error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
