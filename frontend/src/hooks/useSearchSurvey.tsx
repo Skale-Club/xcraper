@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { PlacesAutocompleteInput } from '@/components/app/PlacesAutocompleteInput';
 import { ScraperFilterFields } from '@/components/app/ScraperFilterFields';
 import { useToast } from '@/hooks/use-toast';
@@ -30,6 +31,7 @@ import {
     Check,
     Hash,
     SlidersHorizontal,
+    AlertTriangle,
 } from 'lucide-react';
 
 type StepKey = 'scraper' | 'query' | 'location' | `filter:${string}` | 'maxResults';
@@ -269,20 +271,11 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
         return null;
     }, [currentStepKey, selectedScraper]);
 
-    const isFilterValueValid = useMemo(() => {
-        if (!currentFilterField) return true;
-        const v = filters[currentFilterField.key];
-        if (Array.isArray(v)) return v.length > 0;
-        if (typeof v === 'string') return v.trim().length > 0;
-        if (typeof v === 'number') return !Number.isNaN(v);
-        return v != null;
-    }, [currentFilterField, filters]);
-
     const canMoveForward =
         currentStepKey === 'scraper' ? selectedKey !== null
             : currentStepKey === 'query' ? Boolean(query.trim())
                 : currentStepKey === 'location' ? Boolean(location.trim())
-                    : currentStepKey.startsWith('filter:') ? isFilterValueValid
+                    : currentStepKey.startsWith('filter:') ? true
                         : canAffordMinimumSearch && maxResults >= minimumResults && maxResults <= sliderMax;
 
     const handleSearch = async () => {
@@ -326,10 +319,9 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                 currentStepKey === 'scraper' ? 'Choose a scraper before continuing.'
                     : currentStepKey === 'query' ? 'Enter what you want to search for.'
                         : currentStepKey === 'location' ? 'Enter the location to search in.'
-                            : currentStepKey.startsWith('filter:') ? `Please fill in ${currentFilterField?.label || 'this field'} before continuing.`
-                                : canAffordMinimumSearch
-                                    ? `Choose a result limit between ${minimumResults} and ${sliderMax}.`
-                                    : `You need at least ${minimumResults * creditsPerLead} credits to run this search.`;
+                            : canAffordMinimumSearch
+                                ? `Choose a result limit between ${minimumResults} and ${sliderMax}.`
+                                : `You need at least ${minimumResults * creditsPerLead} credits to run this search.`;
             toast({ variant: 'destructive', title: 'Missing answer', description: msg });
             return;
         }
@@ -639,6 +631,26 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                         {` Minimum ${minimumResults} results per run.`}
                                                     </p>
                                                 </div>
+
+                                                {!isMaps && !hasAnyFilter && (
+                                                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+                                                        <div className="flex items-start gap-3">
+                                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
+                                                                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-sm font-semibold text-amber-500">
+                                                                    No filters selected
+                                                                </p>
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    Please select at least one filter to start your search. 
+                                                                    You can go back and fill in any filter field (e.g., Job Title, Industry, or Location).
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 <div className="space-y-5">
                                                     <div className="flex items-center justify-between">
                                                         <Label htmlFor="maxResults" className="text-sm font-semibold text-foreground">
@@ -751,24 +763,53 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                             >
                                                 Back
                                             </Button>
-                                            <Button type="submit" disabled={!canMoveForward || isLoading} className="rounded-full text-white">
-                                                {isLoading ? (
-                                                    <>
-                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                        Starting...
-                                                    </>
-                                                ) : surveyStep === totalSurveySteps - 1 ? (
-                                                    <>
-                                                        <Search className="mr-2 h-4 w-4" />
-                                                        Start Scraping
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        Continue
-                                                        <ChevronRight className="ml-1 h-4 w-4" />
-                                                    </>
+                                            <div className="flex items-center gap-3">
+                                                {currentStepKey.startsWith('filter:') && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        onClick={() => { setAutocompleteOpen(false); setSurveyStep((current) => current + 1); }}
+                                                        disabled={isLoading}
+                                                        className="text-muted-foreground hover:text-foreground"
+                                                    >
+                                                        Skip
+                                                    </Button>
                                                 )}
-                                            </Button>
+                                                {!isMaps && surveyStep === totalSurveySteps - 1 && !hasAnyFilter ? (
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button type="submit" disabled className="rounded-full text-white opacity-50 cursor-not-allowed">
+                                                                    <Search className="mr-2 h-4 w-4" />
+                                                                    Start Scraping
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Please select at least one filter to start the search</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                ) : (
+                                                    <Button type="submit" disabled={!canMoveForward || isLoading} className="rounded-full text-white">
+                                                        {isLoading ? (
+                                                            <>
+                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                Starting...
+                                                            </>
+                                                        ) : surveyStep === totalSurveySteps - 1 ? (
+                                                            <>
+                                                                <Search className="mr-2 h-4 w-4" />
+                                                                Start Scraping
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                Continue
+                                                                <ChevronRight className="ml-1 h-4 w-4" />
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </form>
