@@ -32,7 +32,7 @@ import {
     SlidersHorizontal,
 } from 'lucide-react';
 
-type StepKey = 'scraper' | 'query' | 'location' | 'filters' | 'maxResults';
+type StepKey = 'scraper' | 'query' | 'location' | `filter:${string}` | 'maxResults';
 
 function scraperIcon(scraper: ScraperOption) {
     if (scraper.source === 'b2b_leads') return Building2;
@@ -81,12 +81,14 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
     );
     const isMaps = selectedScraper?.source === 'google_maps';
 
-    // Dynamic step flow: Maps uses query+location, structured-filter scrapers use a filters step.
+    // Dynamic step flow: Maps uses query+location, structured-filter scrapers use per-field steps.
     const stepKeys = useMemo<StepKey[]>(() => {
         if (!selectedScraper) return ['scraper'];
-        return selectedScraper.source === 'google_maps'
-            ? ['scraper', 'query', 'location', 'maxResults']
-            : ['scraper', 'filters', 'maxResults'];
+        if (selectedScraper.source === 'google_maps') {
+            return ['scraper', 'query', 'location', 'maxResults'];
+        }
+        const filterSteps = selectedScraper.inputSchema.map((f) => `filter:${f.key}` as StepKey);
+        return ['scraper', ...filterSteps, 'maxResults'];
     }, [selectedScraper]);
     const totalSurveySteps = stepKeys.length;
     const currentStepKey = stepKeys[Math.min(surveyStep, stepKeys.length - 1)];
@@ -259,11 +261,28 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
         });
     }, [selectedScraper, filters]);
 
+    const currentFilterField = useMemo(() => {
+        if (currentStepKey.startsWith('filter:')) {
+            const key = currentStepKey.slice(7);
+            return selectedScraper?.inputSchema.find((f) => f.key === key) ?? null;
+        }
+        return null;
+    }, [currentStepKey, selectedScraper]);
+
+    const isFilterValueValid = useMemo(() => {
+        if (!currentFilterField) return true;
+        const v = filters[currentFilterField.key];
+        if (Array.isArray(v)) return v.length > 0;
+        if (typeof v === 'string') return v.trim().length > 0;
+        if (typeof v === 'number') return !Number.isNaN(v);
+        return v != null;
+    }, [currentFilterField, filters]);
+
     const canMoveForward =
         currentStepKey === 'scraper' ? selectedKey !== null
             : currentStepKey === 'query' ? Boolean(query.trim())
                 : currentStepKey === 'location' ? Boolean(location.trim())
-                    : currentStepKey === 'filters' ? hasAnyFilter
+                    : currentStepKey.startsWith('filter:') ? isFilterValueValid
                         : canAffordMinimumSearch && maxResults >= minimumResults && maxResults <= sliderMax;
 
     const handleSearch = async () => {
@@ -307,7 +326,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                 currentStepKey === 'scraper' ? 'Choose a scraper before continuing.'
                     : currentStepKey === 'query' ? 'Enter what you want to search for.'
                         : currentStepKey === 'location' ? 'Enter the location to search in.'
-                            : currentStepKey === 'filters' ? 'Add at least one filter.'
+                            : currentStepKey.startsWith('filter:') ? `Please fill in ${currentFilterField?.label || 'this field'} before continuing.`
                                 : canAffordMinimumSearch
                                     ? `Choose a result limit between ${minimumResults} and ${sliderMax}.`
                                     : `You need at least ${minimumResults * creditsPerLead} credits to run this search.`;
@@ -376,7 +395,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                 exit={{ opacity: 0, y: 24, scale: 0.96 }}
                                 transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
-                                className="flex w-full max-w-2xl flex-col overflow-visible rounded-[28px] border border-border bg-background shadow-2xl"
+                                className="flex w-full max-w-4xl flex-col overflow-visible rounded-[28px] border border-border bg-background shadow-2xl"
                                 onClick={(event) => event.stopPropagation()}
                             >
                                 <div className="rounded-t-[28px] border-b border-border bg-muted/20 px-6 py-5">
@@ -453,7 +472,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                         Loading scrapers...
                                                     </div>
                                                 ) : (
-                                                    <div className="grid gap-3 md:grid-cols-2">
+                                                    <div className="grid gap-3 md:grid-cols-3">
                                                         {scrapers.map((scraper) => {
                                                             const Icon = scraperIcon(scraper);
                                                             const selected = selectedKey === scraper.key;
@@ -574,9 +593,9 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                             </motion.div>
                                         )}
 
-                                        {currentStepKey === 'filters' && selectedScraper && (
+                                        {currentStepKey.startsWith('filter:') && currentFilterField && (
                                             <motion.div
-                                                key="filters-step"
+                                                key={currentStepKey}
                                                 initial={{ opacity: 0, x: 18 }}
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, x: -18 }}
@@ -585,14 +604,16 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                             >
                                                 <div className="space-y-2">
                                                     <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                                                        Who are you targeting?
+                                                        {currentFilterField.label}
                                                     </h2>
-                                                    <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-                                                        Add filters to narrow your leads. Start broad, then refine — at least one filter is required.
-                                                    </p>
+                                                    {currentFilterField.helpText && (
+                                                        <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+                                                            {currentFilterField.helpText}
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <ScraperFilterFields
-                                                    schema={selectedScraper.inputSchema}
+                                                    schema={[currentFilterField]}
                                                     values={filters}
                                                     onChange={updateFilter}
                                                     disabled={isLoading}
