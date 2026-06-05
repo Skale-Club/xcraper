@@ -1,7 +1,8 @@
 import { ApifyClient } from 'apify-client';
 import type { ActorStartOptions } from 'apify-client';
 import * as dotenv from 'dotenv';
-import { systemSettingsService } from './systemSettings.js';
+import { scraperRegistry } from './scrapers/registry.js';
+import type { ScraperSearchParams, NormalizedContact } from './scrapers/types.js';
 
 dotenv.config();
 
@@ -18,36 +19,14 @@ export const apifyClient = APIFY_API_TOKEN
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
 
-type ActorType = 'standard' | 'enriched';
-
-export interface SearchParams {
-    search: string;
-    location: string;
-    maxResults?: number;
-    language?: string;
-    countryCode?: string;
-    extractEmails?: boolean;
-}
-
-interface ActorConfig {
-    type: ActorType;
-    id: string;
-    name: string;
-    extractsEmails: boolean;
-    costPerResultUsd: number;
-    fixedStartCostUsd: number;
-    memoryMb: number;
-    baseRunCostUsd: number;
-    minRunChargeUsd: number;
-    buildInput: (params: Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>>) => Record<string, unknown>;
-    buildStartOptions: (params: Required<Pick<SearchParams, 'maxResults'>>) => ActorStartOptions;
-}
+// Re-exported so existing consumers can import the unified result shape from here.
+export type { NormalizedContact, ScraperSearchParams } from './scrapers/types.js';
 
 export interface StartedTask {
     runId: string;
     actorId: string;
     actorName: string;
-    actorType: ActorType;
+    scraperKey: string;
     input: Record<string, unknown>;
     startOptions: ActorStartOptions;
     datasetId?: string;
@@ -69,116 +48,6 @@ export interface TaskStatus {
     exitCode?: string | number;
     startedAt?: Date;
     finishedAt?: Date;
-}
-
-export interface ScrapedPlace {
-    title: string;
-    category: string;
-    address: string;
-    phone?: string;
-    website?: string;
-    email?: string;
-    rating?: number;
-    reviewCount?: number;
-    latitude?: number;
-    longitude?: number;
-    openingHours?: string;
-    imageUrl?: string;
-    googleMapsUrl?: string;
-    placeId?: string;
-    rawData?: Record<string, unknown>;
-    [key: string]: unknown;
-}
-
-const baseSearchInput = (params: Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>>) => ({
-    searchStringsArray: [params.search.trim()],
-    locationQuery: params.location.trim(),
-    countryCode: params.countryCode,
-    language: params.language,
-    maxCrawledPlacesPerSearch: params.maxResults,
-    maxImages: 0,
-    maxReviews: 0,
-    skipClosedPlaces: false,
-    proxyConfig: {
-        useApifyProxy: true,
-    },
-});
-
-function buildStartOptions(config: Pick<ActorConfig, 'memoryMb' | 'baseRunCostUsd' | 'fixedStartCostUsd' | 'costPerResultUsd' | 'minRunChargeUsd'>, params: Required<Pick<SearchParams, 'maxResults'>>): ActorStartOptions {
-    return {
-        memory: config.memoryMb,
-        maxTotalChargeUsd: Number(Math.max(
-            config.minRunChargeUsd,
-            config.baseRunCostUsd + config.fixedStartCostUsd + (params.maxResults * config.costPerResultUsd),
-        ).toFixed(3)),
-    };
-}
-
-function getFirstString(value: unknown): string | undefined {
-    if (typeof value === 'string') {
-        const trimmed = value.trim();
-        return trimmed.length > 0 ? trimmed : undefined;
-    }
-
-    if (Array.isArray(value)) {
-        for (const item of value) {
-            if (typeof item === 'string') {
-                const trimmed = item.trim();
-                if (trimmed.length > 0) {
-                    return trimmed;
-                }
-            }
-        }
-    }
-
-    return undefined;
-}
-
-function normalizeSearchParams(params: SearchParams): Required<Pick<SearchParams, 'search' | 'location' | 'maxResults' | 'language' | 'countryCode'>> {
-    return {
-        search: params.search.trim(),
-        location: params.location.trim(),
-        maxResults: params.maxResults || 50,
-        language: params.language || 'en',
-        countryCode: params.countryCode?.toLowerCase() || 'us',
-    };
-}
-
-async function getConfig(extractEmails: boolean): Promise<ActorConfig> {
-    const apifyConfig = await systemSettingsService.getApifyConfig();
-    const actorConfig = extractEmails ? apifyConfig.enriched : apifyConfig.standard;
-    const type: ActorType = extractEmails ? 'enriched' : 'standard';
-
-    return {
-        type,
-        id: actorConfig.actorId,
-        name: actorConfig.actorName,
-        extractsEmails: extractEmails,
-        costPerResultUsd: actorConfig.costPerResultUsd,
-        fixedStartCostUsd: actorConfig.fixedStartCostUsd,
-        memoryMb: actorConfig.memoryMb,
-        baseRunCostUsd: apifyConfig.baseRunCostUsd,
-        minRunChargeUsd: apifyConfig.minRunChargeUsd,
-        buildInput: type === 'standard'
-            ? (params) => ({
-                ...baseSearchInput(params),
-            })
-            : (params) => ({
-                searchStringsArray: [params.search.trim()],
-                locationQuery: params.location.trim(),
-                countryCode: params.countryCode,
-                language: params.language,
-                maxCrawledPlacesPerSearch: params.maxResults,
-                skipClosedPlaces: false,
-            }),
-        buildStartOptions: (params) => buildStartOptions({
-            memoryMb: actorConfig.memoryMb,
-            baseRunCostUsd: apifyConfig.baseRunCostUsd,
-            fixedStartCostUsd: actorConfig.fixedStartCostUsd,
-            costPerResultUsd: actorConfig.costPerResultUsd,
-            minRunChargeUsd: apifyConfig.minRunChargeUsd,
-        }, params),
-    };
 }
 
 function getItemsCountFromRun(run: Record<string, unknown>): number {
@@ -209,42 +78,52 @@ async function retryWithBackoff<T>(
     }
 }
 
-export async function startScrapingTask(params: SearchParams): Promise<StartedTask> {
+/**
+ * Start a scraping run for the given template key. Resolves the template (logic +
+ * DB params + global economics) from the registry, builds the actor input and start
+ * options from the template, and starts the actor asynchronously.
+ *
+ * Starting an actor is NOT idempotent: retrying an ambiguous failure (e.g. a dropped
+ * response after the run was actually created) would spawn a second paid run. So we
+ * deliberately do not wrap start() in retryWithBackoff — a transient failure surfaces
+ * to the caller, who can retry explicitly.
+ */
+export async function startScrapingTask(scraperKey: string, params: ScraperSearchParams): Promise<StartedTask> {
     if (!apifyClient) {
         throw new Error('Apify client is not initialized. Please set APIFY_API_TOKEN.');
     }
 
-    const apifyDefaults = await systemSettingsService.getApifyConfig();
-    const normalizedParams = normalizeSearchParams({
+    const { template, runtime, global } = await scraperRegistry.resolve(scraperKey);
+
+    const requestedMax = params.maxResults || runtime.maxResults || 50;
+    const normalized: ScraperSearchParams = {
         ...params,
-        language: params.language || apifyDefaults.defaultSearchLanguage,
-        countryCode: params.countryCode || apifyDefaults.defaultSearchCountryCode,
-    });
-    const config = await getConfig(Boolean(params.extractEmails));
-    const input = config.buildInput(normalizedParams);
-    const startOptions = config.buildStartOptions({ maxResults: normalizedParams.maxResults });
+        // Cap at the template's max (enforces e.g. the Apify free-plan 100-lead ceiling).
+        maxResults: Math.min(requestedMax, runtime.maxResults),
+        language: params.language || global.defaultSearchLanguage || 'en',
+        countryCode: (params.countryCode || global.defaultSearchCountryCode || 'us').toLowerCase(),
+    };
+
+    const input = template.buildInput(normalized, runtime);
+    const startOptions = template.buildStartOptions(normalized, runtime, global);
 
     const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
     const webhookUrl = `${backendUrl}/api/webhooks/apify`;
 
     try {
-        // Starting an actor is NOT idempotent: retrying an ambiguous failure (e.g. a
-        // dropped response after the run was actually created) would spawn a second
-        // paid Apify run. So we deliberately do not wrap start() in retryWithBackoff —
-        // a transient failure surfaces to the caller, who can retry explicitly.
-        const run = await apifyClient.actor(config.id).start(input, startOptions);
+        const run = await apifyClient.actor(runtime.actorId).start(input, startOptions);
 
-        console.log(`Started ${config.name} - Run ID: ${run.id}`);
-        console.log(`Actor: ${config.id}`);
-        console.log(`Email extraction: ${config.extractsEmails ? 'YES' : 'NO'}`);
-        console.log(`Requested max results: ${normalizedParams.maxResults}`);
+        console.log(`Started ${runtime.actorName} [${template.key}] - Run ID: ${run.id}`);
+        console.log(`Actor: ${runtime.actorId}`);
+        console.log(`Email extraction: ${template.extractsEmails ? 'YES' : 'NO'}`);
+        console.log(`Requested max results: ${normalized.maxResults}`);
         console.log(`Webhook URL: ${webhookUrl}`);
 
         return {
             runId: run.id,
-            actorId: config.id,
-            actorName: config.name,
-            actorType: config.type,
+            actorId: runtime.actorId,
+            actorName: runtime.actorName,
+            scraperKey: template.key,
             input,
             startOptions,
             datasetId: run.defaultDatasetId,
@@ -314,62 +193,32 @@ export async function abortTask(runId: string): Promise<void> {
     }
 }
 
-export async function getTaskResults(runId: string, limit?: number): Promise<ScrapedPlace[]> {
+/**
+ * Fetch and normalize the dataset items for a run, using the template's mapResult.
+ * Only fetches as many items as the caller will keep (avoids materializing huge
+ * datasets with full rawData blobs into memory).
+ */
+export async function getTaskResults(
+    runId: string,
+    scraperKey: string,
+    limit?: number,
+): Promise<NormalizedContact[]> {
     if (!apifyClient) {
         throw new Error('Apify client is not initialized. Please set APIFY_API_TOKEN.');
     }
 
+    const template = scraperRegistry.getTemplate(scraperKey);
+    if (!template) {
+        throw new Error(`Unknown scraper template: "${scraperKey}"`);
+    }
+
     try {
-        // Only fetch as many items as the caller will keep, so we don't materialize
-        // an entire large dataset (with full rawData blobs) into memory.
         const listOptions = limit && limit > 0 ? { limit } : undefined;
         const { items } = await retryWithBackoff(async () => apifyClient.run(runId).dataset().listItems(listOptions));
 
         return items.map((item: Record<string, unknown>) => {
-            const location =
-                typeof item.location === 'object' && item.location !== null
-                    ? (item.location as { lat?: unknown; lng?: unknown })
-                    : undefined;
-
-            const lat = typeof location?.lat === 'number'
-                ? location.lat
-                : typeof item.latitude === 'number'
-                    ? item.latitude
-                    : undefined;
-
-            const lng = typeof location?.lng === 'number'
-                ? location.lng
-                : typeof item.longitude === 'number'
-                    ? item.longitude
-                    : undefined;
-
-            return {
-                title: getFirstString(item.title) || getFirstString(item.name) || '',
-                category: getFirstString(item.categoryName) || getFirstString(item.category) || '',
-                address: getFirstString(item.address) || '',
-                phone: getFirstString(item.phone) || getFirstString(item.phoneNumber) || getFirstString(item.phones),
-                website: getFirstString(item.website) || getFirstString(item.url),
-                email: getFirstString(item.email) || getFirstString(item.emails),
-                rating: typeof item.totalScore === 'number'
-                    ? item.totalScore
-                    : typeof item.rating === 'number'
-                        ? item.rating
-                        : undefined,
-                reviewCount: typeof item.reviewsCount === 'number'
-                    ? item.reviewsCount
-                    : typeof item.reviews === 'number'
-                        ? item.reviews
-                        : undefined,
-                latitude: lat,
-                longitude: lng,
-                openingHours: item.hours
-                    ? JSON.stringify(item.hours)
-                    : getFirstString(item.openingHours),
-                imageUrl: getFirstString(item.image) || getFirstString(item.imageUrl),
-                googleMapsUrl: getFirstString(item.url) || getFirstString(item.googleMapsUrl),
-                placeId: getFirstString(item.placeId),
-                rawData: item,
-            };
+            const contact = template.mapResult(item);
+            return { ...contact, dedupeKey: template.dedupeKey(contact) };
         });
     } catch (error) {
         console.error('Error getting task results:', error);
@@ -379,8 +228,4 @@ export async function getTaskResults(runId: string, limit?: number): Promise<Scr
 
 export function isApifyConfigured(): boolean {
     return apifyClient !== null;
-}
-
-export async function getActorConfig(extractEmails: boolean) {
-    return getConfig(extractEmails);
 }

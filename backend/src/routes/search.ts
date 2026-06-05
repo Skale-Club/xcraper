@@ -25,7 +25,9 @@ import {
 import { creditRulesService } from '../services/creditRules.js';
 import { autoTopUpService } from '../services/autoTopUp.js';
 import { billingAlertService } from '../services/billingAlerts.js';
-import { extractSocialMediaFromRawData } from '../utils/socialMedia.js';
+import { scraperRegistry } from '../services/scrapers/registry.js';
+import { toStringArray } from '../services/scrapers/helpers.js';
+import type { NormalizedContact, ScraperTemplate, ScraperRuntimeParams } from '../services/scrapers/types.js';
 
 dotenv.config();
 
@@ -70,26 +72,19 @@ type SearchStatusPayload = {
     errorDetails?: ErrorDetails;  // Only included for admins
 };
 
-const MIN_STANDARD_RESULTS = 30;
-const MIN_ENRICHED_RESULTS = 15;
-
+// Validation is intentionally permissive here; per-template rules (which scraper,
+// min/max results, required inputs) are enforced after resolving the template, since
+// the limits live in the scraper registry (code defaults + DB overrides).
 const startSearchSchema = z.object({
-    query: z.string().min(2, 'Search query must be at least 2 characters'),
-    location: z.string().min(2, 'Location must be at least 2 characters'),
-    maxResults: z.number().int().min(1).max(500).optional().default(50),
+    // New template-based selector. Optional for back-compat with clients that still
+    // send `requestEnrichment` instead.
+    scrapeType: z.string().min(1).max(64).optional(),
+    query: z.string().max(500).optional(),
+    location: z.string().max(500).optional(),
+    maxResults: z.number().int().min(1).max(1000).optional().default(50),
     requestEnrichment: z.boolean().optional().default(false),
-}).superRefine((data, ctx) => {
-    const minimumResults = data.requestEnrichment ? MIN_ENRICHED_RESULTS : MIN_STANDARD_RESULTS;
-
-    if (data.maxResults < minimumResults) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['maxResults'],
-            message: data.requestEnrichment
-                ? `Enriched searches require at least ${MIN_ENRICHED_RESULTS} results`
-                : `Standard searches require at least ${MIN_STANDARD_RESULTS} results`,
-        });
-    }
+    // Structured filters for non-Maps scrapers (e.g. B2B leads).
+    filters: z.record(z.unknown()).optional(),
 });
 
 function hasValidEmail(email?: string): boolean {
@@ -132,6 +127,86 @@ function applyCreditWaterfall(
         newRollover: balance.rolloverCredits - fromRollover,
         newPurchased: balance.purchasedCredits - fromPurchased,
         actuallyCharged: fromMonthly + fromRollover + fromPurchased,
+    };
+}
+
+/**
+ * Map a normalized contact (from any scraper template) onto a contacts table row.
+ * Social media and B2B fields are already populated by the template's mapResult,
+ * so this is a flat projection — no re-extraction.
+ */
+function buildContactRow(
+    place: NormalizedContact,
+    searchId: string,
+    userId: string,
+    enrichmentCreditsCharged: number,
+) {
+    return {
+        searchId,
+        userId,
+        contactType: place.contactType,
+        title: place.title,
+        category: place.category,
+        address: place.address,
+        phone: place.phone,
+        website: place.website,
+        email: place.email,
+        rating: place.rating?.toString(),
+        reviewCount: place.reviewCount,
+        latitude: place.latitude?.toString(),
+        longitude: place.longitude?.toString(),
+        openingHours: place.openingHours,
+        imageUrl: place.imageUrl,
+        googleMapsUrl: place.googleMapsUrl,
+        placeId: place.placeId,
+        rawData: place.rawData,
+        isEnriched: !!place.email,
+        enrichmentCreditsCharged,
+        // Social media
+        facebook: place.facebook,
+        instagram: place.instagram,
+        twitter: place.twitter,
+        linkedin: place.linkedin,
+        youtube: place.youtube,
+        tiktok: place.tiktok,
+        pinterest: place.pinterest,
+        // B2B lead fields
+        firstName: place.firstName,
+        lastName: place.lastName,
+        jobTitle: place.jobTitle,
+        seniority: place.seniority,
+        personalEmail: place.personalEmail,
+        companyName: place.companyName,
+        companyDomain: place.companyDomain,
+        companyLinkedin: place.companyLinkedin,
+        companySize: place.companySize,
+        industry: place.industry,
+        companyRevenue: place.companyRevenue,
+        companyFunding: place.companyFunding,
+        dedupeKey: place.dedupeKey,
+    };
+}
+
+/**
+ * Derive the (notNull) query/location display labels for a search record. For
+ * Google Maps these are the user's inputs; for structured-filter scrapers (B2B)
+ * we synthesize a readable label from the filters so history still reads sensibly.
+ */
+function deriveSearchLabels(
+    template: ScraperTemplate,
+    query: string | undefined,
+    location: string | undefined,
+    filters: Record<string, unknown> | undefined,
+): { query: string; location: string } {
+    if (template.source === 'google_maps') {
+        return { query: (query ?? '').trim(), location: (location ?? '').trim() };
+    }
+    const titles = toStringArray(filters?.jobTitles);
+    const industries = toStringArray(filters?.industries);
+    const locs = toStringArray(filters?.locations) ?? toStringArray(filters?.cities);
+    return {
+        query: titles?.join(', ') || industries?.join(', ') || template.label,
+        location: locs?.join(', ') || 'Global',
     };
 }
 
@@ -303,8 +378,13 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
         return buildSearchPayload(currentSearchRecord, isAdmin);
     }
 
-    const results = await getTaskResults(currentSearchRecord.apifyRunId!, currentSearchRecord.requestedMaxResults);
-    const requestEnrichment = isEnrichmentSearch(currentSearchRecord);
+    const { template, runtime } = await scraperRegistry.resolve(currentSearchRecord.scrapeType);
+    const isEnrichment = template.extractsEmails;
+    const results = await getTaskResults(
+        currentSearchRecord.apifyRunId!,
+        currentSearchRecord.scrapeType,
+        currentSearchRecord.requestedMaxResults,
+    );
     const eligibleResults = results.slice(0, currentSearchRecord.requestedMaxResults);
 
     const [user] = await db.select()
@@ -321,8 +401,8 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
         ? {
             creditsCharged: 0,
             breakdown: { base: 0, enrichment: 0 },
-            standardResults: requestEnrichment ? 0 : eligibleResults.length,
-            enrichedResults: requestEnrichment ? eligibleResults.length : 0,
+            standardResults: isEnrichment ? 0 : eligibleResults.length,
+            enrichedResults: isEnrichment ? eligibleResults.length : 0,
             duplicatesSkipped: 0,
             acceptedResults: eligibleResults,
         }
@@ -330,7 +410,7 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
             userId,
             eligibleResults,
             currentSearchRecord.id,
-            requestEnrichment,
+            { creditsPerResult: runtime.creditsPerResult, isEnrichment },
         );
 
     const resultsToSave = isAdmin ? eligibleResults : creditResult.acceptedResults;
@@ -419,43 +499,14 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
         const savedResults = resultsToSave.length;
 
         if (savedResults > 0) {
-            const contactsToInsert = resultsToSave
-                .map((place) => {
-                    const socialMedia = extractSocialMediaFromRawData(place.rawData);
-                    return {
-                        searchId: currentSearchRecord.id,
-                        userId,
-                        title: place.title,
-                        category: place.category,
-                        address: place.address,
-                        phone: place.phone,
-                        website: place.website,
-                        email: place.email,
-                        rating: place.rating?.toString(),
-                        reviewCount: place.reviewCount,
-                        latitude: place.latitude?.toString(),
-                        longitude: place.longitude?.toString(),
-                        openingHours: place.openingHours,
-                        imageUrl: place.imageUrl,
-                        googleMapsUrl: place.googleMapsUrl,
-                        placeId: place.placeId,
-                        rawData: place.rawData,
-                        isEnriched: !!place.email,
-                        enrichmentCreditsCharged: isAdmin
-                            ? 0
-                            : place.email
-                                ? creditResult.breakdown.enrichment
-                                : 0,
-                        // Social media
-                        facebook: socialMedia.facebook,
-                        instagram: socialMedia.instagram,
-                        twitter: socialMedia.twitter,
-                        linkedin: socialMedia.linkedin,
-                        youtube: socialMedia.youtube,
-                        tiktok: socialMedia.tiktok,
-                        pinterest: socialMedia.pinterest,
-                    };
-                });
+            const contactsToInsert = resultsToSave.map((place) =>
+                buildContactRow(
+                    place,
+                    currentSearchRecord.id,
+                    userId,
+                    isAdmin ? 0 : (isEnrichment && place.email ? runtime.creditsPerResult : 0),
+                ),
+            );
 
             await tx.insert(contacts).values(contactsToInsert);
         }
@@ -670,7 +721,14 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             return;
         }
 
-        const { query, location, maxResults, requestEnrichment } = validationResult.data;
+        const {
+            scrapeType: requestedScrapeType,
+            query,
+            location,
+            maxResults: requestedMaxResults,
+            requestEnrichment,
+            filters,
+        } = validationResult.data;
 
         if (!isApifyConfigured()) {
             res.status(503).json({
@@ -678,6 +736,51 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             });
             return;
         }
+
+        // Resolve the scraper template. Back-compat: clients that still send
+        // `requestEnrichment` map onto the standard/enriched Google Maps templates.
+        const scrapeType = requestedScrapeType ?? (requestEnrichment ? 'enriched' : 'standard');
+        const template = scraperRegistry.getTemplate(scrapeType);
+
+        if (!template) {
+            res.status(400).json({ error: 'Invalid scraper', message: `Unknown scraper type "${scrapeType}".` });
+            return;
+        }
+
+        const { runtime } = await scraperRegistry.resolve(scrapeType);
+
+        if (!runtime.isActive) {
+            res.status(400).json({ error: 'Scraper unavailable', message: `${template.label} is currently disabled.` });
+            return;
+        }
+
+        // Per-source input validation.
+        if (template.source === 'google_maps') {
+            if (!query || query.trim().length < 2 || !location || location.trim().length < 2) {
+                res.status(400).json({
+                    error: 'Validation failed',
+                    message: 'Query and location are required (at least 2 characters each).',
+                });
+                return;
+            }
+        } else {
+            const hasAnyFilter = !!filters && Object.values(filters).some((v) =>
+                Array.isArray(v) ? v.length > 0 : (typeof v === 'string' ? v.trim().length > 0 : v != null));
+            if (!hasAnyFilter) {
+                res.status(400).json({ error: 'Validation failed', message: 'At least one search filter is required.' });
+                return;
+            }
+        }
+
+        // Validate/clamp the requested volume against the template's limits.
+        if (requestedMaxResults < runtime.minResults) {
+            res.status(400).json({
+                error: 'Validation failed',
+                message: `${template.label} requires at least ${runtime.minResults} results.`,
+            });
+            return;
+        }
+        const maxResults = Math.min(requestedMaxResults, runtime.maxResults);
 
         const [user] = await db.select()
             .from(users)
@@ -694,10 +797,7 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             return;
         }
 
-        const rules = await creditRulesService.getPricingRules();
-        const creditsPerLead = requestEnrichment
-            ? rules.creditsPerEnrichedResult
-            : rules.creditsPerStandardResult;
+        const creditsPerLead = runtime.creditsPerResult;
         const estimatedCredits = maxResults * creditsPerLead;
         const isAdmin = user.role === 'admin';
 
@@ -717,27 +817,33 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             }
         }
 
+        const labels = deriveSearchLabels(template, query, location, filters);
+
         const [searchRecord] = await db.insert(searchHistory).values({
             userId,
-            query,
-            location,
+            query: labels.query,
+            location: labels.location,
             requestedMaxResults: maxResults,
-            requestEnrichment,
+            requestEnrichment: template.extractsEmails,
+            scrapeType: template.key,
+            searchFilters: template.source === 'google_maps' ? null : (filters ?? {}),
             status: 'pending',
             creditsUsed: 0,
-            standardResultsCount: requestEnrichment ? null : 0,
-            enrichedResultsCount: requestEnrichment ? 0 : null,
+            standardResultsCount: template.extractsEmails ? null : 0,
+            enrichedResultsCount: template.extractsEmails ? 0 : null,
         }).returning();
         createdSearchId = searchRecord.id;
 
         let startedTask!: StartedTask;
 
         try {
-            startedTask = await startScrapingTask({
-                search: query,
-                location,
+            startedTask = await startScrapingTask(template.key, {
                 maxResults,
-                extractEmails: requestEnrichment,
+                language: '',
+                countryCode: '',
+                query,
+                location,
+                filters,
             });
 
             await db.update(searchHistory)
@@ -764,9 +870,10 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             message: 'Search started successfully',
             searchId: searchRecord.id,
             apifyRunId: startedTask.runId,
+            scrapeType: template.key,
             estimatedCredits: isAdmin ? 0 : estimatedCredits,
             creditsPerLead,
-            requestEnrichment,
+            requestEnrichment: template.extractsEmails,
             topUpTriggered: creditCheck.topUpTriggered,
             isAdmin,
         });
@@ -782,6 +889,30 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             error: 'Failed to start search',
             message: errorMessage,
         });
+    }
+});
+
+// List the active scrapers and their input schemas — drives the dynamic search form.
+router.get('/scrapers', requireAuth, async (_req, res: Response): Promise<void> => {
+    try {
+        const active = await scraperRegistry.listActive();
+        res.json({
+            scrapers: active.map(({ template, runtime }) => ({
+                key: template.key,
+                source: template.source,
+                label: template.label,
+                description: template.description,
+                extractsEmails: template.extractsEmails,
+                billing: template.billing,
+                inputSchema: template.inputSchema,
+                creditsPerResult: runtime.creditsPerResult,
+                minResults: runtime.minResults,
+                maxResults: runtime.maxResults,
+            })),
+        });
+    } catch (error) {
+        console.error('List scrapers error:', error);
+        res.status(500).json({ error: 'Failed to list scrapers' });
     }
 });
 
@@ -847,8 +978,13 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
         const completedAt = new Date();
 
         try {
-            const partialResults = await getTaskResults(searchRecord.apifyRunId, searchRecord.requestedMaxResults);
-            const requestEnrichment = isEnrichmentSearch(searchRecord);
+            const { template, runtime } = await scraperRegistry.resolve(searchRecord.scrapeType);
+            const isEnrichment = template.extractsEmails;
+            const partialResults = await getTaskResults(
+                searchRecord.apifyRunId,
+                searchRecord.scrapeType,
+                searchRecord.requestedMaxResults,
+            );
             const eligibleResults = partialResults.slice(0, searchRecord.requestedMaxResults);
 
             const [user] = await db.select()
@@ -868,7 +1004,7 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
                     userId,
                     eligibleResults,
                     searchRecord.id,
-                    requestEnrichment,
+                    { creditsPerResult: runtime.creditsPerResult, isEnrichment },
                 )
                 : null;
             const resultsToSave = isAdmin ? eligibleResults : (creditResult?.acceptedResults ?? []);
@@ -944,42 +1080,14 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
                 }
 
                 if (resultsToSave.length > 0) {
-                    const contactsToInsert = resultsToSave.map((place) => {
-                        const socialMedia = extractSocialMediaFromRawData(place.rawData);
-                        return {
-                            searchId: searchRecord.id,
+                    const contactsToInsert = resultsToSave.map((place) =>
+                        buildContactRow(
+                            place,
+                            searchRecord.id,
                             userId,
-                            title: place.title,
-                            category: place.category,
-                            address: place.address,
-                            phone: place.phone,
-                            website: place.website,
-                            email: place.email,
-                            rating: place.rating?.toString(),
-                            reviewCount: place.reviewCount,
-                            latitude: place.latitude?.toString(),
-                            longitude: place.longitude?.toString(),
-                            openingHours: place.openingHours,
-                            imageUrl: place.imageUrl,
-                            googleMapsUrl: place.googleMapsUrl,
-                            placeId: place.placeId,
-                            rawData: place.rawData,
-                            isEnriched: !!place.email,
-                            enrichmentCreditsCharged: isAdmin
-                                ? 0
-                                : place.email
-                                    ? (creditResult?.breakdown.enrichment ?? 0)
-                                    : 0,
-                            // Social media
-                            facebook: socialMedia.facebook,
-                            instagram: socialMedia.instagram,
-                            twitter: socialMedia.twitter,
-                            linkedin: socialMedia.linkedin,
-                            youtube: socialMedia.youtube,
-                            tiktok: socialMedia.tiktok,
-                            pinterest: socialMedia.pinterest,
-                        };
-                    });
+                            isAdmin ? 0 : (isEnrichment && place.email ? runtime.creditsPerResult : 0),
+                        ),
+                    );
 
                     await tx.insert(contacts).values(contactsToInsert);
                 }

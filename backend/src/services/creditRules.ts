@@ -1,6 +1,7 @@
 import { db } from '../db/index.js';
 import { settings, contacts, users } from '../db/schema.js';
 import { eq, and, gte, inArray } from 'drizzle-orm';
+import type { NormalizedContact } from './scrapers/types.js';
 
 export interface CreditPricingRules {
     creditsPerStandardResult: number;
@@ -38,7 +39,14 @@ export interface CreditConsumptionResult {
     standardResults: number;
     enrichedResults: number;
     duplicatesSkipped: number;
-    acceptedResults: ScrapingResult[];
+    acceptedResults: NormalizedContact[];
+}
+
+export interface ConsumeCreditsOptions {
+    /** Credits charged per accepted result — comes from the scraper template. */
+    creditsPerResult: number;
+    /** Whether this scraper enriches (counts results as enriched for reporting). */
+    isEnrichment: boolean;
 }
 
 export interface CreditEstimate {
@@ -140,14 +148,24 @@ class CreditRulesService {
         };
     }
 
+    /**
+     * Charge credits for a batch of scraped results. Template-agnostic: the price per
+     * result and whether the scraper enriches come from the resolved template (opts),
+     * while duplicate policy still comes from the global pricing rules.
+     *
+     * Dedup is by the generic `dedupeKey` (placeId for Maps, email/linkedin for leads),
+     * so it works uniformly across every scraper source. Results are accepted until the
+     * user's balance would be exceeded (then we stop) — never charging more than what
+     * exists, never going negative.
+     */
     async consumeCredits(
         userId: string,
-        results: ScrapingResult[],
+        results: NormalizedContact[],
         searchId: string,
-        requestEnrichment: boolean = false
+        opts: ConsumeCreditsOptions,
     ): Promise<CreditConsumptionResult> {
         const rules = await this.getPricingRules();
-        
+
         const [user] = await db
             .select()
             .from(users)
@@ -159,76 +177,60 @@ class CreditRulesService {
         }
 
         const totalCredits = user.credits + user.rolloverCredits + user.purchasedCredits;
-        
+        const creditCost = Math.max(0, opts.creditsPerResult);
+
         let duplicatesSkipped = 0;
         let standardResults = 0;
         let enrichedResults = 0;
         let baseCredits = 0;
         let enrichmentCredits = 0;
-        const validResults: ScrapingResult[] = [];
+        const validResults: NormalizedContact[] = [];
 
-        const placeIds = results
-            .filter(r => r.placeId)
-            .map(r => r.placeId as string);
+        // Cross-search dedup against contacts the user already has within the window.
+        const dedupeKeys = results
+            .map((r) => r.dedupeKey)
+            .filter((k): k is string => !!k);
 
-        let existingPlaceIds = new Set<string>();
-        if (!rules.chargeForDuplicates && placeIds.length > 0) {
+        let existingKeys = new Set<string>();
+        if (!rules.chargeForDuplicates && dedupeKeys.length > 0) {
             const duplicateWindow = new Date();
             duplicateWindow.setDate(duplicateWindow.getDate() - rules.duplicateWindowDays);
 
             const existingContacts = await db
-                .select({ placeId: contacts.placeId })
+                .select({ dedupeKey: contacts.dedupeKey })
                 .from(contacts)
                 .where(and(
                     eq(contacts.userId, userId),
-                    inArray(contacts.placeId, placeIds),
+                    inArray(contacts.dedupeKey, dedupeKeys),
                     gte(contacts.createdAt, duplicateWindow)
                 ));
 
-            existingPlaceIds = new Set(existingContacts.filter(c => c.placeId).map(c => c.placeId as string));
+            existingKeys = new Set(existingContacts.map((c) => c.dedupeKey).filter((k): k is string => !!k));
         }
 
         for (const result of results) {
-            if (!rules.chargeForDuplicates && result.placeId && existingPlaceIds.has(result.placeId)) {
+            if (!rules.chargeForDuplicates && result.dedupeKey && existingKeys.has(result.dedupeKey)) {
                 duplicatesSkipped++;
                 continue;
             }
 
-            if (requestEnrichment) {
-                // Both pricing modes charge the same total per enriched result; the
-                // mode only changes how that total is split between the base and
-                // enrichment buckets for reporting (see the accumulation below).
-                const creditCost = rules.creditsPerEnrichedResult;
+            if (baseCredits + enrichmentCredits + creditCost > totalCredits) {
+                break;
+            }
 
-                const potentialTotal = baseCredits + enrichmentCredits + creditCost;
-                if (potentialTotal > totalCredits) {
-                    break;
-                }
-
+            if (opts.isEnrichment) {
                 enrichedResults++;
-                if (rules.enrichmentPricingMode === 'base_plus_enrichment') {
-                    baseCredits += rules.creditsPerStandardResult;
-                    enrichmentCredits += rules.creditsPerEnrichedResult - rules.creditsPerStandardResult;
-                } else {
-                    enrichmentCredits += rules.creditsPerEnrichedResult;
-                }
+                enrichmentCredits += creditCost;
             } else {
-                const potentialTotal = baseCredits + enrichmentCredits + rules.creditsPerStandardResult;
-                if (potentialTotal > totalCredits) {
-                    break;
-                }
-
                 standardResults++;
-                baseCredits += rules.creditsPerStandardResult;
+                baseCredits += creditCost;
             }
 
             validResults.push(result);
         }
 
-        const totalCreditsToCharge = baseCredits + enrichmentCredits;
-
         return {
-            creditsCharged: totalCreditsToCharge,
+            creditsCharged: baseCredits + enrichmentCredits,
             breakdown: {
                 base: baseCredits,
                 enrichment: enrichmentCredits,

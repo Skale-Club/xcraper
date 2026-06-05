@@ -180,6 +180,10 @@ export const searchHistory = pgTable('search_history', {
     location: text('location').notNull(),
     requestedMaxResults: integer('requested_max_results').notNull().default(50),
     requestEnrichment: boolean('request_enrichment').notNull().default(false),
+    // Which scraper template produced this search (registry key: 'standard' | 'enriched' | 'b2b_leads' | ...)
+    scrapeType: text('scrape_type').notNull().default('standard'),
+    // Structured filters for templates that don't use the query+location model (e.g. B2B leads)
+    searchFilters: jsonb('search_filters').$type<Record<string, unknown>>(),
     status: text('status', { enum: ['pending', 'running', 'completed', 'failed', 'paused'] }).notNull().default('pending'),
     apifyRunId: text('apify_run_id'),
     apifyActorId: text('apify_actor_id'),
@@ -254,6 +258,26 @@ export const contacts = pgTable('contacts', {
     youtube: text('youtube'),
     tiktok: text('tiktok'),
     pinterest: text('pinterest'),
+
+    // Contact type discriminator: 'place' (Google Maps) or 'b2b_lead' (people/company sources)
+    contactType: text('contact_type', { enum: ['place', 'b2b_lead'] }).notNull().default('place'),
+
+    // B2B lead fields (null for 'place' contacts) — populated by people/company scrapers
+    firstName: text('first_name'),
+    lastName: text('last_name'),
+    jobTitle: text('job_title'),
+    seniority: text('seniority'),
+    personalEmail: text('personal_email'),
+    companyName: text('company_name'),
+    companyDomain: text('company_domain'),
+    companyLinkedin: text('company_linkedin'),
+    companySize: text('company_size'),
+    industry: text('industry'),
+    companyRevenue: text('company_revenue'),
+    companyFunding: text('company_funding'),
+
+    // Generic dedupe key: placeId for places, email/linkedin for leads. Used for cross-search dedup.
+    dedupeKey: text('dedupe_key'),
 
     // Enrichment tracking
     isEnriched: boolean('is_enriched').notNull().default(false),
@@ -557,6 +581,39 @@ export const systemSettings = pgTable('system_settings', {
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// Scraper templates — the DB half of the hybrid registry.
+// Logic (buildInput/mapResult/dedupeKey/inputSchema) lives in code, keyed by `key`.
+// These rows hold the editable parameters: which Apify actor, costs, credit price, limits, on/off.
+export const scraperTemplates = pgTable('scraper_templates', {
+    key: text('key').primaryKey(),                       // matches the code template key
+    source: text('source').notNull().default('google_maps'),  // 'google_maps' | 'b2b_leads' | ...
+    label: text('label').notNull(),
+    description: text('description'),
+
+    // Apify actor
+    actorId: text('actor_id').notNull(),
+    actorName: text('actor_name').notNull(),
+    billing: text('billing', { enum: ['pay_per_result', 'pay_per_event'] }).notNull().default('pay_per_result'),
+
+    // Economics
+    costPerResultUsd: decimal('cost_per_result_usd', { precision: 10, scale: 6 }).notNull().default('0.004000'),
+    fixedStartCostUsd: decimal('fixed_start_cost_usd', { precision: 10, scale: 6 }).notNull().default('0.000000'),
+    memoryMb: integer('memory_mb').notNull().default(2048),
+    creditsPerResult: integer('credits_per_result').notNull().default(1),
+
+    // Limits
+    minResults: integer('min_results').notNull().default(10),
+    maxResults: integer('max_results').notNull().default(500),
+
+    // Behaviour flags
+    extractsEmails: boolean('extracts_emails').notNull().default(false),
+    isActive: boolean('is_active').notNull().default(true),
+    displayOrder: integer('display_order').notNull().default(0),
+
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // Relations
 export const subscriptionPlansRelations = relations(subscriptionPlans, ({ many }) => ({
     users: many(users),
@@ -666,6 +723,9 @@ export const selectBillingAlertSchema = createSelectSchema(billingAlerts);
 export const insertUsageSummarySchema = createInsertSchema(usageSummary);
 export const selectUsageSummarySchema = createSelectSchema(usageSummary);
 
+export const insertScraperTemplateSchema = createInsertSchema(scraperTemplates);
+export const selectScraperTemplateSchema = createSelectSchema(scraperTemplates);
+
 // Types
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type NewSubscriptionPlan = typeof subscriptionPlans.$inferInsert;
@@ -689,3 +749,5 @@ export type BillingAlert = typeof billingAlerts.$inferSelect;
 export type NewBillingAlert = typeof billingAlerts.$inferInsert;
 export type UsageSummary = typeof usageSummary.$inferSelect;
 export type NewUsageSummary = typeof usageSummary.$inferInsert;
+export type ScraperTemplateRow = typeof scraperTemplates.$inferSelect;
+export type NewScraperTemplateRow = typeof scraperTemplates.$inferInsert;
