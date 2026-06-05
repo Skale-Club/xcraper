@@ -15,7 +15,7 @@ import type { ActorStartOptions } from 'apify-client';
 export type ScraperSource = 'google_maps' | 'b2b_leads';
 export type ScraperContactType = 'place' | 'b2b_lead';
 export type ScraperBilling = 'pay_per_result' | 'pay_per_event';
-export type ScraperFormFieldType = 'text' | 'tags' | 'select' | 'multiselect' | 'number';
+export type ScraperFormFieldType = 'text' | 'tags' | 'select' | 'multiselect' | 'combobox' | 'number';
 
 export interface ScraperFormFieldOption {
     value: string;

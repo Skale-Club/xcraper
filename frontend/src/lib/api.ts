@@ -184,7 +184,7 @@ export interface Contact {
 }
 
 export type ScraperSource = 'google_maps' | 'b2b_leads';
-export type ScraperFormFieldType = 'text' | 'tags' | 'select' | 'multiselect' | 'number';
+export type ScraperFormFieldType = 'text' | 'tags' | 'select' | 'multiselect' | 'combobox' | 'number';
 
 export interface ScraperFormFieldOption {
     value: string;

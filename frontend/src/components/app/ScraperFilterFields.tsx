@@ -1,7 +1,7 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import { Label } from '@/components/ui/label';
-import { X } from 'lucide-react';
-import type { ScraperFormField } from '@/lib/api';
+import { X, ChevronDown } from 'lucide-react';
+import type { ScraperFormField, ScraperFormFieldOption } from '@/lib/api';
 
 interface ScraperFilterFieldsProps {
     schema: ScraperFormField[];
@@ -122,6 +122,96 @@ function ChipSelect({
     );
 }
 
+function Combobox({
+    options,
+    value,
+    placeholder,
+    disabled,
+    onChange,
+}: {
+    options: ScraperFormFieldOption[];
+    value: string[];
+    placeholder?: string;
+    disabled?: boolean;
+    onChange: (next: string[]) => void;
+}) {
+    const [query, setQuery] = useState('');
+    const [open, setOpen] = useState(false);
+
+    const labelFor = (v: string) => options.find((o) => o.value === v)?.label ?? v;
+
+    const filtered = useMemo(() => {
+        const selected = new Set(value);
+        const q = query.trim().toLowerCase();
+        const base = options.filter((o) => !selected.has(o.value));
+        const matches = q
+            ? base.filter((o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q))
+            : base;
+        return matches.slice(0, 50);
+    }, [options, value, query]);
+
+    const addValue = (v: string) => {
+        if (!value.includes(v)) onChange([...value, v]);
+        setQuery('');
+    };
+
+    return (
+        <div className="space-y-2">
+            {value.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                    {value.map((v) => (
+                        <span
+                            key={v}
+                            className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                        >
+                            {labelFor(v)}
+                            {!disabled && (
+                                <button
+                                    type="button"
+                                    onClick={() => onChange(value.filter((x) => x !== v))}
+                                    className="rounded-full hover:text-primary/70"
+                                    aria-label={`Remove ${labelFor(v)}`}
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            )}
+                        </span>
+                    ))}
+                </div>
+            )}
+            <div className="relative">
+                <div className="flex items-center rounded-xl border border-input bg-background px-3 focus-within:ring-2 focus-within:ring-ring">
+                    <input
+                        value={query}
+                        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+                        onFocus={() => setOpen(true)}
+                        onBlur={() => setTimeout(() => setOpen(false), 120)}
+                        placeholder={placeholder}
+                        disabled={disabled}
+                        className="flex-1 bg-transparent py-2.5 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+                    />
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </div>
+                {open && filtered.length > 0 && (
+                    <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-border bg-background py-1 shadow-lg">
+                        {filtered.map((o) => (
+                            <button
+                                key={o.value}
+                                type="button"
+                                // onMouseDown so the option is picked before the input blur closes the list
+                                onMouseDown={(e) => { e.preventDefault(); addValue(o.value); }}
+                                className="block w-full px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                            >
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export function ScraperFilterFields({ schema, values, onChange, disabled }: ScraperFilterFieldsProps) {
     return (
         <div className="space-y-5">
@@ -169,6 +259,16 @@ export function ScraperFilterFields({ schema, values, onChange, disabled }: Scra
                             options={field.options}
                             value={asStringArray(values[field.key])}
                             multi={field.type === 'multiselect'}
+                            disabled={disabled}
+                            onChange={(next) => onChange(field.key, next)}
+                        />
+                    )}
+
+                    {field.type === 'combobox' && field.options && (
+                        <Combobox
+                            options={field.options}
+                            value={asStringArray(values[field.key])}
+                            placeholder={field.placeholder}
                             disabled={disabled}
                             onChange={(next) => onChange(field.key, next)}
                         />

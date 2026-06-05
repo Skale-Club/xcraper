@@ -6,36 +6,29 @@ import type {
     ScraperGlobalConfig,
     NormalizedContact,
 } from '../types.js';
-import { getFirstString, getNumber, pruneEmpty, toStringArray } from '../helpers.js';
+import { getFirstString, pruneEmpty, toStringArray } from '../helpers.js';
+import {
+    SENIORITY_OPTIONS,
+    COMPANY_SIZE_OPTIONS,
+    EMAIL_STATUS_OPTIONS,
+    FUNDING_OPTIONS,
+    INDUSTRY_OPTIONS,
+    LOCATION_OPTIONS,
+} from './b2bLeadsOptions.js';
 
 /**
  * B2B Leads Finder — people + company search (job title, seniority, industry,
  * company size) with verified emails and LinkedIn profiles.
  * Actor: code_crafter/leads-finder (IoSHqwTR9YGhzccez), pay-per-event (~$1.5/1k leads).
  *
- * NOTE: This is a different data SOURCE than Google Maps — output is a person inside a
- * company, not a place. It maps onto the B2B columns of the contacts table.
+ * The filter option values (seniority, size, industry, country, funding, email status)
+ * come straight from the actor's input schema (see scripts/gen-b2b-options.ts) so the
+ * actor never rejects them. Country/industry are large closed lists -> combobox.
  *
- * Apify free-plan caveats (handled via the runtime params / admin):
+ * Apify free-plan caveats (handled via runtime params / admin):
  *   - capped at 100 leads/run
  *   - mobile_number only enriched on paid Apify plans
  */
-
-// Option lists mirror the actor's documented filter values. Some may need lowercasing
-// against the live actor — they're editable here without touching the rest of the system.
-const SENIORITY_OPTIONS = [
-    'Founder', 'Owner', 'C-Level', 'Director', 'VP', 'Head', 'Manager', 'Senior', 'Entry', 'Trainee',
-].map((v) => ({ value: v, label: v }));
-
-const COMPANY_SIZE_OPTIONS = [
-    '0-1', '2-10', '11-20', '21-50', '51-100', '101-200', '201-500', '501-1000', '1001-2000', '2001-5000', '10000+',
-].map((v) => ({ value: v, label: v }));
-
-const EMAIL_STATUS_OPTIONS = [
-    { value: 'validated', label: 'Validated' },
-    { value: 'unknown', label: 'Unknown' },
-    { value: 'not_validated', label: 'Not validated' },
-];
 
 function joinLocation(item: Record<string, unknown>): string | undefined {
     const full = getFirstString(item.company_full_address);
@@ -89,12 +82,13 @@ export const b2bLeadsTemplate: ScraperTemplate = {
     extractsEmails: true,
 
     inputSchema: [
-        { key: 'jobTitles', type: 'tags', label: 'Job titles', placeholder: 'e.g. Head of Marketing, CMO', helpText: 'Add one or more titles to target.' },
+        { key: 'jobTitles', type: 'tags', label: 'Job titles', placeholder: 'e.g. Head of Marketing, CMO', helpText: 'Free text — add one or more titles.' },
         { key: 'seniority', type: 'multiselect', label: 'Seniority', options: SENIORITY_OPTIONS },
-        { key: 'industries', type: 'tags', label: 'Industry', placeholder: 'e.g. SaaS, marketing & advertising' },
-        { key: 'companySizes', type: 'multiselect', label: 'Company size', options: COMPANY_SIZE_OPTIONS },
-        { key: 'locations', type: 'tags', label: 'Location (country / state / region)', placeholder: 'e.g. United States, California' },
-        { key: 'cities', type: 'tags', label: 'Cities', placeholder: 'e.g. Amsterdam', helpText: 'Use cities for city-level targeting only (leave Location empty).' },
+        { key: 'industries', type: 'combobox', label: 'Industry', options: INDUSTRY_OPTIONS, placeholder: 'Search industries…' },
+        { key: 'companySizes', type: 'multiselect', label: 'Company size (employees)', options: COMPANY_SIZE_OPTIONS },
+        { key: 'locations', type: 'combobox', label: 'Country / region', options: LOCATION_OPTIONS, placeholder: 'Search countries…', helpText: 'Top countries by data volume. For a single city, leave this empty and use Cities.' },
+        { key: 'cities', type: 'tags', label: 'Cities', placeholder: 'e.g. Amsterdam' },
+        { key: 'funding', type: 'multiselect', label: 'Funding stage', options: FUNDING_OPTIONS },
         { key: 'emailStatus', type: 'multiselect', label: 'Email quality', options: EMAIL_STATUS_OPTIONS, defaultValue: ['validated'] },
     ],
 
@@ -119,6 +113,7 @@ export const b2bLeadsTemplate: ScraperTemplate = {
             size: toStringArray(f.companySizes),
             contact_location: toStringArray(f.locations),
             contact_city: toStringArray(f.cities),
+            funding: toStringArray(f.funding),
             email_status: toStringArray(f.emailStatus) ?? ['validated'],
             fetch_count: params.maxResults,
         });
