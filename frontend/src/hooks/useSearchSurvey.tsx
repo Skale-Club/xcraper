@@ -2,6 +2,7 @@ import {
     createContext,
     useContext,
     useEffect,
+    useMemo,
     useState,
     type ReactNode,
 } from 'react';
@@ -12,9 +13,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { PlacesAutocompleteInput } from '@/components/app/PlacesAutocompleteInput';
+import { ScraperFilterFields } from '@/components/app/ScraperFilterFields';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { searchApi, settingsApi, ApiError, type SearchStatus } from '@/lib/api';
+import { searchApi, ApiError, type SearchStatus, type ScraperOption, type StartSearchInput } from '@/lib/api';
 import {
     Search,
     MapPin,
@@ -23,16 +25,18 @@ import {
     ChevronRight,
     Users,
     Mail,
+    Building2,
     Compass,
     Check,
     Hash,
+    SlidersHorizontal,
 } from 'lucide-react';
 
-const MIN_STANDARD_RESULTS = 30;
-const MIN_ENRICHED_RESULTS = 15;
+type StepKey = 'scraper' | 'query' | 'location' | 'filters' | 'maxResults';
 
-function getMinimumResults(requestEnrichment: boolean | null) {
-    return requestEnrichment ? MIN_ENRICHED_RESULTS : MIN_STANDARD_RESULTS;
+function scraperIcon(scraper: ScraperOption) {
+    if (scraper.source === 'b2b_leads') return Building2;
+    return scraper.extractsEmails ? Mail : Users;
 }
 
 export interface SearchSurveyContextValue {
@@ -54,10 +58,11 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [query, setQuery] = useState('');
     const [location, setLocation] = useState('');
-    const [maxResults, setMaxResults] = useState(MIN_STANDARD_RESULTS);
-    const [requestEnrichment, setRequestEnrichment] = useState<boolean | null>(null);
+    const [filters, setFilters] = useState<Record<string, unknown>>({});
+    const [maxResults, setMaxResults] = useState(30);
     const [isLoading, setIsLoading] = useState(false);
     const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
     const [searchStatus, setSearchStatus] = useState<SearchStatus | null>(null);
@@ -65,10 +70,26 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
     const [surveyStep, setSurveyStep] = useState(0);
     const [autocompleteOpen, setAutocompleteOpen] = useState(false);
 
-    const { data: settingsData } = useQuery({
-        queryKey: ['public-settings'],
-        queryFn: () => settingsApi.getPublic(),
+    const { data: scrapersData } = useQuery({
+        queryKey: ['scrapers'],
+        queryFn: () => searchApi.listScrapers(),
     });
+    const scrapers = useMemo(() => scrapersData?.scrapers ?? [], [scrapersData]);
+    const selectedScraper = useMemo(
+        () => scrapers.find((s) => s.key === selectedKey) ?? null,
+        [scrapers, selectedKey],
+    );
+    const isMaps = selectedScraper?.source === 'google_maps';
+
+    // Dynamic step flow: Maps uses query+location, structured-filter scrapers use a filters step.
+    const stepKeys = useMemo<StepKey[]>(() => {
+        if (!selectedScraper) return ['scraper'];
+        return selectedScraper.source === 'google_maps'
+            ? ['scraper', 'query', 'location', 'maxResults']
+            : ['scraper', 'filters', 'maxResults'];
+    }, [selectedScraper]);
+    const totalSurveySteps = stepKeys.length;
+    const currentStepKey = stepKeys[Math.min(surveyStep, stepKeys.length - 1)];
 
     useEffect(() => {
         if (!activeSearchId) return;
@@ -153,10 +174,20 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
         },
     });
 
+    const resetDraft = () => {
+        setSelectedKey(null);
+        setQuery('');
+        setLocation('');
+        setFilters({});
+        setMaxResults(30);
+        setSurveyStep(0);
+    };
+
     const hasDraft = !isSearchSurveyOpen && (
+        selectedKey !== null ||
         query.trim() !== '' ||
         location.trim() !== '' ||
-        requestEnrichment !== null ||
+        Object.keys(filters).length > 0 ||
         surveyStep > 0
     );
 
@@ -168,21 +199,13 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
     const cancelSearchSurvey = () => {
         if (isLoading) return;
         setIsSearchSurveyOpen(false);
-        setSurveyStep(0);
-        setQuery('');
-        setLocation('');
-        setMaxResults(MIN_STANDARD_RESULTS);
-        setRequestEnrichment(null);
+        resetDraft();
     };
 
     const openSearchSurvey = () => {
         if (activeSearchId) return;
         if (!hasDraft) {
-            setQuery('');
-            setLocation('');
-            setMaxResults(MIN_STANDARD_RESULTS);
-            setRequestEnrichment(null);
-            setSurveyStep(0);
+            resetDraft();
         }
         setIsSearchSurveyOpen(true);
     };
@@ -217,86 +240,78 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
         };
     }, [activeSearchId, hasDraft]);
 
+    const isAdmin = user?.role === 'admin';
+    const userCredits = user?.credits ?? 0;
+    const creditsPerLead = selectedScraper?.creditsPerResult ?? 1;
+    const minimumResults = selectedScraper?.minResults ?? 1;
+    const scraperMax = selectedScraper?.maxResults ?? 500;
+    const maxSelectableResults = isAdmin ? scraperMax : Math.min(scraperMax, Math.floor(userCredits / creditsPerLead));
+    const canAffordMinimumSearch = isAdmin || maxSelectableResults >= minimumResults;
+    const sliderMax = canAffordMinimumSearch ? maxSelectableResults : minimumResults;
+
+    const hasAnyFilter = useMemo(() => {
+        if (!selectedScraper) return false;
+        return selectedScraper.inputSchema.some((f) => {
+            const v = filters[f.key];
+            if (Array.isArray(v)) return v.length > 0;
+            if (typeof v === 'string') return v.trim().length > 0;
+            return v != null;
+        });
+    }, [selectedScraper, filters]);
+
+    const canMoveForward =
+        currentStepKey === 'scraper' ? selectedKey !== null
+            : currentStepKey === 'query' ? Boolean(query.trim())
+                : currentStepKey === 'location' ? Boolean(location.trim())
+                    : currentStepKey === 'filters' ? hasAnyFilter
+                        : canAffordMinimumSearch && maxResults >= minimumResults && maxResults <= sliderMax;
+
     const handleSearch = async () => {
-        if (requestEnrichment === null || !query.trim() || !location.trim()) {
-            toast({
-                variant: 'destructive',
-                title: 'Error',
-                description: 'Complete every search step before starting.',
-            });
+        if (!selectedScraper) return;
+        if (isMaps && (!query.trim() || !location.trim())) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Complete every search step before starting.' });
+            return;
+        }
+        if (!isMaps && !hasAnyFilter) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Add at least one filter before starting.' });
             return;
         }
 
         setIsLoading(true);
         try {
-            const response = await searchApi.start(query, location, maxResults, requestEnrichment);
+            const input: StartSearchInput = isMaps
+                ? { scrapeType: selectedScraper.key, query, location, maxResults }
+                : { scrapeType: selectedScraper.key, filters, maxResults };
+
+            const response = await searchApi.start(input);
             setActiveSearchId(response.searchId);
             setSearchStatus({ status: 'running' });
 
             queryClient.invalidateQueries({ queryKey: ['search-history'] });
 
-            toast({
-                title: 'Search Started',
-                description: 'Your scraping task has been initiated...',
-            });
+            toast({ title: 'Search Started', description: 'Your scraping task has been initiated...' });
 
             setIsSearchSurveyOpen(false);
-            setSurveyStep(0);
-            setQuery('');
-            setLocation('');
-            setMaxResults(MIN_STANDARD_RESULTS);
-            setRequestEnrichment(null);
+            resetDraft();
         } catch (error) {
             const message = error instanceof ApiError ? error.message : 'Failed to start search';
-            toast({
-                variant: 'destructive',
-                title: 'Error',
-                description: message,
-            });
+            toast({ variant: 'destructive', title: 'Error', description: message });
         } finally {
             setIsLoading(false);
         }
     };
 
-    const creditsPerStandardLead = settingsData?.settings.creditsPerStandardResult ?? 1;
-    const creditsPerEnrichedLead = settingsData?.settings.creditsPerEnrichedResult ?? 3;
-    const isAdmin = user?.role === 'admin';
-    const userCredits = user?.credits ?? 0;
-    const creditsPerLead = requestEnrichment ? creditsPerEnrichedLead : creditsPerStandardLead;
-    const minimumResults = getMinimumResults(requestEnrichment);
-    const maxSelectableResults = isAdmin ? 500 : Math.min(500, Math.floor(userCredits / creditsPerLead));
-    const canAffordMinimumSearch = isAdmin || maxSelectableResults >= minimumResults;
-    const sliderMax = canAffordMinimumSearch ? maxSelectableResults : minimumResults;
-    const totalSurveySteps = 4;
-    const canMoveForward = surveyStep === 0
-        ? requestEnrichment !== null
-        : surveyStep === 1
-            ? Boolean(query.trim())
-            : surveyStep === 2
-                ? Boolean(location.trim())
-                : canAffordMinimumSearch && maxResults >= minimumResults && maxResults <= sliderMax;
-
-    useEffect(() => {
-        if (requestEnrichment === null) return;
-
-        setMaxResults((current) => Math.max(current, getMinimumResults(requestEnrichment)));
-    }, [requestEnrichment]);
-
     const handleSurveyNext = async () => {
         if (!canMoveForward) {
-            toast({
-                variant: 'destructive',
-                title: 'Missing answer',
-                description: surveyStep === 0
-                    ? 'Choose your lead type before continuing.'
-                    : surveyStep === 1
-                        ? 'Enter what you want to search for.'
-                        : surveyStep === 2
-                            ? 'Enter the location to search in.'
-                            : canAffordMinimumSearch
-                                ? `Choose a result limit between ${minimumResults} and ${sliderMax}.`
-                                : `You need at least ${minimumResults * creditsPerLead} credits to run this search.`,
-            });
+            const msg =
+                currentStepKey === 'scraper' ? 'Choose a scraper before continuing.'
+                    : currentStepKey === 'query' ? 'Enter what you want to search for.'
+                        : currentStepKey === 'location' ? 'Enter the location to search in.'
+                            : currentStepKey === 'filters' ? 'Add at least one filter.'
+                                : canAffordMinimumSearch
+                                    ? `Choose a result limit between ${minimumResults} and ${sliderMax}.`
+                                    : `You need at least ${minimumResults * creditsPerLead} credits to run this search.`;
+            toast({ variant: 'destructive', title: 'Missing answer', description: msg });
             return;
         }
 
@@ -309,11 +324,21 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
         setSurveyStep((current) => current + 1);
     };
 
-    const handleLeadTypeSelect = (needsEmail: boolean) => {
+    const handleScraperSelect = (scraper: ScraperOption) => {
         if (isLoading) return;
-        setRequestEnrichment(needsEmail);
-        setMaxResults(getMinimumResults(needsEmail));
+        setSelectedKey(scraper.key);
+        // Seed default filter values (e.g. emailStatus = ['validated']).
+        const initial: Record<string, unknown> = {};
+        scraper.inputSchema.forEach((f) => {
+            if (f.defaultValue !== undefined) initial[f.key] = f.defaultValue;
+        });
+        setFilters(initial);
+        setMaxResults(Math.max(scraper.minResults, 0));
         setSurveyStep(1);
+    };
+
+    const updateFilter = (key: string, value: unknown) => {
+        setFilters((prev) => ({ ...prev, [key]: value }));
     };
 
     const contextValue: SearchSurveyContextValue = {
@@ -405,9 +430,9 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                     className="overflow-visible px-6 py-6"
                                 >
                                     <AnimatePresence mode="wait">
-                                        {surveyStep === 0 && (
+                                        {currentStepKey === 'scraper' && (
                                             <motion.div
-                                                key="email-mode-step"
+                                                key="scraper-step"
                                                 initial={{ opacity: 0, x: 18 }}
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, x: -18 }}
@@ -415,95 +440,69 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                             >
                                                 <div className="mb-5">
                                                     <h2 id="search-survey-title" className="text-xl font-semibold tracking-tight text-foreground">
-                                                        Choose lead type
+                                                        Choose a data source
                                                     </h2>
                                                     <p className="mt-1.5 text-sm text-muted-foreground">
-                                                        Select the type of data you want to collect from Google Maps.
+                                                        Pick the scraper that matches the leads you want to collect.
                                                     </p>
                                                 </div>
 
-                                                <div className="grid gap-3 md:grid-cols-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleLeadTypeSelect(false)}
-                                                        className={`group relative rounded-2xl border-2 px-5 py-5 text-left transition-all duration-200 ${
-                                                            requestEnrichment === false
-                                                                ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
-                                                                : 'border-border bg-background hover:border-primary/30 hover:bg-muted/30 hover:shadow-sm'
-                                                        }`}
-                                                    >
-                                                        {requestEnrichment === false && (
-                                                            <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                                                                <Check className="h-3 w-3 text-primary-foreground" />
-                                                            </div>
-                                                        )}
-                                                        <div className="flex flex-col gap-3">
-                                                            <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
-                                                                requestEnrichment === false
-                                                                    ? 'bg-primary/15 text-primary'
-                                                                    : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
-                                                            }`}>
-                                                                <Users className="h-5 w-5" />
-                                                            </div>
-                                                            <div>
-                                                                <p className="text-base font-semibold text-foreground">All Leads</p>
-                                                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                                                                    Business name, phone number, address, website, ratings and all available data.
-                                                                </p>
-                                                            </div>
-                                                            <Badge
-                                                                variant="outline"
-                                                                className="w-fit rounded-full border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
-                                                            >
-                                                                {creditsPerStandardLead} credit{creditsPerStandardLead === 1 ? '' : 's'}/result
-                                                            </Badge>
-                                                        </div>
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleLeadTypeSelect(true)}
-                                                        className={`group relative rounded-2xl border-2 px-5 py-5 text-left transition-all duration-200 ${
-                                                            requestEnrichment === true
-                                                                ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
-                                                                : 'border-border bg-background hover:border-primary/30 hover:bg-muted/30 hover:shadow-sm'
-                                                        }`}
-                                                    >
-                                                        {requestEnrichment === true && (
-                                                            <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                                                                <Check className="h-3 w-3 text-primary-foreground" />
-                                                            </div>
-                                                        )}
-                                                        <div className="flex flex-col gap-3">
-                                                            <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
-                                                                requestEnrichment === true
-                                                                    ? 'bg-primary/15 text-primary'
-                                                                    : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
-                                                            }`}>
-                                                                <Mail className="h-5 w-5" />
-                                                            </div>
-                                                            <div>
-                                                                <p className="text-base font-semibold text-foreground">+ Email</p>
-                                                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                                                                    We try to find a public business email. Not guaranteed.
-                                                                </p>
-                                                            </div>
-                                                            <Badge
-                                                                variant="outline"
-                                                                className="w-fit rounded-full border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
-                                                            >
-                                                                {creditsPerEnrichedLead} credit{creditsPerEnrichedLead === 1 ? '' : 's'}/result
-                                                            </Badge>
-                                                            <p className="text-[11px] leading-relaxed text-muted-foreground">
-                                                                Why more expensive? We try to find contact details, but some results will not include an email.
-                                                            </p>
-                                                        </div>
-                                                    </button>
-                                                </div>
+                                                {scrapers.length === 0 ? (
+                                                    <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-border py-10 text-sm text-muted-foreground">
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                        Loading scrapers...
+                                                    </div>
+                                                ) : (
+                                                    <div className="grid gap-3 md:grid-cols-2">
+                                                        {scrapers.map((scraper) => {
+                                                            const Icon = scraperIcon(scraper);
+                                                            const selected = selectedKey === scraper.key;
+                                                            return (
+                                                                <button
+                                                                    key={scraper.key}
+                                                                    type="button"
+                                                                    onClick={() => handleScraperSelect(scraper)}
+                                                                    className={`group relative rounded-2xl border-2 px-5 py-5 text-left transition-all duration-200 ${
+                                                                        selected
+                                                                            ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
+                                                                            : 'border-border bg-background hover:border-primary/30 hover:bg-muted/30 hover:shadow-sm'
+                                                                    }`}
+                                                                >
+                                                                    {selected && (
+                                                                        <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                                                                            <Check className="h-3 w-3 text-primary-foreground" />
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="flex flex-col gap-3">
+                                                                        <div className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
+                                                                            selected
+                                                                                ? 'bg-primary/15 text-primary'
+                                                                                : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
+                                                                        }`}>
+                                                                            <Icon className="h-5 w-5" />
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className="text-base font-semibold text-foreground">{scraper.label}</p>
+                                                                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                                                                {scraper.description}
+                                                                            </p>
+                                                                        </div>
+                                                                        <Badge
+                                                                            variant="outline"
+                                                                            className="w-fit rounded-full border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
+                                                                        >
+                                                                            {scraper.creditsPerResult} credit{scraper.creditsPerResult === 1 ? '' : 's'}/result
+                                                                        </Badge>
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
                                             </motion.div>
                                         )}
 
-                                        {surveyStep === 1 && (
+                                        {currentStepKey === 'query' && (
                                             <motion.div
                                                 key="query-step"
                                                 initial={{ opacity: 0, x: 18 }}
@@ -539,7 +538,7 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                             </motion.div>
                                         )}
 
-                                        {surveyStep === 2 && (
+                                        {currentStepKey === 'location' && (
                                             <motion.div
                                                 key="location-step"
                                                 initial={{ opacity: 0, x: 18 }}
@@ -575,7 +574,33 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                             </motion.div>
                                         )}
 
-                                        {surveyStep === 3 && (
+                                        {currentStepKey === 'filters' && selectedScraper && (
+                                            <motion.div
+                                                key="filters-step"
+                                                initial={{ opacity: 0, x: 18 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                exit={{ opacity: 0, x: -18 }}
+                                                transition={{ duration: 0.2 }}
+                                                className="space-y-6"
+                                            >
+                                                <div className="space-y-2">
+                                                    <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                                                        Who are you targeting?
+                                                    </h2>
+                                                    <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+                                                        Add filters to narrow your leads. Start broad, then refine — at least one filter is required.
+                                                    </p>
+                                                </div>
+                                                <ScraperFilterFields
+                                                    schema={selectedScraper.inputSchema}
+                                                    values={filters}
+                                                    onChange={updateFilter}
+                                                    disabled={isLoading}
+                                                />
+                                            </motion.div>
+                                        )}
+
+                                        {currentStepKey === 'maxResults' && (
                                             <motion.div
                                                 key="max-results-step"
                                                 initial={{ opacity: 0, x: 18 }}
@@ -589,10 +614,8 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                         How many results do you want?
                                                     </h2>
                                                     <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-                                                        Choose the maximum number of businesses to process for this search.
-                                                        {requestEnrichment
-                                                            ? ` Minimum ${MIN_ENRICHED_RESULTS} results per enriched run.`
-                                                            : ` Minimum ${MIN_STANDARD_RESULTS} results per standard run.`}
+                                                        Choose the maximum number of leads to process for this search.
+                                                        {` Minimum ${minimumResults} results per run.`}
                                                     </p>
                                                 </div>
                                                 <div className="space-y-5">
@@ -620,36 +643,6 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                         disabled={isLoading || !canAffordMinimumSearch}
                                                         className="w-full cursor-pointer appearance-none bg-transparent outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:shadow-md"
                                                     />
-                                                    <div className="relative mt-2 h-4 w-full text-xs text-muted-foreground">
-                                                        {[minimumResults, 50, 100, 200, 300, 400, sliderMax]
-                                                            .filter((val, i, arr) => {
-                                                                if (arr.indexOf(val) !== i) return false;
-                                                                if (val < minimumResults || val > sliderMax) return false;
-                                                                if (val !== minimumResults && val !== sliderMax) {
-                                                                    const distance = sliderMax - minimumResults;
-                                                                    if (distance === 0) return false;
-                                                                    const percent = ((val - minimumResults) / distance) * 100;
-                                                                    if (percent < 8 || percent > 92) return false;
-                                                                }
-                                                                return true;
-                                                            })
-                                                            .map((val) => {
-                                                                const percent = sliderMax === minimumResults ? 0 : ((val - minimumResults) / (sliderMax - minimumResults)) * 100;
-                                                                return (
-                                                                    <span
-                                                                        key={val}
-                                                                        className="absolute"
-                                                                        style={{
-                                                                            left: percent === 100 ? 'auto' : `${percent}%`,
-                                                                            right: percent === 100 ? '0' : 'auto',
-                                                                            transform: percent === 0 || percent === 100 ? 'none' : 'translateX(-50%)'
-                                                                        }}
-                                                                    >
-                                                                        {val}
-                                                                    </span>
-                                                                );
-                                                            })}
-                                                    </div>
                                                     <p className="text-xs text-muted-foreground">
                                                         {isAdmin ? (
                                                             <>Admin mode: this search is not limited by your credit balance.</>
@@ -674,30 +667,43 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                     <div className="space-y-2.5">
                                                         <div className="flex items-center gap-3 text-sm">
                                                             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                                {requestEnrichment ? (
-                                                                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                                                                ) : (
-                                                                    <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                                                                )}
+                                                                <Compass className="h-3.5 w-3.5 text-muted-foreground" />
                                                             </div>
                                                             <span className="text-foreground">
-                                                                {requestEnrichment
-                                                                    ? `+ Email (${creditsPerEnrichedLead} credits/result)`
-                                                                    : `All Leads (${creditsPerStandardLead} credit${creditsPerStandardLead === 1 ? '' : 's'}/result)`}
+                                                                {selectedScraper?.label} ({creditsPerLead} credit{creditsPerLead === 1 ? '' : 's'}/result)
                                                             </span>
                                                         </div>
-                                                        <div className="flex items-center gap-3 text-sm">
-                                                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                                <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                                                        {isMaps ? (
+                                                            <>
+                                                                <div className="flex items-center gap-3 text-sm">
+                                                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                                                        <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                                                                    </div>
+                                                                    <span className="text-foreground">{query}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-3 text-sm">
+                                                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                                                        <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                                                                    </div>
+                                                                    <span className="text-foreground">{location}</span>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div className="flex items-center gap-3 text-sm">
+                                                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                                                    <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                                                                </div>
+                                                                <span className="text-foreground">
+                                                                    {selectedScraper?.inputSchema
+                                                                        .filter((f) => {
+                                                                            const v = filters[f.key];
+                                                                            return Array.isArray(v) ? v.length > 0 : !!v;
+                                                                        })
+                                                                        .map((f) => f.label)
+                                                                        .join(', ') || 'No filters'}
+                                                                </span>
                                                             </div>
-                                                            <span className="text-foreground">{query}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-3 text-sm">
-                                                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                                <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            </div>
-                                                            <span className="text-foreground">{location}</span>
-                                                        </div>
+                                                        )}
                                                         <div className="flex items-center gap-3 text-sm">
                                                             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
                                                                 <Hash className="h-3.5 w-3.5 text-muted-foreground" />

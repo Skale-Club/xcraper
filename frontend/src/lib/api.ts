@@ -165,7 +165,61 @@ export interface Contact {
     youtube?: string;
     tiktok?: string;
     pinterest?: string;
+    // Contact type + B2B lead fields (null for 'place' contacts)
+    contactType?: 'place' | 'b2b_lead';
+    firstName?: string;
+    lastName?: string;
+    jobTitle?: string;
+    seniority?: string;
+    personalEmail?: string;
+    companyName?: string;
+    companyDomain?: string;
+    companyLinkedin?: string;
+    companySize?: string;
+    industry?: string;
+    companyRevenue?: string;
+    companyFunding?: string;
     createdAt: string;
+}
+
+export type ScraperSource = 'google_maps' | 'b2b_leads';
+export type ScraperFormFieldType = 'text' | 'tags' | 'select' | 'multiselect' | 'number';
+
+export interface ScraperFormFieldOption {
+    value: string;
+    label: string;
+}
+
+export interface ScraperFormField {
+    key: string;
+    type: ScraperFormFieldType;
+    label: string;
+    placeholder?: string;
+    helpText?: string;
+    required?: boolean;
+    options?: ScraperFormFieldOption[];
+    defaultValue?: unknown;
+}
+
+export interface ScraperOption {
+    key: string;
+    source: ScraperSource;
+    label: string;
+    description: string;
+    extractsEmails: boolean;
+    billing: 'pay_per_result' | 'pay_per_event';
+    inputSchema: ScraperFormField[];
+    creditsPerResult: number;
+    minResults: number;
+    maxResults: number;
+}
+
+export interface StartSearchInput {
+    scrapeType: string;
+    query?: string;
+    location?: string;
+    maxResults?: number;
+    filters?: Record<string, unknown>;
 }
 
 export interface PaginatedContactsResponse {
@@ -311,10 +365,13 @@ export const usersApi = {
 
 // Search API
 export const searchApi = {
-    start: (query: string, location: string, maxResults?: number, requestEnrichment = false) =>
-        apiFetch<{ message: string; searchId: string; apifyRunId: string; estimatedCredits?: number; creditsPerLead?: number; requestEnrichment?: boolean }>('/search/', {
+    listScrapers: () =>
+        apiFetch<{ scrapers: ScraperOption[] }>('/search/scrapers'),
+
+    start: (input: StartSearchInput) =>
+        apiFetch<{ message: string; searchId: string; apifyRunId: string; scrapeType?: string; estimatedCredits?: number; creditsPerLead?: number; requestEnrichment?: boolean }>('/search/', {
             method: 'POST',
-            body: JSON.stringify({ query, location, maxResults, requestEnrichment }),
+            body: JSON.stringify(input),
         }),
 
     get: (searchId: string) =>
