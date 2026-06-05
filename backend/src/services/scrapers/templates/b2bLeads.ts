@@ -9,7 +9,8 @@ import type {
 import { getFirstString, getNumber, pruneEmpty, toStringArray } from '../helpers.js';
 
 /**
- * B2B Leads Finder — Apollo/ZoomInfo-style people+company search.
+ * B2B Leads Finder — people + company search (job title, seniority, industry,
+ * company size) with verified emails and LinkedIn profiles.
  * Actor: code_crafter/leads-finder (IoSHqwTR9YGhzccez), pay-per-event (~$1.5/1k leads).
  *
  * NOTE: This is a different data SOURCE than Google Maps — output is a person inside a
@@ -82,7 +83,7 @@ export const b2bLeadsTemplate: ScraperTemplate = {
     key: 'b2b_leads',
     source: 'b2b_leads',
     contactType: 'b2b_lead',
-    label: 'B2B Leads (Apollo-style)',
+    label: 'B2B Leads',
     description: 'Find decision-makers by job title, seniority, industry and company size — with verified emails and LinkedIn profiles.',
     billing: 'pay_per_event',
     extractsEmails: true,
