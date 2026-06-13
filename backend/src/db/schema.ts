@@ -167,6 +167,13 @@ export const users = pgTable('users', {
     phone: text('phone'),
     avatarUrl: text('avatar_url'),
 
+    // Xphere integration (per-user): the Xphere API key (xph_...) holding the
+    // prospects:write scope, plus an optional API base override. Used to push
+    // scraped leads into THIS user's Xphere workspace. Configured in the user's
+    // profile panel — never a global env var, so each user pushes to their own org.
+    xphereApiKey: text('xphere_api_key'),
+    xphereApiUrl: text('xphere_api_url'),
+
     // Timestamps
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),

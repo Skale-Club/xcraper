@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { contacts, searchHistory } from '../db/schema.js';
+import { contacts, searchHistory, users } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { logError } from '../utils/logger.js';
 
@@ -11,14 +11,39 @@ import { logError } from '../utils/logger.js';
 // contract): set XPHERE_API_URL (defaults to the canonical production origin) and
 // XPHERE_API_KEY for the deployment.
 
-const XPHERE_API_URL = (process.env.XPHERE_API_URL || 'https://xphere.app').replace(/\/$/, '');
-const XPHERE_API_KEY = process.env.XPHERE_API_KEY || '';
+const DEFAULT_XPHERE_API_URL = 'https://xphere.app';
+const ENV_XPHERE_API_KEY = process.env.XPHERE_API_KEY || '';
+const ENV_XPHERE_API_URL = process.env.XPHERE_API_URL || '';
 
 // The ingestion endpoint accepts up to 1000 records per call; stay under it.
 const BATCH_SIZE = 500;
 
-export function isXphereConfigured(): boolean {
-    return Boolean(XPHERE_API_KEY);
+type XphereConfig = { apiUrl: string; apiKey: string };
+
+/**
+ * Resolve the Xphere credentials for a user. Prefers the user's OWN key (set in
+ * their profile panel) so each user pushes into their own Xphere workspace; falls
+ * back to a deployment-wide env var if present (legacy). Null if neither is set.
+ */
+export async function resolveXphereConfig(userId: string): Promise<XphereConfig | null> {
+    const [user] = await db
+        .select({ apiKey: users.xphereApiKey, apiUrl: users.xphereApiUrl })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+    const apiKey = (user?.apiKey || ENV_XPHERE_API_KEY || '').trim();
+    if (!apiKey) return null;
+
+    const apiUrl = (user?.apiUrl || ENV_XPHERE_API_URL || DEFAULT_XPHERE_API_URL)
+        .trim()
+        .replace(/\/$/, '');
+    return { apiUrl, apiKey };
+}
+
+/** Whether the given user can push to Xphere (own key, or env fallback). */
+export async function isXphereConfiguredForUser(userId: string): Promise<boolean> {
+    return (await resolveXphereConfig(userId)) !== null;
 }
 
 /** Best-effort registrable domain from a scraped website URL. */
@@ -48,14 +73,15 @@ export type PushResult =
     | { ok: false; error: string };
 
 async function postBatch(
+    config: XphereConfig,
     source: Record<string, unknown>,
     prospects: ProspectPayload[],
 ): Promise<{ created: number; updated: number; skipped: number } | { error: string }> {
     try {
-        const res = await fetch(`${XPHERE_API_URL}/api/v1/prospects`, {
+        const res = await fetch(`${config.apiUrl}/api/v1/prospects`, {
             method: 'POST',
             headers: {
-                Authorization: `Bearer ${XPHERE_API_KEY}`,
+                Authorization: `Bearer ${config.apiKey}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ source, prospects }),
@@ -81,8 +107,9 @@ async function postBatch(
  * so re-pushing a run is idempotent.
  */
 export async function pushRunToXphere(searchId: string, userId: string): Promise<PushResult> {
-    if (!isXphereConfigured()) {
-        return { ok: false, error: 'Xphere integration is not configured (set XPHERE_API_KEY).' };
+    const config = await resolveXphereConfig(userId);
+    if (!config) {
+        return { ok: false, error: 'Xphere integration is not configured. Add your Xphere API key in your profile settings.' };
     }
 
     // Ownership check — only the run's owner can push it.
@@ -138,7 +165,7 @@ export async function pushRunToXphere(searchId: string, userId: string): Promise
     let skipped = 0;
     for (let i = 0; i < prospects.length; i += BATCH_SIZE) {
         const batch = prospects.slice(i, i + BATCH_SIZE);
-        const result = await postBatch(source, batch);
+        const result = await postBatch(config, source, batch);
         if ('error' in result) return { ok: false, error: result.error };
         created += result.created;
         updated += result.updated;

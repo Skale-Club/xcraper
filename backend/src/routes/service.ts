@@ -7,7 +7,7 @@ import { users, searchHistory, type User } from '../db/schema.js';
 import { startScrapingTask, isApifyConfigured, type StartedTask } from '../services/apify.js';
 import { scraperRegistry } from '../services/scrapers/registry.js';
 import { syncSearchRecordState } from './search.js';
-import { pushRunToXphere, isXphereConfigured } from '../services/xphere.js';
+import { pushRunToXphere } from '../services/xphere.js';
 
 // Machine-to-machine ("service") API for trusted backends (e.g. the Hermes agent)
 // to run a Google Maps scrape and push the results into Xphere WITHOUT a browser
@@ -58,11 +58,10 @@ const scrapeSchema = z.object({
     scrapeType: z.enum(['standard', 'enriched']).optional().default('standard'),
 });
 
-/** Push a finished run's contacts into Xphere; uniform shape for the JSON response. */
+/** Push a finished run's contacts into Xphere; uniform shape for the JSON response.
+ * The run owner's Xphere key (set in their profile) is used — pushRunToXphere
+ * returns a clear error if the owner hasn't configured one. */
 async function pushToXphere(searchId: string, userId: string): Promise<Record<string, unknown>> {
-    if (!isXphereConfigured()) {
-        return { pushed: false, error: 'Xphere not configured (set XPHERE_API_KEY).' };
-    }
     const result = await pushRunToXphere(searchId, userId);
     return result.ok ? { pushed: true, ...result } : { pushed: false, error: result.error };
 }
