@@ -72,6 +72,9 @@ export default function ProfilePage() {
 
     // ── Xphere integration (per-user API key) ──────────────────────────────────
     const [xphereKey, setXphereKey] = useState('');
+    // When a key is already saved, the field shows a masked (dots) value instead of
+    // an empty placeholder. Focusing it switches to edit mode to enter a new key.
+    const [editingXphere, setEditingXphere] = useState(false);
     const xphereQuery = useQuery({
         queryKey: ['xphere-key'],
         queryFn: () => integrationsApi.getXphereKey(),
@@ -81,6 +84,7 @@ export default function ProfilePage() {
         onSuccess: (data) => {
             toast({ title: data.message });
             setXphereKey('');
+            setEditingXphere(false);
             queryClient.invalidateQueries({ queryKey: ['xphere-key'] });
         },
         onError: (error: Error) => {
@@ -92,6 +96,8 @@ export default function ProfilePage() {
         mutationFn: () => integrationsApi.deleteXphereKey(),
         onSuccess: (data) => {
             toast({ title: data.message });
+            setXphereKey('');
+            setEditingXphere(false);
             queryClient.invalidateQueries({ queryKey: ['xphere-key'] });
         },
         onError: (error: Error) => {
@@ -311,17 +317,33 @@ export default function ProfilePage() {
                         <Input
                             id="xphereKey"
                             type="password"
-                            value={xphereKey}
+                            // When a key is saved and the user hasn't started editing, show a
+                            // masked (dots) value so the field reads as "filled", not empty.
+                            value={xphereQuery.data?.configured && !editingXphere ? 'xphapikeyplaceholder' : xphereKey}
+                            readOnly={Boolean(xphereQuery.data?.configured) && !editingXphere}
+                            onFocus={() => {
+                                if (xphereQuery.data?.configured && !editingXphere) {
+                                    setEditingXphere(true);
+                                    setXphereKey('');
+                                }
+                            }}
+                            onBlur={() => {
+                                if (editingXphere && !xphereKey.trim()) {
+                                    setEditingXphere(false);
+                                }
+                            }}
                             onChange={(e) => setXphereKey(e.target.value)}
-                            placeholder="xph_..."
+                            placeholder={xphereQuery.data?.configured ? undefined : 'xph_...'}
                             autoComplete="off"
                         />
                         <p className="text-xs text-muted-foreground">
-                            The key is verified with Xphere before saving and is never shown again.
+                            {xphereQuery.data?.configured
+                                ? 'A key is saved. Click the field to enter a new one. It is verified before saving and never shown again.'
+                                : 'The key is verified with Xphere before saving and is never shown again.'}
                         </p>
                     </div>
 
-                    <Button onClick={handleSaveXphere} disabled={saveXphereMutation.isPending}>
+                    <Button onClick={handleSaveXphere} disabled={saveXphereMutation.isPending || !xphereKey.trim()}>
                         {saveXphereMutation.isPending ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
