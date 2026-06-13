@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,11 +7,14 @@ import { Label } from '@/components/ui/label';
 import { AvatarUpload } from '@/components/ui/avatar-upload';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { usersApi, ApiError } from '@/lib/api';
+import { usersApi, integrationsApi, ApiError } from '@/lib/api';
 import {
     Loader2,
     Lock,
     Save,
+    Plug,
+    Trash2,
+    CheckCircle2,
 } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -66,6 +69,44 @@ export default function ProfilePage() {
             setIsChangingPassword(false);
         },
     });
+
+    // ── Xphere integration (per-user API key) ──────────────────────────────────
+    const [xphereKey, setXphereKey] = useState('');
+    const xphereQuery = useQuery({
+        queryKey: ['xphere-key'],
+        queryFn: () => integrationsApi.getXphereKey(),
+    });
+    const saveXphereMutation = useMutation({
+        mutationFn: (apiKey: string) => integrationsApi.saveXphereKey({ apiKey }),
+        onSuccess: (data) => {
+            toast({ title: data.message });
+            setXphereKey('');
+            queryClient.invalidateQueries({ queryKey: ['xphere-key'] });
+        },
+        onError: (error: Error) => {
+            const message = error instanceof ApiError ? error.message : 'Failed to save Xphere key';
+            toast({ variant: 'destructive', title: 'Error', description: message });
+        },
+    });
+    const removeXphereMutation = useMutation({
+        mutationFn: () => integrationsApi.deleteXphereKey(),
+        onSuccess: (data) => {
+            toast({ title: data.message });
+            queryClient.invalidateQueries({ queryKey: ['xphere-key'] });
+        },
+        onError: (error: Error) => {
+            const message = error instanceof ApiError ? error.message : 'Failed to remove key';
+            toast({ variant: 'destructive', title: 'Error', description: message });
+        },
+    });
+
+    const handleSaveXphere = () => {
+        if (!xphereKey.trim()) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Paste your Xphere API key' });
+            return;
+        }
+        saveXphereMutation.mutate(xphereKey.trim());
+    };
 
     const handleUpdateProfile = () => {
         if (!name.trim()) {
@@ -221,6 +262,72 @@ export default function ProfilePage() {
                             <Lock className="mr-2 h-4 w-4" />
                         )}
                         Change Password
+                    </Button>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Plug className="h-5 w-5" /> Xphere Integration
+                    </CardTitle>
+                    <CardDescription>
+                        Connect your Xphere CRM so scraped leads can be pushed straight in as prospects.
+                        Create a key in Xphere → Settings → API Keys with the{' '}
+                        <code className="rounded bg-muted px-1 py-0.5 text-xs">prospects:write</code> scope, then paste it here.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {xphereQuery.data?.configured ? (
+                        <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 p-3">
+                            <div className="flex items-center gap-2 text-sm">
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                <span>
+                                    Connected — <span className="font-mono">{xphereQuery.data.keyPreview}</span>
+                                </span>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeXphereMutation.mutate()}
+                                disabled={removeXphereMutation.isPending}
+                                title="Remove Xphere key"
+                            >
+                                {removeXphereMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                )}
+                            </Button>
+                        </div>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">Not connected yet.</p>
+                    )}
+
+                    <div className="space-y-2">
+                        <Label htmlFor="xphereKey">
+                            {xphereQuery.data?.configured ? 'Replace API key' : 'Xphere API key'}
+                        </Label>
+                        <Input
+                            id="xphereKey"
+                            type="password"
+                            value={xphereKey}
+                            onChange={(e) => setXphereKey(e.target.value)}
+                            placeholder="xph_..."
+                            autoComplete="off"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            The key is verified with Xphere before saving and is never shown again.
+                        </p>
+                    </div>
+
+                    <Button onClick={handleSaveXphere} disabled={saveXphereMutation.isPending}>
+                        {saveXphereMutation.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <Save className="mr-2 h-4 w-4" />
+                        )}
+                        {xphereQuery.data?.configured ? 'Update key' : 'Connect Xphere'}
                     </Button>
                 </CardContent>
             </Card>

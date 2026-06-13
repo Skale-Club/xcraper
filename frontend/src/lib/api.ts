@@ -426,10 +426,33 @@ export interface XpherePushResult {
     skipped: number;
 }
 
+export type XphereKeyInfo = {
+    configured: boolean;
+    keyPreview: string | null;
+    apiUrl: string;
+};
+
 export const integrationsApi = {
-    // Whether this deployment has the Xphere integration configured.
+    // Whether the current user can push to Xphere.
     xphereStatus: () =>
         apiFetch<{ configured: boolean }>('/integrations/xphere/status'),
+
+    // Current user's Xphere integration config (masked — never the full key).
+    getXphereKey: () =>
+        apiFetch<XphereKeyInfo>('/integrations/xphere/key'),
+
+    // Save / replace the current user's Xphere API key (validated server-side).
+    saveXphereKey: (data: { apiKey: string; apiUrl?: string }) =>
+        apiFetch<{ message: string; configured: boolean; keyPreview: string; apiUrl: string; verified: boolean }>(
+            '/integrations/xphere/key',
+            { method: 'PUT', body: JSON.stringify(data) },
+        ),
+
+    // Remove the current user's Xphere API key.
+    deleteXphereKey: () =>
+        apiFetch<{ message: string; configured: boolean }>('/integrations/xphere/key', {
+            method: 'DELETE',
+        }),
 
     // Push a completed run's leads into Xphere as prospects.
     pushToXphere: (searchId: string) =>
