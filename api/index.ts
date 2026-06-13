@@ -33,6 +33,8 @@ async function getApp() {
         const webhookRoutes = (await import('../backend/dist/routes/webhooks.js')).default;
         const adminBillingRoutes = (await import('../backend/dist/routes/adminBilling.js')).default;
         const keepaliveRoutes = (await import('../backend/dist/routes/keepalive.js')).default;
+        const integrationsRoutes = (await import('../backend/dist/routes/integrations.js')).default;
+        const serviceRoutes = (await import('../backend/dist/routes/service.js')).default;
 
         // Create Express app
         app = express.default();
@@ -105,6 +107,8 @@ async function getApp() {
         app.use('/api/pnl', pnlRoutes);
         app.use('/api/user', gdprRoutes);
         app.use('/api/keepalive', keepaliveRoutes);
+        app.use('/api/integrations', integrationsRoutes);
+        app.use('/api/service', serviceRoutes); // machine-to-machine (Hermes): scrape + auto-push to Xphere
 
         // Health check
         app.get('/api/health', (req: any, res: any) => {
