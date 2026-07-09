@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { timingSafeEqual } from 'crypto';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users, searchHistory, type User } from '../db/schema.js';
 import { startScrapingTask, isApifyConfigured, type StartedTask } from '../services/apify.js';
@@ -18,8 +18,6 @@ import { pushRunToXphere } from '../services/xphere.js';
 // interactive flow uses, so credits, dedup and storage all behave identically.
 
 const router = Router();
-
-const isTerminal = (s: string): boolean => s === 'completed' || s === 'failed' || s === 'paused';
 
 /** Timing-safe shared-secret check via the `X-Service-Key` header. Fails closed. */
 function requireServiceKey(req: Request, res: Response, next: NextFunction): void {
@@ -46,7 +44,7 @@ async function resolveServiceUser(): Promise<User | null> {
         const [u] = await db.select().from(users).where(eq(users.email, email)).limit(1);
         if (u) return u;
     }
-    const [admin] = await db.select().from(users).where(eq(users.role, 'admin')).limit(1);
+    const [admin] = await db.select().from(users).where(eq(users.role, 'admin')).orderBy(asc(users.createdAt)).limit(1);
     return admin ?? null;
 }
 
@@ -166,10 +164,15 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
     }
 });
 
-// GET /api/service/scrape/:id — poll status. When the Apify run first finishes,
-// results are finalized (contacts saved, credits charged) and auto-pushed to
-// Xphere; the push result is returned. Safe to keep polling — the push only fires
-// on the finalizing transition, not on every call.
+// GET /api/service/scrape/:id — poll status. Finalization (contacts saved, credits
+// charged) may happen here or on a completely different code path (the interactive
+// status route, or SSE) — whichever request observes the Apify run finishing first.
+// So instead of only pushing to Xphere on "the poll that flips status to completed",
+// this pushes whenever the run is completed AND has never been successfully pushed
+// (searchHistory.xpherePushedAt is null), regardless of who finalized it. A failed
+// push leaves xpherePushedAt null, so it's retried on every subsequent poll until
+// one succeeds. The push itself is idempotent on the Xphere side (dedup by source
+// id), so re-attempting is always safe.
 router.get('/scrape/:id', requireServiceKey, async (req: Request, res: Response): Promise<void> => {
     try {
         const user = await resolveServiceUser();
@@ -186,15 +189,14 @@ router.get('/scrape/:id', requireServiceKey, async (req: Request, res: Response)
             return;
         }
 
-        const wasTerminalBefore = isTerminal(record.status);
         const isAdmin = user.role === 'admin';
         const payload = await syncSearchRecordState(record, user.id, isAdmin);
 
-        // Push exactly once: only on the poll that flips the run to completed.
+        // Auto-push (and retry) until a push actually succeeds.
         let xphere: Record<string, unknown> = { pushed: false };
         if (payload.status === 'completed') {
-            xphere = wasTerminalBefore
-                ? { pushed: false, note: 'Already finalized on an earlier poll. POST /push to re-send.' }
+            xphere = record.xpherePushedAt
+                ? { pushed: false, note: `Already pushed on ${record.xpherePushedAt.toISOString()}. POST /push to re-send.` }
                 : await pushToXphere(record.id, user.id);
         }
 

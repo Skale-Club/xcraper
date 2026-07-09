@@ -170,7 +170,9 @@ export const users = pgTable('users', {
     // Xphere integration (per-user): the Xphere API key (xph_...) holding the
     // prospects:write scope, plus an optional API base override. Used to push
     // scraped leads into THIS user's Xphere workspace. Configured in the user's
-    // profile panel — never a global env var, so each user pushes to their own org.
+    // profile panel — per-user key is preferred so each user pushes to their own
+    // org; XPHERE_API_KEY / XPHERE_API_URL env vars are still supported as a
+    // legacy deployment-wide fallback (see resolveXphereConfig in services/xphere.ts).
     xphereApiKey: text('xphere_api_key'),
     xphereApiUrl: text('xphere_api_url'),
 
@@ -202,6 +204,11 @@ export const searchHistory = pgTable('search_history', {
     apifyStartedAt: timestamp('apify_started_at'),
     apifyFinishedAt: timestamp('apify_finished_at'),
     apifyInput: jsonb('apify_input').$type<Record<string, unknown>>(),
+
+    // Set once pushRunToXphere() returns ok:true for this run. Used to make the
+    // service API's auto-push idempotent-but-retriable: a completed run with this
+    // still null gets (re)attempted on every poll until a push finally succeeds.
+    xpherePushedAt: timestamp('xphere_pushed_at'),
 
     // Error tracking
     errorMessage: text('error_message'),                    // User-friendly error message
