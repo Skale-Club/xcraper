@@ -172,5 +172,9 @@ export async function pushRunToXphere(searchId: string, userId: string): Promise
         skipped += result.skipped;
     }
 
+    await db.update(searchHistory)
+        .set({ xpherePushedAt: new Date() })
+        .where(eq(searchHistory.id, searchId));
+
     return { ok: true, total: prospects.length, created, updated, skipped };
 }

@@ -16,7 +16,10 @@ const DEFAULT_XPHERE_API_URL = 'https://xphere.app';
 
 /** Probe a key against Xphere so we reject bad/under-scoped keys at save time.
  *  POST an empty batch: auth + scope are checked BEFORE body validation, so a
- *  valid+scoped key returns 422 (empty batch), 401 = bad token, 403 = no scope. */
+ *  valid+scoped key returns 422 (empty batch), 401 = bad token, 403 = no scope.
+ *  404/405 means the URL didn't even reach the prospects endpoint (e.g. a wrong
+ *  apiUrl) — treated as unreachable, not verified, so a bad URL can't be saved
+ *  as "ok". */
 async function probeXphereKey(apiUrl: string, apiKey: string): Promise<'ok' | 'unauthorized' | 'forbidden' | 'unreachable'> {
     try {
         const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/v1/prospects`, {
@@ -26,6 +29,9 @@ async function probeXphereKey(apiUrl: string, apiKey: string): Promise<'ok' | 'u
         });
         if (res.status === 401) return 'unauthorized';
         if (res.status === 403) return 'forbidden';
+        // A 404/405 means we hit something that isn't the Xphere prospects endpoint
+        // at all (e.g. a wrong apiUrl) — don't treat that as a verified key.
+        if (res.status === 404 || res.status === 405) return 'unreachable';
         return 'ok';
     } catch {
         return 'unreachable';
