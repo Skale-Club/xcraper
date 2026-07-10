@@ -103,7 +103,7 @@ router.get('/search/:searchId', requireAuth, async (req, res: Response): Promise
             return;
         }
 
-        const { searchId } = req.params;
+        const { searchId } = req.params as Record<string, string>;
 
         // Verify the search belongs to the user
         const [searchRecord] = await db.select()
@@ -139,7 +139,7 @@ router.get('/:contactId', requireAuth, async (req, res: Response): Promise<void>
             return;
         }
 
-        const { contactId } = req.params;
+        const { contactId } = req.params as Record<string, string>;
 
         const [contact] = await db.select()
             .from(contacts)
@@ -169,7 +169,7 @@ router.patch('/:contactId/favorite', requireAuth, async (req, res: Response): Pr
             return;
         }
 
-        const { contactId } = req.params;
+        const { contactId } = req.params as Record<string, string>;
 
         const [existingContact] = await db.select()
             .from(contacts)
@@ -207,7 +207,7 @@ router.patch('/:contactId/archive', requireAuth, async (req, res: Response): Pro
             return;
         }
 
-        const { contactId } = req.params;
+        const { contactId } = req.params as Record<string, string>;
 
         const [existingContact] = await db.select()
             .from(contacts)
@@ -245,7 +245,7 @@ router.delete('/:contactId', requireAuth, async (req, res: Response): Promise<vo
             return;
         }
 
-        const { contactId } = req.params;
+        const { contactId } = req.params as Record<string, string>;
 
         const [existingContact] = await db.select()
             .from(contacts)
@@ -341,7 +341,7 @@ router.get('/export/csv/search/:searchId', requireAuth, async (req, res: Respons
             return;
         }
 
-        const { searchId } = req.params;
+        const { searchId } = req.params as Record<string, string>;
 
         // Verify search belongs to user
         const [search] = await db.select()

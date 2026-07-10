@@ -52,7 +52,7 @@ router.post('/checkout', requireAuth, async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Checkout error:', error);
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid input', details: error.errors });
+            return res.status(400).json({ error: 'Invalid input', details: error.issues });
         }
         res.status(500).json({
             error: error instanceof Error ? error.message : 'Failed to create checkout session'
@@ -62,7 +62,7 @@ router.post('/checkout', requireAuth, async (req: Request, res: Response) => {
 
 router.get('/verify/:sessionId', requireAuth, async (req: Request, res: Response) => {
     try {
-        const { sessionId } = req.params;
+        const { sessionId } = req.params as Record<string, string>;
 
         if (!sessionId) {
             return res.status(400). json({ error: 'Session ID is required' });

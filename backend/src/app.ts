@@ -174,7 +174,7 @@ export function createApp(): express.Express {
 
     // Sentry error handler (must be before other error handlers)
     if (process.env.SENTRY_DSN) {
-        app.use(Sentry.expressErrorHandler());
+        Sentry.setupExpressErrorHandler(app);
     }
 
     // Error handling middleware

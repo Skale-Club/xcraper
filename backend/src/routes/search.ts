@@ -84,7 +84,7 @@ const startSearchSchema = z.object({
     maxResults: z.number().int().min(1).max(1000).optional().default(50),
     requestEnrichment: z.boolean().optional().default(false),
     // Structured filters for non-Maps scrapers (e.g. B2B leads).
-    filters: z.record(z.unknown()).optional(),
+    filters: z.record(z.string(), z.unknown()).optional(),
 });
 
 function hasValidEmail(email?: string): boolean {
@@ -923,7 +923,7 @@ router.get('/:searchId/status', requireAuth, async (req, res: Response): Promise
             return;
         }
 
-        const searchRecord = await getOwnedSearch(req.params.searchId, req.user.id);
+        const searchRecord = await getOwnedSearch((req.params.searchId as string), req.user.id);
 
         if (!searchRecord) {
             res.status(404).json({ error: 'Search not found' });
@@ -946,7 +946,7 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
             return;
         }
 
-        const searchRecord = await getOwnedSearch(req.params.searchId, req.user.id);
+        const searchRecord = await getOwnedSearch((req.params.searchId as string), req.user.id);
 
         if (!searchRecord) {
             res.status(404).json({ error: 'Search not found' });
@@ -1203,7 +1203,7 @@ router.get('/:searchId/results', requireAuth, async (req, res: Response): Promis
             return;
         }
 
-        const searchRecord = await getOwnedSearch(req.params.searchId, req.user.id);
+        const searchRecord = await getOwnedSearch((req.params.searchId as string), req.user.id);
 
         if (!searchRecord) {
             res.status(404).json({ error: 'Search not found' });
@@ -1222,7 +1222,7 @@ router.get('/:searchId/results', requireAuth, async (req, res: Response): Promis
         const sortDirection = req.query.sortDirection === 'desc' ? 'desc' : 'asc';
         const offset = (page - 1) * limit;
 
-        const conditions = [eq(contacts.searchId, req.params.searchId)];
+        const conditions = [eq(contacts.searchId, (req.params.searchId as string))];
         if (favoriteOnly) conditions.push(eq(contacts.isFavorite, true));
         if (!showArchived) conditions.push(eq(contacts.isArchived, false));
         const whereClause = and(...conditions);
@@ -1255,7 +1255,7 @@ router.get('/:searchId/results', requireAuth, async (req, res: Response): Promis
             count: sql<number>`count(*)::int`,
         })
             .from(contacts)
-            .where(and(eq(contacts.searchId, req.params.searchId), eq(contacts.isArchived, true)));
+            .where(and(eq(contacts.searchId, (req.params.searchId as string)), eq(contacts.isArchived, true)));
 
         res.json({
             results,
@@ -1277,7 +1277,7 @@ router.get('/:searchId', requireAuth, async (req, res: Response): Promise<void> 
             return;
         }
 
-        const searchRecord = await getOwnedSearch(req.params.searchId, req.user.id);
+        const searchRecord = await getOwnedSearch((req.params.searchId as string), req.user.id);
 
         if (!searchRecord) {
             res.status(404).json({ error: 'Search not found' });
@@ -1286,7 +1286,7 @@ router.get('/:searchId', requireAuth, async (req, res: Response): Promise<void> 
 
         const searchContacts = await db.select()
             .from(contacts)
-            .where(eq(contacts.searchId, req.params.searchId));
+            .where(eq(contacts.searchId, (req.params.searchId as string)));
 
         res.json({
             search: searchRecord,
@@ -1305,7 +1305,7 @@ router.delete('/:searchId', requireAuth, async (req, res: Response): Promise<voi
             return;
         }
 
-        const searchRecord = await getOwnedSearch(req.params.searchId, req.user.id);
+        const searchRecord = await getOwnedSearch((req.params.searchId as string), req.user.id);
 
         if (!searchRecord) {
             res.status(404).json({ error: 'Search not found' });
@@ -1313,10 +1313,10 @@ router.delete('/:searchId', requireAuth, async (req, res: Response): Promise<voi
         }
 
         await db.delete(contacts)
-            .where(eq(contacts.searchId, req.params.searchId));
+            .where(eq(contacts.searchId, (req.params.searchId as string)));
 
         await db.delete(searchHistory)
-            .where(eq(searchHistory.id, req.params.searchId));
+            .where(eq(searchHistory.id, (req.params.searchId as string)));
 
         res.json({ message: 'Search deleted successfully' });
     } catch (error) {
@@ -1341,7 +1341,7 @@ router.get('/:searchId/error-details', requireAuth, async (req, res: Response): 
 
         const [searchRecord] = await db.select()
             .from(searchHistory)
-            .where(eq(searchHistory.id, req.params.searchId))
+            .where(eq(searchHistory.id, (req.params.searchId as string)))
             .limit(1);
 
         if (!searchRecord) {

@@ -153,7 +153,7 @@ const setFlagSchema = z.object({
 
 router.post('/user/:userId/flag', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { userId } = req.params;
+        const { userId } = req.params as Record<string, string>;
         const validationResult = setFlagSchema.safeParse(req.body);
 
         if (!validationResult.success) {
@@ -183,7 +183,7 @@ router.post('/user/:userId/flag', requireAuth, requireAdmin, async (req, res: Re
 
 router.post('/user/:userId/pause', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { userId } = req.params;
+        const { userId } = req.params as Record<string, string>;
 
         if (!z.string().uuid().safeParse(userId).success) {
             res.status(400).json({ error: 'Invalid user id' });
@@ -205,7 +205,7 @@ router.post('/user/:userId/pause', requireAuth, requireAdmin, async (req, res: R
 
 router.post('/user/:userId/resume', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { userId } = req.params;
+        const { userId } = req.params as Record<string, string>;
 
         if (!z.string().uuid().safeParse(userId).success) {
             res.status(400).json({ error: 'Invalid user id' });
@@ -227,7 +227,7 @@ router.post('/user/:userId/resume', requireAuth, requireAdmin, async (req, res: 
 
 router.post('/user/:userId/cap', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { userId } = req.params;
+        const { userId } = req.params as Record<string, string>;
 
         if (!z.string().uuid().safeParse(userId).success) {
             res.status(400).json({ error: 'Invalid user id' });
@@ -247,7 +247,7 @@ router.post('/user/:userId/cap', requireAuth, requireAdmin, async (req, res: Res
 
 router.delete('/user/:userId/cap', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { userId } = req.params;
+        const { userId } = req.params as Record<string, string>;
 
         if (!z.string().uuid().safeParse(userId).success) {
             res.status(400).json({ error: 'Invalid user id' });
@@ -309,7 +309,7 @@ router.get('/alerts/config', requireAuth, requireAdmin, async (req, res: Respons
 
 router.post('/alerts/resend/:userId/:alertType', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { userId, alertType } = req.params;
+        const { userId, alertType } = req.params as Record<string, string>;
         const success = await billingAlertService.resendAlert(userId, alertType as AlertType);
         res.json({ success });
     } catch (error) {
@@ -376,7 +376,7 @@ router.post('/packages', requireAuth, requireAdmin, async (req, res: Response): 
 
 router.patch('/packages/:id', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { id } = req.params;
+        const { id } = req.params as Record<string, string>;
         const validationResult = createPackageSchema.partial().safeParse(req.body);
         if (!validationResult.success) {
             res.status(400).json({ error: 'Validation failed', details: validationResult.error.flatten() });
@@ -412,7 +412,7 @@ router.patch('/packages/:id', requireAuth, requireAdmin, async (req, res: Respon
 
 router.delete('/packages/:id', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { id } = req.params;
+        const { id } = req.params as Record<string, string>;
         const [deletedPkg] = await db.update(creditPackages).set({ isActive: false, updatedAt: new Date() }).where(eq(creditPackages.id, id)).returning();
         if (!deletedPkg) {
             res.status(404).json({ error: 'Package not found' });
@@ -438,7 +438,7 @@ router.get('/audit/recent', requireAuth, requireAdmin, async (req, res: Response
 
 router.get('/audit/admin/:adminId', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { adminId } = req.params;
+        const { adminId } = req.params as Record<string, string>;
         const limit = parseInt(req.query.limit as string) || 100;
         const actions = await auditLogService.getAdminActionLog(adminId, limit);
         res.json({ actions });

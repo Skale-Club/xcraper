@@ -86,7 +86,7 @@ router.put('/xphere/key', requireAuth, async (req, res: Response): Promise<void>
     }
     const parsed = saveKeySchema.safeParse(req.body);
     if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Validation failed' });
+        res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Validation failed' });
         return;
     }
     const apiKey = parsed.data.apiKey;
@@ -136,7 +136,7 @@ router.post('/xphere/push/:searchId', requireAuth, async (req, res: Response): P
         return;
     }
 
-    const result = await pushRunToXphere(req.params.searchId, req.user.id);
+    const result = await pushRunToXphere((req.params.searchId as string), req.user.id);
     if (!result.ok) {
         const status = result.error.includes('not configured') ? 503 : 400;
         res.status(status).json({ error: result.error });

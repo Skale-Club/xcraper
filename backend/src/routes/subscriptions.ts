@@ -574,7 +574,7 @@ router.post('/subscribe', requireAuth, async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Subscribe error:', error);
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid input', details: error.errors });
+            return res.status(400).json({ error: 'Invalid input', details: error.issues });
         }
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -666,7 +666,7 @@ router.get('/verify/:sessionId', requireAuth, async (req: Request, res: Response
     } catch (error) {
         console.error('Verify subscription checkout error:', error);
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid input', details: error.errors });
+            return res.status(400).json({ error: 'Invalid input', details: error.issues });
         }
 
         return res.status(400).json({
@@ -752,7 +752,7 @@ router.patch('/auto-topup', requireAuth, async (req: Request, res: Response) => 
     } catch (error) {
         console.error('Update auto top-up error:', error);
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid input', details: error.errors });
+            return res.status(400).json({ error: 'Invalid input', details: error.issues });
         }
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -834,7 +834,7 @@ router.post('/admin/plans', requireAuth, requireAdmin, async (req: Request, res:
     } catch (error) {
         console.error('Create plan error:', error);
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid input', details: error.errors });
+            return res.status(400).json({ error: 'Invalid input', details: error.issues });
         }
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -843,7 +843,7 @@ router.post('/admin/plans', requireAuth, requireAdmin, async (req: Request, res:
 // Update subscription plan (admin)
 router.patch('/admin/plans/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const { id } = req.params as Record<string, string>;
         const data = updatePlanSchema.parse(req.body);
 
         const [updatedPlan] = await db
@@ -863,7 +863,7 @@ router.patch('/admin/plans/:id', requireAuth, requireAdmin, async (req: Request,
     } catch (error) {
         console.error('Update plan error:', error);
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid input', details: error.errors });
+            return res.status(400).json({ error: 'Invalid input', details: error.issues });
         }
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -872,7 +872,7 @@ router.patch('/admin/plans/:id', requireAuth, requireAdmin, async (req: Request,
 // Delete subscription plan (admin)
 router.delete('/admin/plans/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const { id } = req.params as Record<string, string>;
 
         // Check if any users are on this plan
         const [{ count }] = await db
@@ -966,7 +966,7 @@ router.post('/admin/assign-plan', requireAuth, requireAdmin, async (req: Request
     } catch (error) {
         console.error('Assign plan error:', error);
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid input', details: error.errors });
+            return res.status(400).json({ error: 'Invalid input', details: error.issues });
         }
         res.status(500).json({ error: 'Internal server error' });
     }

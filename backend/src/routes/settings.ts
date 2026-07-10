@@ -349,7 +349,7 @@ router.post('/packages', requireAuth, requireAdmin, async (req, res: Response): 
 
 router.patch('/packages/:packageId', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { packageId } = req.params;
+        const { packageId } = req.params as Record<string, string>;
         const validationResult = createPackageSchema.partial().safeParse(req.body);
 
         if (!validationResult.success) {
@@ -385,7 +385,7 @@ router.patch('/packages/:packageId', requireAuth, requireAdmin, async (req, res:
 
 router.delete('/packages/:packageId', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { packageId } = req.params;
+        const { packageId } = req.params as Record<string, string>;
 
         const [deleted] = await db.delete(creditPackages)
             .where(eq(creditPackages.id, packageId))
@@ -462,7 +462,7 @@ router.get('/scrapers', requireAuth, requireAdmin, async (_req, res: Response): 
 // code-owned and not editable here.
 router.patch('/scrapers/:key', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { key } = req.params;
+        const { key } = req.params as Record<string, string>;
         const template = scraperRegistry.getTemplate(key);
         if (!template) {
             res.status(404).json({ error: 'Unknown scraper template' });

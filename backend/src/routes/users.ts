@@ -101,7 +101,7 @@ router.post('/change-password', requireAuth, async (req, res: Response): Promise
 // Admin: Update user credits
 router.patch('/:userId/credits', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { userId } = req.params;
+        const { userId } = req.params as Record<string, string>;
         const validationResult = updateCreditsSchema.safeParse(req.body);
 
         if (!validationResult.success) {
@@ -142,7 +142,7 @@ router.patch('/:userId/credits', requireAuth, requireAdmin, async (req, res: Res
 // Admin: Toggle user active status
 router.patch('/:userId/status', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
-        const { userId } = req.params;
+        const { userId } = req.params as Record<string, string>;
         const { isActive } = req.body;
 
         if (typeof isActive !== 'boolean') {

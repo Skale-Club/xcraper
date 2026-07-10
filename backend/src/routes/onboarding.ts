@@ -78,7 +78,7 @@ router.post('/progress', requireAuth, async (req: Request, res: Response) => {
         if (!validation.success) {
             return res.status(400).json({
                 error: 'Invalid data',
-                details: validation.error.errors,
+                details: validation.error.issues,
             });
         }
 
@@ -129,7 +129,7 @@ router.post('/complete', requireAuth, async (req: Request, res: Response) => {
         if (!validation.success) {
             return res.status(400).json({
                 error: 'Invalid data',
-                details: validation.error.errors,
+                details: validation.error.issues,
             });
         }
 

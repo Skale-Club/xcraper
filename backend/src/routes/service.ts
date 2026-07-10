@@ -182,7 +182,7 @@ router.get('/scrape/:id', requireServiceKey, async (req: Request, res: Response)
         }
         const [record] = await db.select()
             .from(searchHistory)
-            .where(and(eq(searchHistory.id, req.params.id), eq(searchHistory.userId, user.id)))
+            .where(and(eq(searchHistory.id, (req.params.id as string)), eq(searchHistory.userId, user.id)))
             .limit(1);
         if (!record) {
             res.status(404).json({ error: 'Search not found.' });
@@ -227,7 +227,7 @@ router.post('/scrape/:id/push', requireServiceKey, async (req: Request, res: Res
         }
         const [record] = await db.select()
             .from(searchHistory)
-            .where(and(eq(searchHistory.id, req.params.id), eq(searchHistory.userId, user.id)))
+            .where(and(eq(searchHistory.id, (req.params.id as string)), eq(searchHistory.userId, user.id)))
             .limit(1);
         if (!record) {
             res.status(404).json({ error: 'Search not found.' });

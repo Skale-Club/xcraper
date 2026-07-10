@@ -53,7 +53,7 @@ interface SSEStatusPayload {
 
 // SSE endpoint for real-time search status updates
 router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise<void> => {
-    const { searchId } = req.params;
+    const { searchId } = req.params as Record<string, string>;
     const userId = req.user?.id;
 
     if (!userId) {
