@@ -179,7 +179,17 @@ export const users = pgTable('users', {
     // Timestamps
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => ({
+    // Stripe references must be unique: findUserByStripeReference resolves
+    // webhook grants by these columns with LIMIT 1, so a duplicate row would
+    // silently mis-attribute credits to the wrong user.
+    uniqueStripeCustomerId: uniqueIndex('users_stripe_customer_id_unique')
+        .on(table.stripeCustomerId)
+        .where(sql`${table.stripeCustomerId} IS NOT NULL`),
+    uniqueStripeSubscriptionId: uniqueIndex('users_stripe_subscription_id_unique')
+        .on(table.stripeSubscriptionId)
+        .where(sql`${table.stripeSubscriptionId} IS NOT NULL`),
+}));
 
 // Search history table
 export const searchHistory = pgTable('search_history', {
@@ -349,6 +359,12 @@ export const creditTransactions = pgTable('credit_transactions', {
     uniqueMonthlyGrantInvoice: uniqueIndex('credit_transactions_monthly_grant_invoice_unique')
         .on(table.stripeInvoiceId)
         .where(sql`${table.type} = 'monthly_grant' AND ${table.stripeInvoiceId} IS NOT NULL`),
+    uniqueTopUpPaymentIntent: uniqueIndex('credit_transactions_top_up_payment_intent_unique')
+        .on(table.stripePaymentIntentId)
+        .where(sql`${table.type} = 'top_up' AND ${table.stripePaymentIntentId} IS NOT NULL`),
+    uniqueRefundPaymentIntent: uniqueIndex('credit_transactions_refund_payment_intent_unique')
+        .on(table.stripePaymentIntentId)
+        .where(sql`${table.type} = 'refund' AND ${table.stripePaymentIntentId} IS NOT NULL`),
 }));
 
 // Credit packages (for manual purchase)

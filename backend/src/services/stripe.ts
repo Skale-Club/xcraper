@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import Stripe from 'stripe';
 import { db } from '../db/index.js';
-import { users, creditTransactions, creditPackages } from '../db/schema.js';
-import { and, eq, sql } from 'drizzle-orm';
+import { users, creditTransactions, creditPackages, billingEvents } from '../db/schema.js';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 // Initialize Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -158,6 +158,123 @@ async function applyPurchasedCreditsFromSession(
             credits: creditsAmount,
             alreadyProcessed: false,
         };
+    });
+}
+
+/**
+ * Reverse the credits granted for a refunded payment. Pro-rated against the
+ * cumulative refunded amount and idempotent per payment intent (only the first
+ * charge.refunded delivery applies; later partial refunds on the same charge
+ * are not re-processed). Buckets drain purchased → rollover → monthly, mirroring
+ * where paid grants land, and never go negative — if the user already spent the
+ * credits, the reversal clamps to what remains.
+ */
+async function applyRefundForPaymentIntent(
+    paymentIntentId: string,
+    amountRefunded: number | null,
+    amountTotal: number | null,
+    currency: string | null
+): Promise<{ processed: boolean; userId?: string; creditsReversed?: number; reason?: string }> {
+    return await db.transaction(async (tx) => {
+        const [grant] = await tx
+            .select()
+            .from(creditTransactions)
+            .where(and(
+                inArray(creditTransactions.type, ['purchase', 'top_up']),
+                eq(creditTransactions.stripePaymentIntentId, paymentIntentId)
+            ))
+            .limit(1);
+
+        if (!grant) {
+            return { processed: false, reason: 'no_grant_for_payment_intent' };
+        }
+
+        const [user] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, grant.userId))
+            .for('update')
+            .limit(1);
+
+        if (!user) {
+            return { processed: false, reason: 'user_not_found' };
+        }
+
+        const [existingRefund] = await tx
+            .select({ id: creditTransactions.id })
+            .from(creditTransactions)
+            .where(and(
+                eq(creditTransactions.type, 'refund'),
+                eq(creditTransactions.stripePaymentIntentId, paymentIntentId)
+            ))
+            .limit(1);
+
+        if (existingRefund) {
+            return { processed: false, reason: 'already_processed' };
+        }
+
+        const refundFraction = amountRefunded && amountTotal
+            ? Math.min(1, amountRefunded / amountTotal)
+            : 1;
+        const creditsToReverse = Math.round(grant.amount * refundFraction);
+
+        if (creditsToReverse <= 0) {
+            return { processed: false, reason: 'nothing_to_reverse' };
+        }
+
+        let remaining = creditsToReverse;
+        const fromPurchased = Math.min(user.purchasedCredits, remaining);
+        remaining -= fromPurchased;
+        const fromRollover = Math.min(user.rolloverCredits, remaining);
+        remaining -= fromRollover;
+        const fromMonthly = Math.min(user.credits, remaining);
+        remaining -= fromMonthly;
+        const creditsReversed = fromPurchased + fromRollover + fromMonthly;
+
+        await tx
+            .update(users)
+            .set({
+                purchasedCredits: user.purchasedCredits - fromPurchased,
+                rolloverCredits: user.rolloverCredits - fromRollover,
+                credits: user.credits - fromMonthly,
+                updatedAt: new Date(),
+            })
+            .where(eq(users.id, user.id));
+
+        const moneyRefunded = amountRefunded !== null && amountRefunded !== undefined
+            ? (amountRefunded / 100).toFixed(2)
+            : null;
+
+        await tx.insert(creditTransactions).values({
+            userId: user.id,
+            amount: -creditsReversed,
+            type: 'refund',
+            description: `Stripe refund: reversed ${creditsReversed} of ${grant.amount} credits`,
+            stripePaymentIntentId: paymentIntentId,
+            moneyAmount: moneyRefunded,
+            currency: currency ?? 'usd',
+            metadata: {
+                source: 'stripe_charge_refunded',
+                originalTransactionId: grant.id,
+                creditsGranted: grant.amount,
+                creditsRequested: creditsToReverse,
+            },
+        });
+
+        await tx.insert(billingEvents).values({
+            userId: user.id,
+            eventType: 'refund',
+            creditDelta: -creditsReversed,
+            moneyAmount: moneyRefunded,
+            currency: currency ?? 'usd',
+            stripePaymentIntentId: paymentIntentId,
+            metadata: {
+                source: 'stripe_charge_refunded',
+                originalTransactionId: grant.id,
+            },
+        });
+
+        return { processed: true, userId: user.id, creditsReversed };
     });
 }
 
@@ -331,6 +448,32 @@ export async function handleWebhookEvent(event: Stripe.Event): Promise<void> {
         case 'payment_intent.payment_failed': {
             const paymentIntent = event.data.object as Stripe.PaymentIntent;
             console.log('PaymentIntent failed:', paymentIntent.id);
+            break;
+        }
+
+        case 'charge.refunded': {
+            const charge = event.data.object as Stripe.Charge;
+            const paymentIntentId = typeof charge.payment_intent === 'string'
+                ? charge.payment_intent
+                : charge.payment_intent?.id;
+
+            if (!paymentIntentId) {
+                console.warn(`charge.refunded ${charge.id} has no payment intent, skipping`);
+                break;
+            }
+
+            const result = await applyRefundForPaymentIntent(
+                paymentIntentId,
+                charge.amount_refunded ?? null,
+                charge.amount ?? null,
+                charge.currency ?? null
+            );
+
+            console.log(
+                result.processed
+                    ? `Refund reversed ${result.creditsReversed} credits for user ${result.userId} (pi ${paymentIntentId})`
+                    : `Refund for pi ${paymentIntentId} not applied: ${result.reason}`
+            );
             break;
         }
 

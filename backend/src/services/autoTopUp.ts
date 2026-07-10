@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
 import { users, subscriptionPlans, creditTransactions, billingEvents } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { stripe } from './stripe.js';
 
 export interface TopUpResult {
@@ -101,6 +101,12 @@ class AutoTopUpService {
             };
         }
 
+        // Deterministic idempotency key: concurrent triggers (two searches both
+        // crossing the threshold) read the same topUpsThisCycle and therefore send
+        // the same key, so Stripe returns the same PaymentIntent instead of
+        // charging the card twice. recordTopUp dedups the grant by intent id.
+        const idempotencyKey = `auto-topup:${userId}:${user.billingCycleStart?.getTime() ?? 0}:${user.topUpsThisCycle}`;
+
         try {
             const paymentIntent = await stripe.paymentIntents.create({
                 amount: Math.round(topUpPrice * 100),
@@ -113,7 +119,7 @@ class AutoTopUpService {
                 },
                 confirm: true,
                 off_session: true,
-            });
+            }, { idempotencyKey });
 
             if (paymentIntent.status !== 'succeeded') {
                 return {
@@ -272,6 +278,20 @@ class AutoTopUpService {
                 .limit(1);
 
             if (!user) return;
+
+            // Idempotency: concurrent triggers share one PaymentIntent (see the
+            // deterministic idempotency key in executeTopUp), so a second caller
+            // arriving with the same intent id must not grant credits again.
+            const [existingGrant] = await tx
+                .select({ id: creditTransactions.id })
+                .from(creditTransactions)
+                .where(and(
+                    eq(creditTransactions.type, 'top_up'),
+                    eq(creditTransactions.stripePaymentIntentId, paymentIntentId)
+                ))
+                .limit(1);
+
+            if (existingGrant) return;
 
             const newSpend = parseFloat(user.currentMonthTopUpSpend ?? '0') + amount;
 
