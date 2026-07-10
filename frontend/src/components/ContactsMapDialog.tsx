@@ -74,11 +74,32 @@ async function loadGoogleMapsScript(): Promise<void> {
     return googleMapsPromise;
 }
 
+// Scraped fields (business name, address, website…) are third-party content and
+// must never reach the InfoWindow as raw HTML.
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function safeHttpUrl(value: string): string | null {
+    try {
+        const url = new URL(value, window.location.origin);
+        return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+    } catch {
+        return null;
+    }
+}
+
 function buildInfoContent(contact: Contact): string {
+    const websiteUrl = contact.website ? safeHttpUrl(contact.website) : null;
     return `
         <div style="padding: 8px; max-width: 280px;">
             <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #1a1a1a;">
-                ${contact.title}
+                ${escapeHtml(contact.title)}
             </h3>
             ${contact.address ? `
                 <p style="margin: 4px 0; font-size: 13px; color: #666; display: flex; align-items: start; gap: 6px;">
@@ -86,7 +107,7 @@ function buildInfoContent(contact: Contact): string {
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
                         <circle cx="12" cy="10" r="3"></circle>
                     </svg>
-                    <span>${contact.address}</span>
+                    <span>${escapeHtml(contact.address)}</span>
                 </p>
             ` : ''}
             ${contact.phone ? `
@@ -94,7 +115,7 @@ function buildInfoContent(contact: Contact): string {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
                     </svg>
-                    <a href="tel:${contact.phone}" style="color: #3b82f6; text-decoration: none;">${contact.phone}</a>
+                    <a href="tel:${escapeHtml(contact.phone)}" style="color: #3b82f6; text-decoration: none;">${escapeHtml(contact.phone)}</a>
                 </p>
             ` : ''}
             ${contact.email ? `
@@ -103,17 +124,17 @@ function buildInfoContent(contact: Contact): string {
                         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                         <polyline points="22,6 12,13 2,6"></polyline>
                     </svg>
-                    <a href="mailto:${contact.email}" style="color: #3b82f6; text-decoration: none; overflow: hidden; text-overflow: ellipsis;">${contact.email}</a>
+                    <a href="mailto:${escapeHtml(contact.email)}" style="color: #3b82f6; text-decoration: none; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(contact.email)}</a>
                 </p>
             ` : ''}
-            ${contact.website ? `
+            ${websiteUrl ? `
                 <p style="margin: 4px 0; font-size: 13px; color: #666; display: flex; align-items: center; gap: 6px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"></circle>
                         <line x1="2" y1="12" x2="22" y2="12"></line>
                         <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
                     </svg>
-                    <a href="${contact.website}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: none; overflow: hidden; text-overflow: ellipsis;">${contact.website.replace(/^https?:\/\//, '')}</a>
+                    <a href="${escapeHtml(websiteUrl!)}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: none; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(websiteUrl!.replace(/^https?:\/\//, ''))}</a>
                 </p>
             ` : ''}
             ${contact.rating ? `
@@ -121,7 +142,7 @@ function buildInfoContent(contact: Contact): string {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="#eab308" stroke="#eab308" stroke-width="2">
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
                     </svg>
-                    <span><strong>${contact.rating}</strong> (${contact.reviewCount} reviews)</span>
+                    <span><strong>${escapeHtml(String(contact.rating))}</strong> (${escapeHtml(String(contact.reviewCount ?? 0))} reviews)</span>
                 </p>
             ` : ''}
         </div>
@@ -273,7 +294,6 @@ export function ContactsMapDialog({
             cancelAnimationFrame(rafId);
         };
         // Only re-run when dialog opens/closes — NOT when contacts change
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, hasValidContacts]);
 
     return (

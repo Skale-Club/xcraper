@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +52,11 @@ interface AuthDialogProps {
     defaultTab?: 'login' | 'register';
 }
 
+// Cloudflare Turnstile is enforced by Supabase when the captcha integration is
+// on; without a token those auth calls fail, so the widget must be rendered
+// whenever a site key is configured.
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+
 export default function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDialogProps) {
     const [, setLocation] = useLocation();
     const { signUp, signIn, signInWithGoogle, resetPassword } = useAuth();
@@ -72,6 +78,31 @@ export default function AuthDialog({ open, onOpenChange, defaultTab = 'login' }:
 
     const [forgotEmail, setForgotEmail] = useState('');
     const [resetSent, setResetSent] = useState(false);
+
+    // Only one auth form is visible at a time, so a single widget/token is shared.
+    const turnstileRef = useRef<TurnstileInstance | null>(null);
+    const [captchaToken, setCaptchaToken] = useState<string | undefined>(undefined);
+    const captchaRequired = Boolean(TURNSTILE_SITE_KEY);
+    const captchaPending = captchaRequired && !captchaToken;
+
+    // Turnstile tokens are single-use: after every auth attempt the widget must
+    // be reset so the next submit gets a fresh token.
+    const resetCaptcha = () => {
+        if (!captchaRequired) return;
+        setCaptchaToken(undefined);
+        turnstileRef.current?.reset();
+    };
+
+    const captchaWidget = captchaRequired ? (
+        <Turnstile
+            ref={turnstileRef}
+            siteKey={TURNSTILE_SITE_KEY!}
+            onSuccess={setCaptchaToken}
+            onExpire={() => setCaptchaToken(undefined)}
+            onError={() => setCaptchaToken(undefined)}
+            options={{ size: 'flexible' }}
+        />
+    ) : null;
 
     const validatePassword = (password: string) => {
         const errors: string[] = [];
@@ -111,7 +142,8 @@ export default function AuthDialog({ open, onOpenChange, defaultTab = 'login' }:
         e.preventDefault();
         setIsLoading(true);
 
-        const { error } = await signIn(loginEmail, loginPassword);
+        const { error } = await signIn(loginEmail, loginPassword, captchaToken);
+        resetCaptcha();
 
         if (error) {
             toast({
@@ -167,7 +199,8 @@ export default function AuthDialog({ open, onOpenChange, defaultTab = 'login' }:
 
         setIsLoading(true);
 
-        const { error, requiresEmailConfirmation } = await signUp(registerEmail, registerPassword);
+        const { error, requiresEmailConfirmation } = await signUp(registerEmail, registerPassword, undefined, captchaToken);
+        resetCaptcha();
 
         if (error) {
             toast({
@@ -199,7 +232,8 @@ export default function AuthDialog({ open, onOpenChange, defaultTab = 'login' }:
         e.preventDefault();
         setIsLoading(true);
 
-        const { error } = await resetPassword(forgotEmail);
+        const { error } = await resetPassword(forgotEmail, captchaToken);
+        resetCaptcha();
 
         if (error) {
             toast({
@@ -282,7 +316,8 @@ export default function AuthDialog({ open, onOpenChange, defaultTab = 'login' }:
                                         />
                                     </div>
                                 </div>
-                                <Button type="submit" className="w-full" disabled={isLoading}>
+                                {captchaWidget}
+                                <Button type="submit" className="w-full" disabled={isLoading || captchaPending}>
                                     {isLoading ? (
                                         <Loader2 className="w-4 h-4 animate-spin mr-2" />
                                     ) : null}
@@ -407,7 +442,8 @@ export default function AuthDialog({ open, onOpenChange, defaultTab = 'login' }:
                                             </div>
                                         </div>
 
-                                        <Button type="submit" className="w-full" disabled={isLoading}>
+                                        {captchaWidget}
+                                        <Button type="submit" className="w-full" disabled={isLoading || captchaPending}>
                                             {isLoading ? (
                                                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
                                             ) : null}
@@ -560,10 +596,11 @@ export default function AuthDialog({ open, onOpenChange, defaultTab = 'login' }:
                                             )}
                                         </div>
 
+                                        {captchaWidget}
                                         <Button
                                             type="submit"
                                             className="w-full"
-                                            disabled={isLoading || (registerPassword !== confirmPassword && confirmPassword !== '')}
+                                            disabled={isLoading || captchaPending || (registerPassword !== confirmPassword && confirmPassword !== '')}
                                         >
                                             {isLoading ? (
                                                 <Loader2 className="w-4 h-4 animate-spin mr-2" />

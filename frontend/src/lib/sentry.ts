@@ -16,8 +16,10 @@ export async function initSentry() {
         integrations: [
             Sentry.browserTracingIntegration(),
             Sentry.replayIntegration({
-                maskAllText: false,
-                blockAllMedia: false,
+                // Scraped leads (emails, phones) and account data are on screen;
+                // replays must not capture that PII.
+                maskAllText: true,
+                blockAllMedia: true,
             }),
         ],
 
