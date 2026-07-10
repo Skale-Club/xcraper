@@ -231,6 +231,9 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
             document.body.style.overflow = previousOverflow;
             window.removeEventListener('keydown', handleKeyDown);
         };
+        // dismissSearchSurvey is recreated every render; depending on it would
+        // re-subscribe the listener each render for no behavioral gain.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isSearchSurveyOpen, isLoading]);
 
     useEffect(() => {
@@ -242,6 +245,9 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
         return () => {
             window.removeEventListener('openSearchDialog', handleOpenSearchDialog);
         };
+        // openSearchSurvey is recreated every render; activeSearchId/hasDraft
+        // capture the state it actually reads.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSearchId, hasDraft]);
 
     const isAdmin = user?.role === 'admin';

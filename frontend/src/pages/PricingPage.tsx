@@ -43,6 +43,8 @@ const PricingPage = () => {
         };
 
         loadData();
+        // Mount-only data load; toast is stable enough for this purpose.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleSubscribe = async (planId: string) => {
