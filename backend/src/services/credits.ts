@@ -79,24 +79,20 @@ export async function deductCredits(params: CreditDeductionParams): Promise<Cred
             let newRolloverCredits = user.rolloverCredits;
             let newPurchasedCredits = user.purchasedCredits;
 
-            // Deduct from purchased credits first (they don't expire)
-            if (remainingToDeduct > 0 && newPurchasedCredits > 0) {
-                const deductFromPurchased = Math.min(remainingToDeduct, newPurchasedCredits);
-                newPurchasedCredits -= deductFromPurchased;
-                remainingToDeduct -= deductFromPurchased;
-            }
+            // Deduct monthly → rollover → purchased, matching the search
+            // finalize waterfall (routes/search.ts): expiring credits burn
+            // first so paid credits are preserved as long as possible.
+            const deductFromMain = Math.min(remainingToDeduct, newMainCredits);
+            newMainCredits -= deductFromMain;
+            remainingToDeduct -= deductFromMain;
 
-            // Then deduct from rollover credits (they expire)
-            if (remainingToDeduct > 0 && newRolloverCredits > 0) {
-                const deductFromRollover = Math.min(remainingToDeduct, newRolloverCredits);
-                newRolloverCredits -= deductFromRollover;
-                remainingToDeduct -= deductFromRollover;
-            }
+            const deductFromRollover = Math.min(remainingToDeduct, newRolloverCredits);
+            newRolloverCredits -= deductFromRollover;
+            remainingToDeduct -= deductFromRollover;
 
-            // Finally deduct from main credits
-            if (remainingToDeduct > 0) {
-                newMainCredits -= remainingToDeduct;
-            }
+            const deductFromPurchased = Math.min(remainingToDeduct, newPurchasedCredits);
+            newPurchasedCredits -= deductFromPurchased;
+            remainingToDeduct -= deductFromPurchased;
 
             // Update user credits
             await tx

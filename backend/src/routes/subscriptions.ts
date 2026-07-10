@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { Router, Request, Response } from 'express';
 import { db } from '../db/index.js';
-import { subscriptionPlans, users, creditTransactions, settings } from '../db/schema.js';
+import { subscriptionPlans, users, creditTransactions, settings, billingEvents } from '../db/schema.js';
 import { eq, desc, sql, and, gte, lte } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { z } from 'zod';
@@ -304,6 +304,35 @@ async function applyPaidInvoiceToUser(
                 rolledOverCredits: rolledOver,
             },
         });
+
+        // Revenue ledger: PnL derives subscription revenue from billing_events
+        // moneyAmount, so the paid invoice amount must be recorded here.
+        await tx.insert(billingEvents).values({
+            userId,
+            eventType: 'monthly_grant',
+            creditDelta: plan.monthlyCredits,
+            moneyAmount: invoice.amount_paid !== null && invoice.amount_paid !== undefined
+                ? (invoice.amount_paid / 100).toFixed(2)
+                : null,
+            currency: invoice.currency ?? 'usd',
+            stripeInvoiceId: invoice.id,
+            subscriptionPlanId: plan.id,
+            metadata: {
+                source: 'stripe_invoice_paid',
+                billingCycleStart: periodStart.toISOString(),
+                billingCycleEnd: periodEnd?.toISOString(),
+                rolledOverCredits: rolledOver,
+            },
+        });
+
+        if (rolledOver > 0) {
+            await tx.insert(billingEvents).values({
+                userId,
+                eventType: 'rollover',
+                creditDelta: rolledOver,
+                metadata: { source: 'stripe_renewal' },
+            });
+        }
 
         return plan.monthlyCredits;
     });

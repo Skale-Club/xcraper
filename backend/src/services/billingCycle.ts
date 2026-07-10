@@ -50,7 +50,7 @@ class BillingCycleService {
         let expiredAmount = 0;
 
         if (plan.allowRollover && user.credits > 0) {
-            const rolloverResult = await this.processRollover(userId, user.credits, plan);
+            const rolloverResult = await this.processRollover(userId, user.credits, plan, user.rolloverCredits);
             rolloverAmount = rolloverResult.rolloverAmount;
             expiredAmount = rolloverResult.expiredAmount;
         }
@@ -68,7 +68,10 @@ class BillingCycleService {
         };
 
         if (rolloverAmount > 0) {
-            updateData.rolloverCredits = rolloverAmount;
+            // Additive: keep the existing rollover balance and add this cycle's
+            // leftover on top (capped), matching the Stripe renewal path in
+            // routes/subscriptions.ts applyPaidInvoiceToUser.
+            updateData.rolloverCredits = user.rolloverCredits + rolloverAmount;
         }
 
         await db
@@ -134,18 +137,19 @@ class BillingCycleService {
     async processRollover(
         userId: string,
         currentCredits: number,
-        plan: typeof subscriptionPlans.$inferSelect
+        plan: typeof subscriptionPlans.$inferSelect,
+        existingRollover: number = 0
     ): Promise<RolloverResult> {
         if (!plan.allowRollover) {
             return { rolloverAmount: 0, expiredAmount: currentCredits };
         }
 
-        let rolloverAmount = currentCredits;
-
-        if (plan.maxRolloverCredits && rolloverAmount > plan.maxRolloverCredits) {
-            rolloverAmount = plan.maxRolloverCredits;
-        }
-
+        // maxRolloverCredits caps the TOTAL rollover balance (existing + new),
+        // so the amount added this cycle is whatever headroom remains.
+        const targetTotal = plan.maxRolloverCredits != null
+            ? Math.min(existingRollover + currentCredits, plan.maxRolloverCredits)
+            : existingRollover + currentCredits;
+        const rolloverAmount = Math.max(0, targetTotal - existingRollover);
         const expiredAmount = currentCredits - rolloverAmount;
 
         return { rolloverAmount, expiredAmount };
