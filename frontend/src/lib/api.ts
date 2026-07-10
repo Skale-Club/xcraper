@@ -513,11 +513,14 @@ export const contactsApi = {
     export: (format: 'csv' | 'json' = 'csv') =>
         apiFetch<{ data: string | Contact[] }>(`/contacts/export/${format}`),
 
-    exportCsv: async () => {
+    exportCsv: async (searchId?: string) => {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
-        const response = await fetch(getApiUrl('/contacts/export/csv'), {
+        const path = searchId
+            ? `/contacts/export/csv/search/${searchId}`
+            : '/contacts/export/csv';
+        const response = await fetch(getApiUrl(path), {
             headers: {
                 ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             },

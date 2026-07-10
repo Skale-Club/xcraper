@@ -199,13 +199,11 @@ export default function SearchesPage() {
 
     const handleExportCsv = async (searchId?: string) => {
         try {
-            // If we're viewing a specific search, we might want to export only those contacts
-            // For now, using the global export or we can add a per-search export if available
-            const blob = await contactsApi.exportCsv();
+            const blob = await contactsApi.exportCsv(searchId);
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `search-results-${searchId || 'all'}.csv`;
+            a.download = searchId ? `search-results-${searchId}.csv` : 'all-contacts.csv';
             a.click();
             window.URL.revokeObjectURL(url);
         } catch (error) {

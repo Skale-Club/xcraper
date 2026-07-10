@@ -294,7 +294,7 @@ export default function AdminPnLPage() {
                             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-500/10">
                                 <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                             </div>
-                            {(overview?.activeUsersChange ?? 1) >= 0 ? (
+                            {(overview?.activeUsersChange ?? 0) >= 0 ? (
                                 <ArrowUpRight className="h-5 w-5 text-emerald-500" />
                             ) : (
                                 <ArrowDownRight className="h-5 w-5 text-red-500" />
@@ -302,9 +302,9 @@ export default function AdminPnLPage() {
                         </div>
                         <div className="mt-4">
                             <p className="text-sm font-medium text-muted-foreground">Active Subscribers</p>
-                            <p className="text-2xl font-bold">{formatNumber(overview?.activeUsers ?? 1)}</p>
-                            <p className={`text-xs ${(overview?.activeUsersChange ?? 1) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                {formatPercent(overview?.activeUsersChange ?? 1)} vs last month
+                            <p className="text-2xl font-bold">{formatNumber(overview?.activeUsers ?? 0)}</p>
+                            <p className={`text-xs ${(overview?.activeUsersChange ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                {formatPercent(overview?.activeUsersChange ?? 0)} vs last month
                             </p>
                         </div>
                     </Card>
@@ -320,7 +320,7 @@ export default function AdminPnLPage() {
                             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-500/10">
                                 <Search className="h-6 w-6 text-amber-600 dark:text-amber-400" />
                             </div>
-                            {(overview?.searchesChange ?? 1) >= 0 ? (
+                            {(overview?.searchesChange ?? 0) >= 0 ? (
                                 <ArrowUpRight className="h-5 w-5 text-emerald-500" />
                             ) : (
                                 <ArrowDownRight className="h-5 w-5 text-red-500" />
@@ -328,9 +328,9 @@ export default function AdminPnLPage() {
                         </div>
                         <div className="mt-4">
                             <p className="text-sm font-medium text-muted-foreground">Searches</p>
-                            <p className="text-2xl font-bold">{formatNumber(overview?.searchesThisMonth ?? 1)}</p>
-                            <p className={`text-xs ${(overview?.searchesChange ?? 1) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                {formatPercent(overview?.searchesChange ?? 1)} vs last month
+                            <p className="text-2xl font-bold">{formatNumber(overview?.searchesThisMonth ?? 0)}</p>
+                            <p className={`text-xs ${(overview?.searchesChange ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                {formatPercent(overview?.searchesChange ?? 0)} vs last month
                             </p>
                         </div>
                     </Card>
@@ -346,7 +346,7 @@ export default function AdminPnLPage() {
                             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-500/10">
                                 <TrendingUp className="h-6 w-6 text-purple-600 dark:text-purple-400" />
                             </div>
-                            {(overview?.revenueChange ?? 1) >= 0 ? (
+                            {(overview?.revenueChange ?? 0) >= 0 ? (
                                 <ArrowUpRight className="h-5 w-5 text-emerald-500" />
                             ) : (
                                 <ArrowDownRight className="h-5 w-5 text-red-500" />
@@ -354,9 +354,9 @@ export default function AdminPnLPage() {
                         </div>
                         <div className="mt-4">
                             <p className="text-sm font-medium text-muted-foreground">Revenue</p>
-                            <p className="text-2xl font-bold">{formatCurrency(overview?.revenueThisMonth ?? 1)}</p>
-                            <p className={`text-xs ${(overview?.revenueChange ?? 1) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                {formatPercent(overview?.revenueChange ?? 1)} vs last month
+                            <p className="text-2xl font-bold">{formatCurrency(overview?.revenueThisMonth ?? 0)}</p>
+                            <p className={`text-xs ${(overview?.revenueChange ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                {formatPercent(overview?.revenueChange ?? 0)} vs last month
                             </p>
                         </div>
                     </Card>
@@ -374,15 +374,15 @@ export default function AdminPnLPage() {
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-muted-foreground">One-time Purchases</span>
-                            <span className="font-semibold">{formatCurrency(metrics?.oneTimeRevenue ?? 1)}</span>
+                            <span className="font-semibold">{formatCurrency(metrics?.oneTimeRevenue ?? 0)}</span>
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-muted-foreground">Auto Top-ups</span>
-                            <span className="font-semibold">{formatCurrency(metrics?.topUpRevenue ?? 1)}</span>
+                            <span className="font-semibold">{formatCurrency(metrics?.topUpRevenue ?? 0)}</span>
                         </div>
                         <div className="border-t pt-4 flex items-center justify-between">
                             <span className="font-semibold">Total Revenue</span>
-                            <span className="font-bold text-lg">{formatCurrency(metrics?.totalRevenue ?? 1)}</span>
+                            <span className="font-bold text-lg">{formatCurrency(metrics?.totalRevenue ?? 0)}</span>
                         </div>
                     </div>
                 </Card>
@@ -392,15 +392,15 @@ export default function AdminPnLPage() {
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <span className="text-muted-foreground">Standard Searches (Apify)</span>
-                            <span className="font-semibold">{formatCurrency(metrics?.standardApifyCost ?? 1)}</span>
+                            <span className="font-semibold">{formatCurrency(metrics?.standardApifyCost ?? 0)}</span>
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-muted-foreground">Enriched Searches (Apify)</span>
-                            <span className="font-semibold">{formatCurrency(metrics?.enrichedApifyCost ?? 1)}</span>
+                            <span className="font-semibold">{formatCurrency(metrics?.enrichedApifyCost ?? 0)}</span>
                         </div>
                         <div className="border-t pt-4 flex items-center justify-between">
                             <span className="font-semibold">Total Costs</span>
-                            <span className="font-bold text-lg text-red-500">{formatCurrency(metrics?.totalApifyCost ?? 1)}</span>
+                            <span className="font-bold text-lg text-red-500">{formatCurrency(metrics?.totalApifyCost ?? 0)}</span>
                         </div>
                     </div>
                 </Card>
@@ -417,7 +417,7 @@ export default function AdminPnLPage() {
                     </div>
                     <div className="text-right">
                         <p className="text-3xl font-bold text-emerald-500">
-                            {formatCurrency(metrics?.grossProfit ?? 1)}
+                            {formatCurrency(metrics?.grossProfit ?? 0)}
                         </p>
                         <p className="text-sm text-muted-foreground">
                             {(metrics?.grossMargin ?? 0).toFixed(1)}% margin
@@ -433,15 +433,15 @@ export default function AdminPnLPage() {
                     <div className="space-y-3">
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Total</span>
-                            <span className="font-semibold">{formatNumber(metrics?.totalSearches ?? 1)}</span>
+                            <span className="font-semibold">{formatNumber(metrics?.totalSearches ?? 0)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Completed</span>
-                            <span className="font-semibold text-emerald-500">{formatNumber(metrics?.completedSearches ?? 1)}</span>
+                            <span className="font-semibold text-emerald-500">{formatNumber(metrics?.completedSearches ?? 0)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Failed</span>
-                            <span className="font-semibold text-red-500">{formatNumber(metrics?.failedSearches ?? 1)}</span>
+                            <span className="font-semibold text-red-500">{formatNumber(metrics?.failedSearches ?? 0)}</span>
                         </div>
                     </div>
                 </Card>
@@ -451,15 +451,15 @@ export default function AdminPnLPage() {
                     <div className="space-y-3">
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Total Leads</span>
-                            <span className="font-semibold">{formatNumber(metrics?.totalLeads ?? 1)}</span>
+                            <span className="font-semibold">{formatNumber(metrics?.totalLeads ?? 0)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Standard</span>
-                            <span className="font-semibold">{formatNumber(metrics?.standardLeads ?? 1)}</span>
+                            <span className="font-semibold">{formatNumber(metrics?.standardLeads ?? 0)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Enriched</span>
-                            <span className="font-semibold">{formatNumber(metrics?.enrichedLeads ?? 1)}</span>
+                            <span className="font-semibold">{formatNumber(metrics?.enrichedLeads ?? 0)}</span>
                         </div>
                     </div>
                 </Card>
@@ -469,15 +469,15 @@ export default function AdminPnLPage() {
                     <div className="space-y-3">
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Issued</span>
-                            <span className="font-semibold">{formatNumber(metrics?.creditsIssued ?? 1)}</span>
+                            <span className="font-semibold">{formatNumber(metrics?.creditsIssued ?? 0)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Used</span>
-                            <span className="font-semibold">{formatNumber(metrics?.creditsUsed ?? 1)}</span>
+                            <span className="font-semibold">{formatNumber(metrics?.creditsUsed ?? 0)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Purchased</span>
-                            <span className="font-semibold">{formatNumber(metrics?.creditsPurchased ?? 1)}</span>
+                            <span className="font-semibold">{formatNumber(metrics?.creditsPurchased ?? 0)}</span>
                         </div>
                     </div>
                 </Card>

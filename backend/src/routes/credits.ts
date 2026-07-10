@@ -287,7 +287,7 @@ router.post('/admin/add', requireAuth, requireAdmin, async (req, res: Response):
         // non-transactional read-modify-write that could lose concurrent updates).
         const updatedUser = await db.transaction(async (tx) => {
             const [existing] = await tx
-                .select({ id: users.id })
+                .select({ id: users.id, credits: users.credits })
                 .from(users)
                 .where(eq(users.id, userId))
                 .for('update')
@@ -297,9 +297,15 @@ router.post('/admin/add', requireAuth, requireAdmin, async (req, res: Response):
                 return null;
             }
 
+            // Deductions clamp at zero — the monthly bucket must never go
+            // negative, or the search waterfall and balance displays break.
+            const appliedAmount = signedAmount < 0
+                ? Math.max(signedAmount, -existing.credits)
+                : signedAmount;
+
             const [updated] = await tx.update(users)
                 .set({
-                    credits: sql`${users.credits} + ${signedAmount}`,
+                    credits: sql`${users.credits} + ${appliedAmount}`,
                     updatedAt: new Date(),
                 })
                 .where(eq(users.id, userId))
@@ -307,16 +313,17 @@ router.post('/admin/add', requireAuth, requireAdmin, async (req, res: Response):
 
             await tx.insert(creditTransactions).values({
                 userId,
-                amount: signedAmount,
+                amount: appliedAmount,
                 type: type,
-                description: description || `Admin ${type}: ${signedAmount > 0 ? '+' : ''}${signedAmount} credits`,
+                description: description || `Admin ${type}: ${appliedAmount > 0 ? '+' : ''}${appliedAmount} credits`,
                 metadata: {
                     adminId: req.user!.id,
                     source: 'admin_adjustment',
+                    requestedAmount: signedAmount,
                 },
             });
 
-            return updated;
+            return { updated, appliedAmount };
         });
 
         if (!updatedUser) {
@@ -327,18 +334,19 @@ router.post('/admin/add', requireAuth, requireAdmin, async (req, res: Response):
         await auditLogService.logCreditChange(
             userId,
             type as 'adjustment' | 'compensation' | 'promotional',
-            signedAmount,
+            updatedUser.appliedAmount,
             req.user!.id,
             description
         );
 
         res.json({
             message: 'Credits adjusted successfully',
+            appliedAmount: updatedUser.appliedAmount,
             user: {
-                id: updatedUser.id,
-                name: updatedUser.name,
-                email: updatedUser.email,
-                credits: updatedUser.credits,
+                id: updatedUser.updated.id,
+                name: updatedUser.updated.name,
+                email: updatedUser.updated.email,
+                credits: updatedUser.updated.credits,
             },
         });
     } catch (error) {
