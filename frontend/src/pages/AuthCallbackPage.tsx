@@ -3,43 +3,52 @@ import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { Loader2 } from 'lucide-react';
+import type { Session } from '@supabase/supabase-js';
 
 export default function AuthCallbackPage() {
     const [, setLocation] = useLocation();
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const handleCallback = async () => {
-            try {
-                // Get the auth code from URL
-                const params = new URLSearchParams(window.location.search);
-                const code = params.get('code');
-                if (code) {
-                    // Exchange code for session
-                    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        let done = false;
+        let redirectTimeout: ReturnType<typeof setTimeout> | undefined;
 
-                    if (exchangeError) {
-                        throw exchangeError;
-                    }
-                }
-
-                // Check if we have a session
-                const { data: { session } } = await supabase.auth.getSession();
-
-                if (session) {
-                    setLocation('/onboarding');
-                } else {
-                    setError('Authentication failed. Please try again.');
-                    setTimeout(() => setLocation('/login'), 3000);
-                }
-            } catch (err) {
-                console.error('Auth callback error:', err);
-                setError(err instanceof Error ? err.message : 'Authentication failed');
-                setTimeout(() => setLocation('/login'), 3000);
+        const finish = (session: Session | null) => {
+            if (done) return;
+            done = true;
+            if (session) {
+                setLocation('/dashboard');
+            } else {
+                setError('Authentication failed. Please try again.');
+                redirectTimeout = setTimeout(() => setLocation('/login'), 3000);
             }
         };
 
-        handleCallback();
+        // Provider denied/cancelled (e.g. ?error=access_denied) — fail fast instead
+        // of waiting for the session timeout below.
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('error')) {
+            finish(null);
+            return () => clearTimeout(redirectTimeout);
+        }
+
+        // GoTrue (detectSessionInUrl) exchanges the code/hash on load; getSession()
+        // resolves only after that completes.
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) finish(session);
+        });
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (session) finish(session);
+        });
+
+        const timeout = setTimeout(() => finish(null), 10000);
+
+        return () => {
+            subscription.unsubscribe();
+            clearTimeout(timeout);
+            clearTimeout(redirectTimeout);
+        };
     }, [setLocation]);
 
     return (

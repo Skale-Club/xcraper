@@ -157,15 +157,31 @@ function OnboardingRoute({ children }: { children: ReactNode }) {
     return <RouteSuspense>{children}</RouteSuspense>;
 }
 
+function HomeRoute() {
+    const { isAuthenticated, isLoading } = useAuth();
+
+    if (isLoading) {
+        return <PageFallback />;
+    }
+
+    if (isAuthenticated) {
+        return <Redirect to="/dashboard" />;
+    }
+
+    return (
+        <div className="force-dark min-h-screen bg-background text-foreground">
+            <RouteSuspense>
+                <LandingPage />
+            </RouteSuspense>
+        </div>
+    );
+}
+
 function AppRoutes() {
     return (
         <Switch>
             <Route path="/">
-                <div className="force-dark min-h-screen bg-background text-foreground">
-                    <RouteSuspense>
-                        <LandingPage />
-                    </RouteSuspense>
-                </div>
+                <HomeRoute />
             </Route>
 
             <Route path="/login">

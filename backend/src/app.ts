@@ -119,6 +119,17 @@ export function createApp(): express.Express {
         message: { error: 'Too many authentication attempts, please try again later.' },
     });
 
+    // Looser limiter for session-maintenance endpoints (/me, /sync, /verify) — these
+    // fire on every onAuthStateChange (tab focus, token refresh, etc.), so the
+    // strict brute-force limiter above throttles normal usage. Only login/register/
+    // password-reset-adjacent auth routes need the tight cap.
+    const authSessionLimiter = rateLimit({
+        ...defaultRateLimitOpts,
+        windowMs: 15 * 60 * 1000,
+        max: isProd ? 120 : 400,
+        message: { error: 'Too many requests, please try again later.' },
+    });
+
     // Tight limiter for search (Apify quota / cost protection)
     const searchLimiter = rateLimit({
         ...defaultRateLimitOpts,
@@ -146,7 +157,15 @@ export function createApp(): express.Express {
     app.use('/api/', generalLimiter);
 
     // API Routes (specific limiters mounted before route handlers)
-    app.use('/api/auth', authLimiter, authRoutes);
+    // Session-maintenance auth endpoints (/me, /sync, /verify) get the looser
+    // limiter; everything else under /api/auth keeps the strict one. A single
+    // dispatcher (rather than two stacked app.use calls) ensures a request is
+    // never rate-limited twice.
+    const AUTH_SESSION_PATHS = new Set(['/me', '/sync', '/verify']);
+    app.use('/api/auth', (req, res, next) => {
+        const limiter = AUTH_SESSION_PATHS.has(req.path) ? authSessionLimiter : authLimiter;
+        limiter(req, res, next);
+    }, authRoutes);
     app.use('/api/users', userRoutes);
     app.use('/api/search', searchLimiter, searchRoutes);
     app.use('/api/contacts', contactRoutes);

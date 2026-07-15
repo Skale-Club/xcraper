@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import authRoutes from './auth.js';
+import { db } from '../db/index.js';
 
 // auth.ts only builds its Supabase client when these env vars are present, and it
 // reads them at module-eval time — so they must be set before the import is
@@ -52,7 +53,7 @@ vi.mock('../db/index.js', () => {
     };
     const makeChain = (rows: any[]): any => {
         const chain: any = {};
-        for (const m of ['from', 'where', 'limit', 'set', 'values', 'orderBy', 'for', 'groupBy']) {
+        for (const m of ['from', 'where', 'limit', 'set', 'values', 'orderBy', 'for', 'groupBy', 'onConflictDoUpdate']) {
             chain[m] = () => chain;
         }
         chain.returning = () => Promise.resolve(rows);
@@ -61,9 +62,9 @@ vi.mock('../db/index.js', () => {
     };
     return {
         db: {
-            select: () => makeChain([userRow]),
-            insert: () => makeChain([userRow]),
-            update: () => makeChain([userRow]),
+            select: vi.fn(() => makeChain([userRow])),
+            insert: vi.fn(() => makeChain([userRow])),
+            update: vi.fn(() => makeChain([userRow])),
         },
     };
 });
@@ -118,6 +119,42 @@ describe('Auth Routes', () => {
 
             // Should return user data
             expect(response.status).toBe(200);
+        });
+
+        it('should accept an empty-string avatarUrl (not 400)', async () => {
+            const response = await request(app)
+                .post('/api/auth/sync')
+                .set('Authorization', 'Bearer test-token')
+                .send({
+                    email: 'new@example.com',
+                    name: 'New User',
+                    avatarUrl: '',
+                });
+
+            expect(response.status).not.toBe(400);
+        });
+
+        it('should upsert (returning 201) when the user does not exist yet', async () => {
+            // Simulate the "no existing user" branch so the handler takes the
+            // insert().onConflictDoUpdate() path.
+            const emptySelectChain: any = {
+                from: () => emptySelectChain,
+                where: () => emptySelectChain,
+                limit: () => Promise.resolve([]),
+            };
+            (db.select as any).mockReturnValueOnce(emptySelectChain);
+
+            const response = await request(app)
+                .post('/api/auth/sync')
+                .set('Authorization', 'Bearer test-token')
+                .send({
+                    email: 'brandnew@example.com',
+                    name: 'Brand New User',
+                });
+
+            expect(response.status).toBe(201);
+            expect(response.body.user).toBeTypeOf('object');
+            expect(response.body.user).toHaveProperty('id');
         });
     });
 

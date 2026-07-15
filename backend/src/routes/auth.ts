@@ -98,7 +98,7 @@ const supabase = supabaseUrl && supabaseServiceKey
 const syncUserSchema = z.object({
     email: z.string().email(),
     name: z.string().optional(),
-    avatarUrl: z.string().url().optional().nullable(),
+    avatarUrl: z.string().url().or(z.literal('')).nullable().optional(),
 });
 
 // Get current user - requires Bearer token from Supabase
@@ -231,7 +231,10 @@ router.post('/sync', async (req: Request, res: Response) => {
 
         const freeCredits = settingsRecord?.freeCreditsOnSignup ?? 10;
 
-        // Create new user
+        // Create new user. onConflictDoUpdate makes this idempotent: concurrent
+        // first-login requests (e.g. duplicate /sync calls) race the existence
+        // check above, so a plain INSERT would throw a PK-violation 500 on the
+        // loser — upsert instead of erroring.
         const [newUser] = await db
             .insert(users)
             .values({
@@ -241,6 +244,16 @@ router.post('/sync', async (req: Request, res: Response) => {
                 avatarUrl: body.avatarUrl || null,
                 role: isAdmin ? 'admin' : 'user',
                 purchasedCredits: freeCredits,
+            })
+            .onConflictDoUpdate({
+                target: users.id,
+                set: {
+                    email,
+                    name: body.name || email.split('@')[0],
+                    avatarUrl: body.avatarUrl || null,
+                    role: isAdmin ? 'admin' : 'user',
+                    updatedAt: new Date(),
+                },
             })
             .returning(appUserFields);
 
