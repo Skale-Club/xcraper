@@ -35,10 +35,12 @@ describe('buildSourceMetadata', () => {
 
     it('includes actor_id and template when present on the run', () => {
         const metadata = buildSourceMetadata(
-            { ...baseRun, apifyActorId: 'nwua9Gu5YrADL7ZDj', scrapeType: 'b2b_leads' },
+            // Slug form rather than the opaque short id: an opaque id is
+            // high-entropy and trips the gitleaks generic-api-key rule in CI.
+            { ...baseRun, apifyActorId: 'compass/crawler-google-places', scrapeType: 'b2b_leads' },
             3,
         );
-        expect(metadata.actor_id).toBe('nwua9Gu5YrADL7ZDj');
+        expect(metadata.actor_id).toBe('compass/crawler-google-places');
         expect(metadata.template).toBe('b2b_leads');
     });
 
