@@ -72,6 +72,39 @@ export type PushResult =
     | { ok: true; total: number; created: number; updated: number; skipped: number }
     | { ok: false; error: string };
 
+type SearchHistoryRow = typeof searchHistory.$inferSelect;
+
+/**
+ * Build the `source.metadata` block sent to Xphere for a run.
+ *
+ * Exported as a pure function (no I/O) so the numeric/null handling around
+ * `apify_usage_usd` can be unit tested in isolation from `pushRunToXphere`.
+ */
+export function buildSourceMetadata(
+    run: Pick<SearchHistoryRow, 'query' | 'location' | 'apifyUsageUsd' | 'apifyActorId' | 'scrapeType'>,
+    resultCount: number,
+): Record<string, unknown> {
+    // Drizzle maps `decimal` columns to strings, and the column is nullable
+    // (a run that never completed has no usage figure). Send `null` rather
+    // than `0` when the cost is unknown or unparseable — 0 is a real and
+    // very different claim ("this run cost nothing") from "unknown".
+    const parsedCost = run.apifyUsageUsd === null || run.apifyUsageUsd === undefined
+        ? NaN
+        : Number(run.apifyUsageUsd);
+    const cost_usd = Number.isFinite(parsedCost) ? parsedCost : null;
+
+    const metadata: Record<string, unknown> = {
+        query: run.query,
+        location: run.location,
+        cost_usd,
+        result_count: resultCount,
+    };
+    if (run.apifyActorId) metadata.actor_id = run.apifyActorId;
+    if (run.scrapeType) metadata.template = run.scrapeType;
+
+    return metadata;
+}
+
 async function postBatch(
     config: XphereConfig,
     source: Record<string, unknown>,
@@ -157,7 +190,7 @@ export async function pushRunToXphere(searchId: string, userId: string): Promise
         key: 'xcraper',
         label: `${run.query} — ${run.location}`,
         external_run_id: searchId,
-        metadata: { query: run.query, location: run.location },
+        metadata: buildSourceMetadata(run, rows.length),
     };
 
     let created = 0;
