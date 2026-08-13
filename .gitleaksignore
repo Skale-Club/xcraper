@@ -12,3 +12,8 @@ bbf0b657ceea894f825508b79f067f2b2a792bd2:IMPLEMENTATION_SUMMARY.md:curl-auth-hea
 # CLAUDE.md - file deleted, keys already rotated
 cc23876b4b8acb6a2a8733717c114bbd79490cdd:CLAUDE.md:generic-api-key:405
 cc23876b4b8acb6a2a8733717c114bbd79490cdd:CLAUDE.md:generic-api-key:428
+
+# Apify actor ID in a test fixture - a public actor identifier, never a secret.
+# The fixture was since changed to the readable slug form; this entry only
+# silences the commit that still carries the opaque id in history.
+54e73984151e4a931de8c2baa416a17f509e44f4:backend/src/services/xphere.test.ts:generic-api-key:38
