@@ -81,7 +81,7 @@ type SearchHistoryRow = typeof searchHistory.$inferSelect;
  * `apify_usage_usd` can be unit tested in isolation from `pushRunToXphere`.
  */
 export function buildSourceMetadata(
-    run: Pick<SearchHistoryRow, 'query' | 'location' | 'apifyUsageUsd' | 'apifyActorId' | 'scrapeType'>,
+    run: Pick<SearchHistoryRow, 'query' | 'location' | 'apifyUsageUsd' | 'apifyActorId' | 'scrapeType' | 'searchFilters'>,
     resultCount: number,
 ): Record<string, unknown> {
     // Drizzle maps `decimal` columns to strings, and the column is nullable
@@ -101,6 +101,10 @@ export function buildSourceMetadata(
     };
     if (run.apifyActorId) metadata.actor_id = run.apifyActorId;
     if (run.scrapeType) metadata.template = run.scrapeType;
+    const hypothesis = run.searchFilters?.journey_hypothesis;
+    if (hypothesis && typeof hypothesis === 'object' && !Array.isArray(hypothesis)) {
+        metadata.hypothesis = hypothesis;
+    }
 
     return metadata;
 }

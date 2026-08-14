@@ -54,6 +54,13 @@ const scrapeSchema = z.object({
     maxResults: z.number().int().min(1).max(1000).optional().default(50),
     // 'standard' = Google Maps business listings; 'enriched' = + email extraction.
     scrapeType: z.enum(['standard', 'enriched']).optional().default('standard'),
+    hypothesis: z.object({
+        premise: z.string().trim().min(1).max(2000).optional(),
+        expected: z.record(z.string(), z.union([z.string().max(500), z.number()])).optional(),
+        basis: z.string().trim().min(1).max(2000).optional(),
+    }).refine((value) => JSON.stringify(value).length <= 4096, {
+        message: 'hypothesis payload exceeds the 4096-byte cap',
+    }).optional(),
 });
 
 /** Push a finished run's contacts into Xphere; uniform shape for the JSON response.
@@ -73,7 +80,7 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
             res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() });
             return;
         }
-        const { query, location, maxResults, scrapeType } = parsed.data;
+        const { query, location, maxResults, scrapeType, hypothesis } = parsed.data;
 
         if (!isApifyConfigured()) {
             res.status(503).json({ error: 'Scraping service is not configured.' });
@@ -110,7 +117,10 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
             requestedMaxResults: maxR,
             requestEnrichment: template.extractsEmails,
             scrapeType: template.key,
-            searchFilters: null,
+            // Capture this before Apify starts. Google Maps service runs do not
+            // otherwise use searchFilters, so the existing JSON column carries
+            // Journey metadata without a schema migration.
+            searchFilters: hypothesis ? { journey_hypothesis: hypothesis } : null,
             status: 'pending',
             creditsUsed: 0,
             standardResultsCount: template.extractsEmails ? null : 0,

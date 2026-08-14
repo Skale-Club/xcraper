@@ -8,6 +8,7 @@ describe('buildSourceMetadata', () => {
         apifyUsageUsd: null as string | null,
         apifyActorId: null as string | null,
         scrapeType: 'standard',
+        searchFilters: null as Record<string, unknown> | null,
     };
 
     it('converts a normal decimal string usage figure into a number', () => {
@@ -47,5 +48,19 @@ describe('buildSourceMetadata', () => {
     it('omits actor_id when the run has no actor recorded', () => {
         const metadata = buildSourceMetadata({ ...baseRun, apifyActorId: null }, 3);
         expect('actor_id' in metadata).toBe(false);
+    });
+
+    it('propagates a hypothesis captured before the scrape started', () => {
+        const hypothesis = {
+            premise: 'Barbershops need better online booking',
+            expected: { discovered: '>=20', verified_email_rate: '>=0.3' },
+            basis: 'First run in this segment',
+        };
+        const metadata = buildSourceMetadata({
+            ...baseRun,
+            searchFilters: { journey_hypothesis: hypothesis },
+        }, 7);
+
+        expect(metadata.hypothesis).toEqual(hypothesis);
     });
 });
