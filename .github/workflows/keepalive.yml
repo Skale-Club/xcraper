@@ -2,9 +2,12 @@ name: Keepalive
 
 on:
   schedule:
-    # Hourly. Supabase free tier pauses after 7 days of inactivity, so 24 pings/day
-    # gives ~6 days of headroom even if every ping fails.
-    - cron: '0 * * * *'
+    # Every 3 days at 08:00 UTC. Supabase free tier pauses after 7 days of
+    # inactivity, so this leaves a wide margin while cutting this workflow
+    # from ~720 runs/month (hourly) to ~10 runs/month. Minute offset (0)
+    # staggers this repo's run against the org's other keepalive workflows
+    # so they don't all fire in the same minute.
+    - cron: '0 8 */3 * *'
   workflow_dispatch:
 
 concurrency:
