@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { contacts, searchHistory, users } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { logError } from '../utils/logger.js';
+import { classifyWebPresence, type WebPresenceClassification } from './webPresence.js';
 
 // Xphere is the prospecting hub: Xcraper pushes extracted business leads into the
 // caller's Xphere workspace via the public ingestion API (POST /api/v1/prospects),
@@ -46,17 +47,6 @@ export async function isXphereConfiguredForUser(userId: string): Promise<boolean
     return (await resolveXphereConfig(userId)) !== null;
 }
 
-/** Best-effort registrable domain from a scraped website URL. */
-function hostnameFromWebsite(website?: string | null): string | null {
-    if (!website) return null;
-    try {
-        const url = website.startsWith('http') ? website : `https://${website}`;
-        return new URL(url).hostname.replace(/^www\./, '') || null;
-    } catch {
-        return null;
-    }
-}
-
 interface ProspectPayload {
     kind: 'company';
     name: string;
@@ -81,8 +71,9 @@ type SearchHistoryRow = typeof searchHistory.$inferSelect;
  * `apify_usage_usd` can be unit tested in isolation from `pushRunToXphere`.
  */
 export function buildSourceMetadata(
-    run: Pick<SearchHistoryRow, 'query' | 'location' | 'apifyUsageUsd' | 'apifyActorId' | 'scrapeType' | 'searchFilters'>,
+    run: Pick<SearchHistoryRow, 'query' | 'location' | 'apifyUsageUsd' | 'apifyActorId' | 'scrapeType' | 'searchFilters' | 'enrichedResultsCount'>,
     resultCount: number,
+    presenceSummary?: ReturnType<typeof summarizeWebPresence>,
 ): Record<string, unknown> {
     // Drizzle maps `decimal` columns to strings, and the column is nullable
     // (a run that never completed has no usage figure). Send `null` rather
@@ -101,12 +92,40 @@ export function buildSourceMetadata(
     };
     if (run.apifyActorId) metadata.actor_id = run.apifyActorId;
     if (run.scrapeType) metadata.template = run.scrapeType;
+    // Unlike cost_usd, ZERO is a real answer here: a `standard` scrape genuinely enriches
+    // nothing, and Xmail's enriched_count_never_populated alert is supposed to keep firing for
+    // an `enriched` run that reports zero. So send the number whenever we have one, and omit the
+    // key only when the column is null, which is the actual "we never measured this" case.
+    if (run.enrichedResultsCount !== null && run.enrichedResultsCount !== undefined) {
+        const enriched = Number(run.enrichedResultsCount);
+        if (Number.isFinite(enriched)) metadata.enriched_count = enriched;
+    }
+    if (presenceSummary) metadata.web_presence = presenceSummary;
     const hypothesis = run.searchFilters?.journey_hypothesis;
     if (hypothesis && typeof hypothesis === 'object' && !Array.isArray(hypothesis)) {
         metadata.hypothesis = hypothesis;
     }
 
     return metadata;
+}
+
+export function summarizeWebPresence(classifications: WebPresenceClassification[]) {
+    const byType: Record<string, number> = {};
+    const bookingPlatforms: Record<string, number> = {};
+    for (const presence of classifications) {
+        byType[presence.type] = (byType[presence.type] ?? 0) + 1;
+        if (presence.bookingPlatform) {
+            bookingPlatforms[presence.bookingPlatform] = (bookingPlatforms[presence.bookingPlatform] ?? 0) + 1;
+        }
+    }
+    const ownedWebsiteCount = byType.owned_website ?? 0;
+    return {
+        owned_website_count: ownedWebsiteCount,
+        no_owned_website_count: classifications.length - ownedWebsiteCount,
+        booking_platform_count: byType.booking_platform ?? 0,
+        by_type: byType,
+        booking_platforms: bookingPlatforms,
+    };
 }
 
 async function postBatch(
@@ -160,41 +179,59 @@ export async function pushRunToXphere(searchId: string, userId: string): Promise
     const rows = await db.select().from(contacts).where(eq(contacts.searchId, searchId));
     if (rows.length === 0) return { ok: false, error: 'No contacts in this run to push.' };
 
-    const prospects: ProspectPayload[] = rows.map((c) => ({
-        kind: 'company',
-        name: c.title,
-        domain: hostnameFromWebsite(c.website),
-        phone: c.phone ?? null,
-        // Google Place ID gives idempotent re-import; fall back to the row id.
-        source_id: c.placeId || c.id,
-        recommended_channel: c.email ? 'email' : c.phone ? 'call' : null,
-        custom_fields: {
-            email: c.email ?? null,
-            category: c.category ?? null,
-            address: c.address ?? null,
-            rating: c.rating ?? null,
-            review_count: c.reviewCount ?? null,
-            website: c.website ?? null,
-            google_maps_url: c.googleMapsUrl ?? null,
-        },
-        source_payload: {
-            place_id: c.placeId ?? null,
-            latitude: c.latitude ?? null,
-            longitude: c.longitude ?? null,
-            socials: {
-                facebook: c.facebook ?? null,
-                instagram: c.instagram ?? null,
-                linkedin: c.linkedin ?? null,
+    const presences = rows.map((c) => classifyWebPresence(c.website, [
+        c.instagram,
+        c.facebook,
+        c.tiktok,
+        c.linkedin,
+        c.twitter,
+        c.youtube,
+    ]));
+    const prospects: ProspectPayload[] = rows.map((c, index) => {
+        const presence = presences[index];
+        return {
+            kind: 'company',
+            name: c.title,
+            domain: presence.ownedDomain,
+            phone: c.phone ?? null,
+            // Google Place ID gives idempotent re-import; fall back to the row id.
+            source_id: c.placeId || c.id,
+            recommended_channel: c.email ? 'email' : c.phone ? 'call' : null,
+            custom_fields: {
+                email: c.email ?? null,
+                category: c.category ?? null,
+                address: c.address ?? null,
+                rating: c.rating ?? null,
+                review_count: c.reviewCount ?? null,
+                website: presence.ownedWebsiteUrl,
+                has_owned_website: presence.type === 'owned_website',
+                web_presence_type: presence.type,
+                web_presence_url: presence.sourceUrl,
+                web_presence_platform: presence.platform,
+                booking_platform: presence.bookingPlatform,
+                booking_url: presence.bookingUrl,
+                google_maps_url: c.googleMapsUrl ?? null,
             },
-        },
-    }));
+            source_payload: {
+                place_id: c.placeId ?? null,
+                latitude: c.latitude ?? null,
+                longitude: c.longitude ?? null,
+                socials: {
+                    facebook: c.facebook ?? null,
+                    instagram: c.instagram ?? null,
+                    linkedin: c.linkedin ?? null,
+                },
+                web_presence: presence,
+            },
+        };
+    });
 
     const source = {
         type: 'xcraper',
         key: 'xcraper',
         label: `${run.query} — ${run.location}`,
         external_run_id: searchId,
-        metadata: buildSourceMetadata(run, rows.length),
+        metadata: buildSourceMetadata(run, rows.length, summarizeWebPresence(presences)),
     };
 
     let created = 0;

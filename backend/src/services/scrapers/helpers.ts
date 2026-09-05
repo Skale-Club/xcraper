@@ -98,7 +98,9 @@ export function mapGooglePlace(item: Record<string, unknown>): NormalizedContact
         category: getFirstString(item.categoryName) || getFirstString(item.category),
         address: getFirstString(item.address),
         phone: getFirstString(item.phone) || getFirstString(item.phoneNumber) || getFirstString(item.phones),
-        website: getFirstString(item.website) || getFirstString(item.url),
+        // `item.url` is normally the Google Maps listing, not the business site.
+        // Keep it exclusively in googleMapsUrl so "no website" remains truthful.
+        website: getFirstString(item.website),
         email: getFirstString(item.email) || getFirstString(item.emails),
         rating: getNumber(item.totalScore) ?? getNumber(item.rating),
         reviewCount: getNumber(item.reviewsCount) ?? getNumber(item.reviews),

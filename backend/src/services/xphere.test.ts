@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildSourceMetadata } from './xphere.js';
+import { buildSourceMetadata, summarizeWebPresence } from './xphere.js';
+import { classifyWebPresence } from './webPresence.js';
 
 describe('buildSourceMetadata', () => {
     const baseRun = {
@@ -9,7 +10,28 @@ describe('buildSourceMetadata', () => {
         apifyActorId: null as string | null,
         scrapeType: 'standard',
         searchFilters: null as Record<string, unknown> | null,
+        enrichedResultsCount: null as number | null,
     };
+
+    describe('enriched_count', () => {
+        it('sends the count when the run has one', () => {
+            const metadata = buildSourceMetadata({ ...baseRun, enrichedResultsCount: 23 }, 25);
+            expect(metadata.enriched_count).toBe(23);
+        });
+
+        it('sends an explicit zero, because zero enriched is a real answer', () => {
+            // Deliberately unlike cost_usd, where 0 would be a false claim. A `standard` scrape
+            // enriches nothing, and Xmail's enriched_count_never_populated alert is meant to keep
+            // firing for an `enriched` run that truthfully reports zero.
+            const metadata = buildSourceMetadata({ ...baseRun, enrichedResultsCount: 0 }, 25);
+            expect(metadata.enriched_count).toBe(0);
+        });
+
+        it('omits the key entirely when the column is null — that is the unmeasured case', () => {
+            const metadata = buildSourceMetadata({ ...baseRun, enrichedResultsCount: null }, 25);
+            expect('enriched_count' in metadata).toBe(false);
+        });
+    });
 
     it('converts a normal decimal string usage figure into a number', () => {
         const metadata = buildSourceMetadata({ ...baseRun, apifyUsageUsd: '1.2345' }, 10);
@@ -62,5 +84,28 @@ describe('buildSourceMetadata', () => {
         }, 7);
 
         expect(metadata.hypothesis).toEqual(hypothesis);
+    });
+
+    it('includes a commercial web-presence summary when supplied', () => {
+        const summary = summarizeWebPresence([
+            classifyWebPresence('https://example.com'),
+            classifyWebPresence('https://booksy.com/example'),
+            classifyWebPresence('https://instagram.com/example'),
+            classifyWebPresence(null),
+        ]);
+        const metadata = buildSourceMetadata(baseRun, 4, summary);
+
+        expect(metadata.web_presence).toEqual({
+            owned_website_count: 1,
+            no_owned_website_count: 3,
+            booking_platform_count: 1,
+            by_type: {
+                owned_website: 1,
+                booking_platform: 1,
+                social_profile: 1,
+                none: 1,
+            },
+            booking_platforms: { Booksy: 1 },
+        });
     });
 });
