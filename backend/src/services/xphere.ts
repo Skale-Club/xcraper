@@ -72,7 +72,14 @@ type SearchHistoryRow = typeof searchHistory.$inferSelect;
  * `apify_usage_usd` can be unit tested in isolation from `pushRunToXphere`.
  */
 export function buildSourceMetadata(
-    run: Pick<SearchHistoryRow, 'query' | 'location' | 'apifyUsageUsd' | 'apifyActorId' | 'scrapeType' | 'searchFilters' | 'enrichedResultsCount'>,
+    run:
+        & Pick<SearchHistoryRow, 'query' | 'location' | 'apifyUsageUsd' | 'apifyActorId' | 'scrapeType' | 'searchFilters' | 'enrichedResultsCount'>
+        // `requestedMaxResults` is NOT NULL with a DEFAULT in the live schema, so a row
+        // created through the app always carries a real value here. The `| null` widening
+        // exists only so this function still has a well-defined, non-fabricating answer for
+        // a row that predates the column (or any other caller that genuinely doesn't know) —
+        // see the omission comment below.
+        & { requestedMaxResults: SearchHistoryRow['requestedMaxResults'] | null },
     resultCount: number,
     presenceSummary?: ReturnType<typeof summarizeWebPresence>,
     emailsLostToPlaceholder?: number,
@@ -92,6 +99,18 @@ export function buildSourceMetadata(
         cost_usd,
         result_count: resultCount,
     };
+    // `max_results` is the size the run *asked for* (requestedMaxResults), never the size
+    // it got back (`result_count` above already carries that, and conflating the two was
+    // exactly the bug: a 330-result Boston run was showing Xmail a `requested_limit` of
+    // Xmail's own fallback default because nothing forwarded the real number). Send it
+    // whenever it's known, and never substitute result_count or a hardcoded constant for
+    // it. Omit the key entirely only when it is genuinely unknown — e.g. a historical row
+    // that predates this column — so Xmail's own "unknown" fallback applies instead of us
+    // reporting a fabricated number.
+    if (run.requestedMaxResults !== null && run.requestedMaxResults !== undefined) {
+        const maxResults = Number(run.requestedMaxResults);
+        if (Number.isFinite(maxResults)) metadata.max_results = maxResults;
+    }
     if (run.apifyActorId) metadata.actor_id = run.apifyActorId;
     if (run.scrapeType) metadata.template = run.scrapeType;
     // Unlike cost_usd, ZERO is a real answer here: a `standard` scrape genuinely enriches

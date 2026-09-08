@@ -11,6 +11,7 @@ describe('buildSourceMetadata', () => {
         scrapeType: 'standard',
         searchFilters: null as Record<string, unknown> | null,
         enrichedResultsCount: null as number | null,
+        requestedMaxResults: 50 as number | null,
     };
 
     describe('enriched_count', () => {
@@ -47,6 +48,27 @@ describe('buildSourceMetadata', () => {
         it('omits the key when the caller never measured it', () => {
             const metadata = buildSourceMetadata(baseRun, 25);
             expect('emails_lost_to_placeholder' in metadata).toBe(false);
+        });
+    });
+
+    describe('max_results', () => {
+        it('sends the requested size when the run has one', () => {
+            const metadata = buildSourceMetadata({ ...baseRun, requestedMaxResults: 330 }, 330);
+            expect(metadata.max_results).toBe(330);
+        });
+
+        it('omits the key entirely when requestedMaxResults is null — that is the unknown case', () => {
+            const metadata = buildSourceMetadata({ ...baseRun, requestedMaxResults: null }, 25);
+            expect('max_results' in metadata).toBe(false);
+        });
+
+        it('never substitutes result_count for max_results', () => {
+            // The bug being fixed: a run that asked for 330 results but only got 25 back
+            // (Xmail's own fallback default, forwarded nowhere) must report the size it
+            // asked for, not the size it got.
+            const metadata = buildSourceMetadata({ ...baseRun, requestedMaxResults: 330 }, 25);
+            expect(metadata.max_results).toBe(330);
+            expect(metadata.result_count).toBe(25);
         });
     });
 
