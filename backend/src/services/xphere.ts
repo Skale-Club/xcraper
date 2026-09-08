@@ -3,6 +3,7 @@ import { contacts, searchHistory, users } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { logError } from '../utils/logger.js';
 import { classifyWebPresence, type WebPresenceClassification } from './webPresence.js';
+import { wasEmailRejectedAsPlaceholder } from './emailPlaceholders.js';
 
 // Xphere is the prospecting hub: Xcraper pushes extracted business leads into the
 // caller's Xphere workspace via the public ingestion API (POST /api/v1/prospects),
@@ -74,6 +75,7 @@ export function buildSourceMetadata(
     run: Pick<SearchHistoryRow, 'query' | 'location' | 'apifyUsageUsd' | 'apifyActorId' | 'scrapeType' | 'searchFilters' | 'enrichedResultsCount'>,
     resultCount: number,
     presenceSummary?: ReturnType<typeof summarizeWebPresence>,
+    emailsRejectedAsPlaceholder?: number,
 ): Record<string, unknown> {
     // Drizzle maps `decimal` columns to strings, and the column is nullable
     // (a run that never completed has no usage figure). Send `null` rather
@@ -101,6 +103,14 @@ export function buildSourceMetadata(
         if (Number.isFinite(enriched)) metadata.enriched_count = enriched;
     }
     if (presenceSummary) metadata.web_presence = presenceSummary;
+    // Same semantics as enriched_count above: zero placeholders rejected is a real,
+    // reportable answer (most runs will be zero), so send whenever the caller measured
+    // it and omit only when it genuinely wasn't (e.g. a caller that never counted).
+    if (emailsRejectedAsPlaceholder !== null && emailsRejectedAsPlaceholder !== undefined) {
+        if (Number.isFinite(emailsRejectedAsPlaceholder)) {
+            metadata.emails_rejected_as_placeholder = emailsRejectedAsPlaceholder;
+        }
+    }
     const hypothesis = run.searchFilters?.journey_hypothesis;
     if (hypothesis && typeof hypothesis === 'object' && !Array.isArray(hypothesis)) {
         metadata.hypothesis = hypothesis;
@@ -231,7 +241,12 @@ export async function pushRunToXphere(searchId: string, userId: string): Promise
         key: 'xcraper',
         label: `${run.query} — ${run.location}`,
         external_run_id: searchId,
-        metadata: buildSourceMetadata(run, rows.length, summarizeWebPresence(presences)),
+        metadata: buildSourceMetadata(
+            run,
+            rows.length,
+            summarizeWebPresence(presences),
+            rows.filter((c) => wasEmailRejectedAsPlaceholder(c.rawData)).length,
+        ),
     };
 
     let created = 0;

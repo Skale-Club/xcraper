@@ -159,7 +159,15 @@ function buildContactRow(
         imageUrl: place.imageUrl,
         googleMapsUrl: place.googleMapsUrl,
         placeId: place.placeId,
-        rawData: place.rawData,
+        // A rejected placeholder email (see services/emailPlaceholders.ts) is folded into
+        // rawData rather than getting its own columns: it's audit-trail info nobody filters
+        // or joins on, `rawData` already exists precisely for "extra data about this raw
+        // scrape result", and the Xphere push (services/xphere.ts) only ever needs to *sum*
+        // it back up per run, which reading it out of rawData does just as well as a column
+        // would. Namespaced under `_xcraper` so it can never collide with an Apify field.
+        rawData: place.emailRejectedReason
+            ? { ...place.rawData, _xcraper: { emailRejected: place.emailRejected, emailRejectedReason: place.emailRejectedReason } }
+            : place.rawData,
         isEnriched: !!place.email,
         enrichmentCreditsCharged,
         // Social media

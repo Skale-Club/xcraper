@@ -46,6 +46,41 @@ describe('classifyWebPresence', () => {
     });
 
     it('reports none when no usable URL exists', () => {
-        expect(classifyWebPresence(undefined)).toMatchObject({ type: 'none', sourceUrl: null });
+        expect(classifyWebPresence(undefined)).toMatchObject({ type: 'none', sourceUrl: null, reason: null });
+    });
+
+    // Real Boston/Worcester domains from the 2026-09 run that motivated Fase 33 — six
+    // "owned websites" that weren't, plus the barbershops.net directory that slipped
+    // through as one in both cities.
+    describe('Boston/Worcester false-positive fixtures (Fase 33)', () => {
+        it.each([
+            'https://zincx.top',
+            'https://unkusa.top',
+            'https://moneyus.top',
+        ])('classifies parked low-reputation-TLD domain %s as none, not owned_website', (url) => {
+            expect(classifyWebPresence(url)).toMatchObject({
+                type: 'none',
+                reason: 'junk_tld',
+                ownedWebsiteUrl: null,
+                ownedDomain: null,
+            });
+        });
+
+        it('recognizes a booksy.net subdomain as the Booksy booking platform', () => {
+            expect(classifyWebPresence('https://chichi-barbershop.booksy.net')).toMatchObject({
+                type: 'booking_platform',
+                bookingPlatform: 'Booksy',
+                ownedDomain: null,
+            });
+        });
+
+        it('classifies barbershops.net as a directory listing, not an owned website', () => {
+            expect(classifyWebPresence('https://barbershops.net/salon/example')).toMatchObject({
+                type: 'directory_listing',
+                platform: 'Barbershops.net',
+                ownedWebsiteUrl: null,
+                reason: null,
+            });
+        });
     });
 });

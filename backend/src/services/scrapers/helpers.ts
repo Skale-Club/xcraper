@@ -1,5 +1,6 @@
 import type { NormalizedContact, ScraperGlobalConfig, ScraperRuntimeParams } from './types.js';
 import { extractSocialMediaFromRawData } from '../../utils/socialMedia.js';
+import { resolveContactEmail } from '../emailPlaceholders.js';
 
 /** First non-empty string from a value or an array of values. */
 export function getFirstString(value: unknown): string | undefined {
@@ -91,6 +92,7 @@ export function mapGooglePlace(item: Record<string, unknown>): NormalizedContact
     const lng = getNumber(location?.lng) ?? getNumber(item.longitude);
 
     const social = extractSocialMediaFromRawData(item);
+    const emailResolution = resolveContactEmail(item);
 
     return {
         contactType: 'place',
@@ -101,7 +103,9 @@ export function mapGooglePlace(item: Record<string, unknown>): NormalizedContact
         // `item.url` is normally the Google Maps listing, not the business site.
         // Keep it exclusively in googleMapsUrl so "no website" remains truthful.
         website: getFirstString(item.website),
-        email: getFirstString(item.email) || getFirstString(item.emails),
+        email: emailResolution.email,
+        emailRejected: emailResolution.emailRejected,
+        emailRejectedReason: emailResolution.emailRejectedReason,
         rating: getNumber(item.totalScore) ?? getNumber(item.rating),
         reviewCount: getNumber(item.reviewsCount) ?? getNumber(item.reviews),
         latitude: lat,

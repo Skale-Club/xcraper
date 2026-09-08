@@ -14,12 +14,20 @@ export interface WebPresenceClassification {
     ownedDomain: string | null;
     bookingPlatform: string | null;
     bookingUrl: string | null;
+    /**
+     * Why `type` isn't what a raw URL might suggest — currently only `'junk_tld'`
+     * (a parked/disposable-TLD domain that would otherwise default to
+     * `owned_website`). Null for every other classification, including the
+     * ordinary "no URL at all" `none` case, so a caller can tell "explicitly
+     * excluded" from "nothing found" instead of both looking like silence.
+     */
+    reason: 'junk_tld' | null;
 }
 
 type HostPlatform = { domains: string[]; name: string };
 
 const BOOKING_PLATFORMS: HostPlatform[] = [
-    { domains: ['booksy.com'], name: 'Booksy' },
+    { domains: ['booksy.com', 'booksy.net'], name: 'Booksy' },
     { domains: ['thecut.co'], name: 'TheCut' },
     { domains: ['getsquire.com'], name: 'Squire' },
     { domains: ['glossgenius.com'], name: 'GlossGenius' },
@@ -64,7 +72,24 @@ const DIRECTORY_PLATFORMS: HostPlatform[] = [
     { domains: ['worldorgs.com'], name: 'WorldOrgs' },
     { domains: ['mapstuk.top'], name: 'Maps directory' },
     { domains: ['u77a.top'], name: 'Business directory' },
+    { domains: ['barbershops.net'], name: 'Barbershops.net' },
+    { domains: ['locmaps.com'], name: 'LocMaps' },
+    { domains: ['manta.com'], name: 'Manta' },
+    { domains: ['bbb.org'], name: 'Better Business Bureau' },
 ];
+
+/**
+ * TLDs that are cheap enough to be squatted/parked at scale rather than run a real
+ * business on. Boston evidence: `zincx.top` on three unrelated shops, `unkusa.top`,
+ * `moneyus.top` — none resolved to an actual site, all would have defaulted to
+ * `owned_website` without this check.
+ */
+const LOW_REPUTATION_TLDS = new Set(['top', 'xyz', 'icu', 'click', 'online', 'buzz', 'cam', 'rest', 'monster']);
+
+function hasLowReputationTld(host: string): boolean {
+    const tld = host.split('.').pop();
+    return !!tld && LOW_REPUTATION_TLDS.has(tld);
+}
 
 const LINK_HUBS: HostPlatform[] = [
     { domains: ['linktr.ee'], name: 'Linktree' },
@@ -123,6 +148,7 @@ export function classifyWebPresence(
             ownedDomain: null,
             bookingPlatform: null,
             bookingUrl: null,
+            reason: null,
         };
     }
 
@@ -136,6 +162,7 @@ export function classifyWebPresence(
             ownedDomain: null,
             bookingPlatform: booking.name,
             bookingUrl: parsed.url,
+            reason: null,
         };
     }
 
@@ -149,6 +176,7 @@ export function classifyWebPresence(
             ownedDomain: null,
             bookingPlatform: null,
             bookingUrl: null,
+            reason: null,
         };
     }
 
@@ -162,6 +190,7 @@ export function classifyWebPresence(
             ownedDomain: null,
             bookingPlatform: null,
             bookingUrl: null,
+            reason: null,
         };
     }
 
@@ -175,6 +204,23 @@ export function classifyWebPresence(
             ownedDomain: null,
             bookingPlatform: null,
             bookingUrl: null,
+            reason: null,
+        };
+    }
+
+    // A "website" on a parked/disposable TLD is not a business asset — classify it
+    // as no presence rather than let it default to owned_website, but keep the URL
+    // and say why via `reason` so it doesn't read as "no web presence at all".
+    if (hasLowReputationTld(parsed.host)) {
+        return {
+            type: 'none',
+            sourceUrl: parsed.url,
+            platform: null,
+            ownedWebsiteUrl: null,
+            ownedDomain: null,
+            bookingPlatform: null,
+            bookingUrl: null,
+            reason: 'junk_tld',
         };
     }
 
@@ -186,5 +232,6 @@ export function classifyWebPresence(
         ownedDomain: parsed.host,
         bookingPlatform: null,
         bookingUrl: null,
+        reason: null,
     };
 }

@@ -81,6 +81,11 @@ export interface NormalizedContact {
     phone?: string;
     website?: string;
     email?: string;
+    // Set when the only email candidate(s) the source offered were website-template
+    // placeholders (see services/emailPlaceholders.ts) — `email` stays undefined but
+    // the rejection is not silent, so email coverage numbers stay honest.
+    emailRejected?: string;
+    emailRejectedReason?: 'placeholder';
 
     // Place-specific
     rating?: number;
