@@ -116,6 +116,16 @@ export function collectEmailCandidates(item: { email?: unknown; emails?: unknown
  * Only reports `emailRejectedReason` when NO candidate survives — if a later
  * candidate resolves to a real address, the placeholder was correctly skipped
  * and there is nothing to flag.
+ *
+ * This is deliberate, not an oversight: `[placeholder, real]` returns `{ email: real }`
+ * with NO rejection record, because coverage was never lost — the business still ends
+ * up with a usable email. `[placeholder]` alone returns a rejection record, because that
+ * business is left with nothing. The run-level metric built from this (see
+ * `emails_lost_to_placeholder` in `services/xphere.ts`) answers "how many businesses ended
+ * up with no email because the only thing on offer was template filler" — it is NOT a count
+ * of every placeholder string seen. Do not change this to count every rejected candidate;
+ * that would turn a "missing email" metric into a "placeholder sighted" metric and make it
+ * lie about coverage loss.
  */
 export function resolveContactEmail(item: { email?: unknown; emails?: unknown }): EmailResolution {
     const candidates = collectEmailCandidates(item);

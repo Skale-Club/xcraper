@@ -7,6 +7,7 @@ import type {
     NormalizedContact,
 } from '../types.js';
 import { getFirstString, pruneEmpty, toStringArray } from '../helpers.js';
+import { isPlaceholderEmail, resolveContactEmail } from '../../emailPlaceholders.js';
 import {
     SENIORITY_OPTIONS,
     COMPANY_SIZE_OPTIONS,
@@ -44,6 +45,24 @@ function mapLead(item: Record<string, unknown>): NormalizedContact {
     const lastName = getFirstString(item.last_name);
     const fullName = getFirstString(item.full_name) || [firstName, lastName].filter(Boolean).join(' ').trim();
 
+    // The template defaults `email_status` to ['validated'], but that's a user-facing
+    // multiselect (see b2bLeadsOptions.ts: EMAIL_STATUS_OPTIONS) — a user can loosen it to
+    // include unverified/guessed statuses, so a placeholder can flow in from this actor the
+    // same way it can from Google Maps. Route the primary email through the same denylist
+    // (services/emailPlaceholders.ts) rather than trusting the actor's own quality label.
+    const emailResolution = resolveContactEmail({ email: item.email });
+
+    const personalEmailCandidate = getFirstString(item.personal_email);
+    // personalEmail is filtered too, but a rejected one is dropped silently — NOT recorded via
+    // emailRejected/emailRejectedReason. Those fields feed the run-level "businesses that lost
+    // their contact email" metric (emails_lost_to_placeholder, services/xphere.ts), and here
+    // `email` is always the primary contact channel for this lead while personalEmail is a
+    // secondary/optional one. Losing a secondary field is not the same loss as losing the
+    // contact channel the metric is about, so it must not inflate that count.
+    const personalEmail = personalEmailCandidate && !isPlaceholderEmail(personalEmailCandidate)
+        ? personalEmailCandidate
+        : undefined;
+
     return {
         contactType: 'b2b_lead',
         title: fullName || getFirstString(item.company_name) || '',
@@ -52,13 +71,15 @@ function mapLead(item: Record<string, unknown>): NormalizedContact {
         // mobile_number is paid-plan only; fall back to company phone
         phone: getFirstString(item.mobile_number) || getFirstString(item.company_phone),
         website: getFirstString(item.company_website) || getFirstString(item.company_domain),
-        email: getFirstString(item.email),
+        email: emailResolution.email,
+        emailRejected: emailResolution.emailRejected,
+        emailRejectedReason: emailResolution.emailRejectedReason,
         // person
         firstName,
         lastName,
         jobTitle: getFirstString(item.job_title),
         seniority: getFirstString(item.seniority_level),
-        personalEmail: getFirstString(item.personal_email),
+        personalEmail,
         linkedin: getFirstString(item.linkedin),
         // company
         companyName: getFirstString(item.company_name),

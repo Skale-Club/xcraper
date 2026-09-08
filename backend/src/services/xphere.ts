@@ -75,7 +75,7 @@ export function buildSourceMetadata(
     run: Pick<SearchHistoryRow, 'query' | 'location' | 'apifyUsageUsd' | 'apifyActorId' | 'scrapeType' | 'searchFilters' | 'enrichedResultsCount'>,
     resultCount: number,
     presenceSummary?: ReturnType<typeof summarizeWebPresence>,
-    emailsRejectedAsPlaceholder?: number,
+    emailsLostToPlaceholder?: number,
 ): Record<string, unknown> {
     // Drizzle maps `decimal` columns to strings, and the column is nullable
     // (a run that never completed has no usage figure). Send `null` rather
@@ -103,12 +103,22 @@ export function buildSourceMetadata(
         if (Number.isFinite(enriched)) metadata.enriched_count = enriched;
     }
     if (presenceSummary) metadata.web_presence = presenceSummary;
-    // Same semantics as enriched_count above: zero placeholders rejected is a real,
-    // reportable answer (most runs will be zero), so send whenever the caller measured
+    // Same semantics as enriched_count above: zero businesses lost to a placeholder is a
+    // real, reportable answer (most runs will be zero), so send whenever the caller measured
     // it and omit only when it genuinely wasn't (e.g. a caller that never counted).
-    if (emailsRejectedAsPlaceholder !== null && emailsRejectedAsPlaceholder !== undefined) {
-        if (Number.isFinite(emailsRejectedAsPlaceholder)) {
-            metadata.emails_rejected_as_placeholder = emailsRejectedAsPlaceholder;
+    //
+    // Named `emails_lost_to_placeholder`, not `emails_rejected_as_placeholder`: it counts
+    // businesses that ended up with NO email because every candidate they offered was
+    // template filler (see the doc comment on `resolveContactEmail` in
+    // `services/emailPlaceholders.ts`). A placeholder that gets superseded by a later real
+    // candidate is never counted here, because that business did not lose email coverage —
+    // only a genuine loss increments this number. The old name read as "how many placeholder
+    // strings did we see", which is a different (and larger) number than what this code
+    // actually computes; the rename exists so the metric cannot be misread later. Nothing
+    // downstream consumes this key yet, so renaming it is free.
+    if (emailsLostToPlaceholder !== null && emailsLostToPlaceholder !== undefined) {
+        if (Number.isFinite(emailsLostToPlaceholder)) {
+            metadata.emails_lost_to_placeholder = emailsLostToPlaceholder;
         }
     }
     const hypothesis = run.searchFilters?.journey_hypothesis;

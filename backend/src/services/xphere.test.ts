@@ -33,20 +33,20 @@ describe('buildSourceMetadata', () => {
         });
     });
 
-    describe('emails_rejected_as_placeholder', () => {
+    describe('emails_lost_to_placeholder', () => {
         it('sends the count when the caller measured it', () => {
             const metadata = buildSourceMetadata(baseRun, 25, undefined, 4);
-            expect(metadata.emails_rejected_as_placeholder).toBe(4);
+            expect(metadata.emails_lost_to_placeholder).toBe(4);
         });
 
-        it('sends an explicit zero, because zero rejections is a real answer (the common case)', () => {
+        it('sends an explicit zero, because zero losses is a real answer (the common case)', () => {
             const metadata = buildSourceMetadata(baseRun, 25, undefined, 0);
-            expect(metadata.emails_rejected_as_placeholder).toBe(0);
+            expect(metadata.emails_lost_to_placeholder).toBe(0);
         });
 
         it('omits the key when the caller never measured it', () => {
             const metadata = buildSourceMetadata(baseRun, 25);
-            expect('emails_rejected_as_placeholder' in metadata).toBe(false);
+            expect('emails_lost_to_placeholder' in metadata).toBe(false);
         });
     });
 

@@ -78,4 +78,27 @@ describe('resolveContactEmail', () => {
             email: 'owner@buffalocuts.com',
         });
     });
+
+    describe('the "lost coverage" metric semantics', () => {
+        // Pins the exact behaviour the `emails_lost_to_placeholder` metric (services/xphere.ts)
+        // depends on: a superseded placeholder must NOT be counted, because the business did not
+        // lose its email; only a candidate list that is placeholders all the way down counts.
+        it('[placeholder, real] yields the real email and records no rejection at all', () => {
+            const result = resolveContactEmail({
+                email: 'filler@godaddy.com',
+                emails: ['owner@buffalocuts.com'],
+            });
+            expect(result).toEqual({ email: 'owner@buffalocuts.com' });
+            expect(result.emailRejected).toBeUndefined();
+            expect(result.emailRejectedReason).toBeUndefined();
+        });
+
+        it('[placeholder] alone yields a rejection record — this business lost its email', () => {
+            const result = resolveContactEmail({ email: 'filler@godaddy.com' });
+            expect(result).toEqual({
+                emailRejected: 'filler@godaddy.com',
+                emailRejectedReason: 'placeholder',
+            });
+        });
+    });
 });
