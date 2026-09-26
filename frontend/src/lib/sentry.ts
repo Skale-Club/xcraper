@@ -27,7 +27,9 @@ export async function initSentry() {
         tracesSampleRate: 0.1, // 10% of transactions
 
         // Session Replay
-        replaysSessionSampleRate: 0.1, // 10% of sessions
+        // Only record replays when an error happens: session replays of normal
+        // traffic burned the org-wide Sentry replay quota.
+        replaysSessionSampleRate: 0, // no sampling of normal sessions
         replaysOnErrorSampleRate: 1.0, // 100% of errors
 
         // Filter out sensitive data
