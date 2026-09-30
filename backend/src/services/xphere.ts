@@ -127,14 +127,18 @@ export function buildSourceMetadata(
     // it and omit only when it genuinely wasn't (e.g. a caller that never counted).
     //
     // Named `emails_lost_to_placeholder`, not `emails_rejected_as_placeholder`: it counts
-    // businesses that ended up with NO email because every candidate they offered was
-    // template filler (see the doc comment on `resolveContactEmail` in
-    // `services/emailPlaceholders.ts`). A placeholder that gets superseded by a later real
-    // candidate is never counted here, because that business did not lose email coverage —
-    // only a genuine loss increments this number. The old name read as "how many placeholder
-    // strings did we see", which is a different (and larger) number than what this code
-    // actually computes; the rename exists so the metric cannot be misread later. Nothing
-    // downstream consumes this key yet, so renaming it is free.
+    // businesses that ended up with NO email because every candidate they offered was junk
+    // — template filler OR an address on a booking platform's own domain, e.g.
+    // help.us@booksy.com (see the doc comment on `resolveContactEmail` and
+    // `wasEmailRejectedAsPlaceholder` in `services/emailPlaceholders.ts`). A junk candidate
+    // that gets superseded by a later real one is never counted here, because that business
+    // did not lose email coverage — only a genuine loss increments this number. The old name
+    // read as "how many placeholder strings did we see", which is a different (and larger)
+    // number than what this code actually computes; the rename exists so the metric cannot be
+    // misread later. The name still says "placeholder" even though it also counts
+    // platform-domain losses, since Xphere/Xmail already key on it — see
+    // `wasEmailRejectedAsPlaceholder`'s doc comment for why the count was widened instead of
+    // the key renamed again.
     if (emailsLostToPlaceholder !== null && emailsLostToPlaceholder !== undefined) {
         if (Number.isFinite(emailsLostToPlaceholder)) {
             metadata.emails_lost_to_placeholder = emailsLostToPlaceholder;

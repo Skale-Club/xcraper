@@ -35,6 +35,47 @@ const PLACEHOLDER_DOMAINS = new Set([
 const PLACEHOLDER_LOCAL_PARTS = new Set(['test', 'noreply', 'no-reply', 'donotreply']);
 
 /**
+ * Domains belonging to a scheduling/booking marketplace platform rather than the
+ * business itself. When a local business (a barbershop, in the evidence below)
+ * has no site of its own, the "website" Google Maps surfaces for it is often its
+ * listing page on one of these platforms instead — and the contact email scraped
+ * off that page is the platform's own inbox, not the business's.
+ *
+ * Evidence from production (measured 2026-09-30): `help.us@booksy.com` is
+ * recorded as the contact email for 11 different barbershops (Biig Style,
+ * Master Barbers, Longwood Barbershop, Smitty's Barbershop, and others) — a cold
+ * email to that address would reach Booksy's support inbox 11 times, never any
+ * of the businesses. Separately, `privacy@pocketsuite.io` is recorded as a
+ * barbershop's contact email for the same reason (PocketSuite). Neither is
+ * caught by paid mailbox verification, because the inbox is genuinely real and
+ * accepts mail — only knowing *whose* domain it is catches it, which is exactly
+ * what this set is for.
+ *
+ * Matches the domain itself and any subdomain (a business-specific page like
+ * `chichi-barbershop.booksy.net` is still Booksy's domain, not the business's —
+ * see `webPresence.ts`'s `BOOKING_PLATFORMS`, which classifies the equivalent
+ * website URLs on the same reasoning).
+ */
+const PLATFORM_EMAIL_DOMAINS = new Set([
+    'booksy.com',
+    'booksy.net',
+    'vagaro.com',
+    'styleseat.com',
+    'schedulicity.com',
+    'fresha.com',
+    'setmore.com',
+    'squareup.com',
+    'square.site',
+    'mindbodyonline.com',
+    'glossgenius.com',
+    'genbook.com',
+    'acuityscheduling.com',
+    'zenoti.com',
+    'boulevard.io',
+    'pocketsuite.io',
+]);
+
+/**
  * Generic template domains of the shape "yourdomain.com", "mysite.net",
  * "website.com.br" — the exact string a page builder ships as a fill-in-the-blank
  * example, not a business that happens to be named "Domain" or "Company".
@@ -71,12 +112,33 @@ export function isPlaceholderEmail(email: string): boolean {
     return false;
 }
 
+/**
+ * Whether an email's domain belongs to a scheduling/booking marketplace platform
+ * (Booksy, PocketSuite, etc.) rather than the business itself — see
+ * `PLATFORM_EMAIL_DOMAINS` above for the evidence. Deliberately a separate check
+ * from `isPlaceholderEmail`: the address is not template filler and the inbox is
+ * real, it is just owned by the wrong company, which is why callers that need to
+ * tell the two apart (see `resolveContactEmail`'s `emailRejectedReason`) can.
+ */
+export function isPlatformDomainEmail(email: string): boolean {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !trimmed.includes('@')) return false;
+
+    const { domain } = splitEmail(trimmed);
+    if (!domain) return false;
+
+    return [...PLATFORM_EMAIL_DOMAINS].some((denylisted) => domainMatches(domain, denylisted));
+}
+
+/** Why a candidate email was rejected instead of resolved to a usable contact address. */
+export type EmailRejectionReason = 'placeholder' | 'platform_domain';
+
 export interface EmailResolution {
-    /** The first non-placeholder candidate, if any. */
+    /** The first candidate that is neither a placeholder nor a platform-owned inbox, if any. */
     email?: string;
-    /** The placeholder value that was discarded, kept for coverage honesty. */
+    /** The rejected value that was discarded, kept for coverage honesty. */
     emailRejected?: string;
-    emailRejectedReason?: 'placeholder';
+    emailRejectedReason?: EmailRejectionReason;
 }
 
 /**
@@ -108,52 +170,72 @@ export function collectEmailCandidates(item: { email?: unknown; emails?: unknown
 }
 
 /**
- * Pick the first real (non-placeholder) email out of every candidate the item
- * offers. When the first candidate is a placeholder, the next one is tried
- * before giving up — a listing can legitimately have both a template filler
- * address and a real one further down `item.emails`.
+ * Pick the first usable email out of every candidate the item offers, skipping
+ * both template-filler placeholders and addresses on a booking-platform's own
+ * domain (see `isPlaceholderEmail` / `isPlatformDomainEmail`). When the first
+ * candidate is rejected for either reason, the next one is tried before giving
+ * up — a listing can legitimately have both a junk address and a real one
+ * further down `item.emails`.
  *
  * Only reports `emailRejectedReason` when NO candidate survives — if a later
- * candidate resolves to a real address, the placeholder was correctly skipped
- * and there is nothing to flag.
+ * candidate resolves to a real address, the earlier one was correctly skipped
+ * and there is nothing to flag. The reported reason is whichever the FIRST
+ * candidate was rejected for, since that is the one recorded as `emailRejected`.
  *
- * This is deliberate, not an oversight: `[placeholder, real]` returns `{ email: real }`
+ * This is deliberate, not an oversight: `[junk, real]` returns `{ email: real }`
  * with NO rejection record, because coverage was never lost — the business still ends
- * up with a usable email. `[placeholder]` alone returns a rejection record, because that
+ * up with a usable email. `[junk]` alone returns a rejection record, because that
  * business is left with nothing. The run-level metric built from this (see
  * `emails_lost_to_placeholder` in `services/xphere.ts`) answers "how many businesses ended
- * up with no email because the only thing on offer was template filler" — it is NOT a count
- * of every placeholder string seen. Do not change this to count every rejected candidate;
- * that would turn a "missing email" metric into a "placeholder sighted" metric and make it
- * lie about coverage loss.
+ * up with no email because everything on offer was junk (template filler or a
+ * platform's own inbox)" — it is NOT a count of every rejected string seen. Do not change
+ * this to count every rejected candidate; that would turn a "missing email" metric into a
+ * "junk sighted" metric and make it lie about coverage loss.
  */
 export function resolveContactEmail(item: { email?: unknown; emails?: unknown }): EmailResolution {
     const candidates = collectEmailCandidates(item);
     let firstRejected: string | undefined;
+    let firstRejectedReason: EmailRejectionReason | undefined;
 
     for (const candidate of candidates) {
-        if (isPlaceholderEmail(candidate)) {
-            if (firstRejected === undefined) firstRejected = candidate;
+        const reason: EmailRejectionReason | null = isPlaceholderEmail(candidate)
+            ? 'placeholder'
+            : isPlatformDomainEmail(candidate)
+                ? 'platform_domain'
+                : null;
+
+        if (reason) {
+            if (firstRejected === undefined) {
+                firstRejected = candidate;
+                firstRejectedReason = reason;
+            }
             continue;
         }
         return { email: candidate };
     }
 
     if (firstRejected !== undefined) {
-        return { emailRejected: firstRejected, emailRejectedReason: 'placeholder' };
+        return { emailRejected: firstRejected, emailRejectedReason: firstRejectedReason };
     }
 
     return {};
 }
 
 /**
- * Whether a `contacts.raw_data` value carries the placeholder-rejection marker
- * `buildContactRow` (src/routes/search.ts) writes under `_xcraper`. Lets a run's
- * rejected-placeholder count be recomputed later from persisted rows, e.g. when
- * building the Xphere push metadata for an already-scraped run.
+ * Whether a `contacts.raw_data` value carries a lost-email-coverage marker
+ * `buildContactRow` (src/routes/search.ts) writes under `_xcraper` — either
+ * reason `resolveContactEmail` can report (`'placeholder'` or
+ * `'platform_domain'`). Both mean the same thing for this purpose: the business
+ * ended up with no usable email because every candidate was junk. Lets a run's
+ * lost-email count be recomputed later from persisted rows, e.g. when building
+ * the Xphere push metadata for an already-scraped run. Despite the name (kept
+ * for the metric it feeds, `emails_lost_to_placeholder` in `services/xphere.ts`),
+ * this intentionally also counts `'platform_domain'` rejections — narrowing it
+ * back to literal placeholders would silently undercount exactly the kind of
+ * loss this function exists to measure.
  */
 export function wasEmailRejectedAsPlaceholder(rawData: unknown): boolean {
     if (typeof rawData !== 'object' || rawData === null) return false;
     const marker = (rawData as { _xcraper?: { emailRejectedReason?: unknown } })._xcraper;
-    return marker?.emailRejectedReason === 'placeholder';
+    return marker?.emailRejectedReason === 'placeholder' || marker?.emailRejectedReason === 'platform_domain';
 }

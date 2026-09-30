@@ -159,8 +159,8 @@ function buildContactRow(
         imageUrl: place.imageUrl,
         googleMapsUrl: place.googleMapsUrl,
         placeId: place.placeId,
-        // A rejected placeholder email (see services/emailPlaceholders.ts) is folded into
-        // rawData rather than getting its own columns: it's audit-trail info nobody filters
+        // A rejected email — placeholder or platform-domain (see services/emailPlaceholders.ts)
+        // — is folded into rawData rather than getting its own columns: it's audit-trail info nobody filters
         // or joins on, `rawData` already exists precisely for "extra data about this raw
         // scrape result", and the Xphere push (services/xphere.ts) only ever needs to *sum*
         // it back up per run, which reading it out of rawData does just as well as a column

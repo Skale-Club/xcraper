@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPlaceholderEmail, resolveContactEmail } from './emailPlaceholders.js';
+import { isPlaceholderEmail, isPlatformDomainEmail, resolveContactEmail, wasEmailRejectedAsPlaceholder } from './emailPlaceholders.js';
 
 describe('isPlaceholderEmail', () => {
     it.each([
@@ -33,6 +33,38 @@ describe('isPlaceholderEmail', () => {
         'test.results@realco.com', // local part starts with "test" but isn't exactly "test"
     ])('does not flag a real-looking address %s', (email) => {
         expect(isPlaceholderEmail(email)).toBe(false);
+    });
+});
+
+describe('isPlatformDomainEmail', () => {
+    it.each([
+        'help.us@booksy.com', // production evidence: recorded as the contact email for 11 different barbershops
+        'HELP.US@BOOKSY.COM',
+        'support@chichi-barbershop.booksy.net', // subdomain of a denylisted platform domain
+        'support@vagaro.com',
+        'billing@styleseat.com',
+        'help@schedulicity.com',
+        'hello@fresha.com',
+        'support@setmore.com',
+        'no-reply@squareup.com',
+        'hello@square.site',
+        'support@mindbodyonline.com',
+        'help@glossgenius.com',
+        'support@genbook.com',
+        'help@acuityscheduling.com',
+        'support@zenoti.com',
+        'help@boulevard.io',
+        'privacy@pocketsuite.io', // production evidence: recorded as a barbershop's contact email
+    ])('flags %s as a booking-platform address, not the business\'s', (email) => {
+        expect(isPlatformDomainEmail(email)).toBe(true);
+    });
+
+    it.each([
+        'owner@minhabarbearia.com',
+        'owner@realbarbershop.net',
+        'contact@notbooksy.com', // must not match on a substring of a denylisted domain
+    ])('does not flag a real-looking address %s', (email) => {
+        expect(isPlatformDomainEmail(email)).toBe(false);
     });
 });
 
@@ -100,5 +132,64 @@ describe('resolveContactEmail', () => {
                 emailRejectedReason: 'placeholder',
             });
         });
+    });
+
+    describe('platform-domain rejection', () => {
+        // Same fall-through and coverage-honesty behaviour as the placeholder case above, but
+        // for an address on a booking platform's own domain rather than template filler.
+        it('rejects help.us@booksy.com and records why', () => {
+            const result = resolveContactEmail({ email: 'help.us@booksy.com' });
+            expect(result).toEqual({
+                emailRejected: 'help.us@booksy.com',
+                emailRejectedReason: 'platform_domain',
+            });
+        });
+
+        it('accepts a real business email untouched', () => {
+            expect(resolveContactEmail({ email: 'owner@minhabarbearia.com' })).toEqual({
+                email: 'owner@minhabarbearia.com',
+            });
+        });
+
+        it('rejects a platform subdomain the same way as the bare domain', () => {
+            const result = resolveContactEmail({ email: 'support@chichi-barbershop.booksy.net' });
+            expect(result).toEqual({
+                emailRejected: 'support@chichi-barbershop.booksy.net',
+                emailRejectedReason: 'platform_domain',
+            });
+        });
+
+        it('falls through to a real candidate further down item.emails', () => {
+            const result = resolveContactEmail({
+                email: 'help.us@booksy.com',
+                emails: ['owner@minhabarbearia.com'],
+            });
+            expect(result).toEqual({ email: 'owner@minhabarbearia.com' });
+            expect(result.emailRejected).toBeUndefined();
+            expect(result.emailRejectedReason).toBeUndefined();
+        });
+
+        it('rejects the pocketsuite.io evidence case the same way', () => {
+            expect(resolveContactEmail({ email: 'privacy@pocketsuite.io' })).toEqual({
+                emailRejected: 'privacy@pocketsuite.io',
+                emailRejectedReason: 'platform_domain',
+            });
+        });
+    });
+});
+
+describe('wasEmailRejectedAsPlaceholder', () => {
+    it('is true for a persisted placeholder-rejection marker', () => {
+        expect(wasEmailRejectedAsPlaceholder({ _xcraper: { emailRejectedReason: 'placeholder' } })).toBe(true);
+    });
+
+    it('is also true for a persisted platform-domain-rejection marker — both are lost coverage', () => {
+        expect(wasEmailRejectedAsPlaceholder({ _xcraper: { emailRejectedReason: 'platform_domain' } })).toBe(true);
+    });
+
+    it('is false when there is no rejection marker', () => {
+        expect(wasEmailRejectedAsPlaceholder({})).toBe(false);
+        expect(wasEmailRejectedAsPlaceholder(null)).toBe(false);
+        expect(wasEmailRejectedAsPlaceholder(undefined)).toBe(false);
     });
 });
