@@ -5,10 +5,9 @@ import { requireAuth } from '../middleware/auth.js';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { isXphereConfiguredForUser, pushRunToXphere } from '../services/xphere.js';
+import { getXphereUrl } from '../config/urls.js';
 
 const router = Router();
-
-const DEFAULT_XPHERE_API_URL = 'https://xphere.app';
 
 // ── Xphere integration: per-user API key ────────────────────────────────────────
 // Each user stores their own Xphere API key (xph_... with prospects:write) so
@@ -69,7 +68,7 @@ router.get('/xphere/key', requireAuth, async (req, res: Response): Promise<void>
     res.json({
         configured: hasKey,
         keyPreview: hasKey ? maskKey(user!.apiKey as string) : null,
-        apiUrl: user?.apiUrl || DEFAULT_XPHERE_API_URL,
+        apiUrl: user?.apiUrl || getXphereUrl(),
     });
 });
 
@@ -90,7 +89,7 @@ router.put('/xphere/key', requireAuth, async (req, res: Response): Promise<void>
         return;
     }
     const apiKey = parsed.data.apiKey;
-    const apiUrl = (parsed.data.apiUrl || DEFAULT_XPHERE_API_URL).replace(/\/$/, '');
+    const apiUrl = (parsed.data.apiUrl || getXphereUrl()).replace(/\/$/, '');
 
     const probe = await probeXphereKey(apiUrl, apiKey);
     if (probe === 'unauthorized') {

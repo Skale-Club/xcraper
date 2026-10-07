@@ -4,18 +4,17 @@ import { eq, and } from 'drizzle-orm';
 import { logError } from '../utils/logger.js';
 import { classifyWebPresence, type WebPresenceClassification } from './webPresence.js';
 import { wasEmailRejectedAsPlaceholder } from './emailPlaceholders.js';
+import { getXphereUrl, normalizeBaseUrl } from '../config/urls.js';
 
 // Xphere is the prospecting hub: Xcraper pushes extracted business leads into the
 // caller's Xphere workspace via the public ingestion API (POST /api/v1/prospects),
 // authenticated with an Xphere API key (xph_...) holding the prospects:write scope.
 //
 // Configuration is environment-driven (no hardcoded domains, per the integration
-// contract): set XPHERE_API_URL (defaults to the canonical production origin) and
-// XPHERE_API_KEY for the deployment.
+// contract): set XPHERE_API_URL (resolved in config/urls.ts, which holds the
+// canonical production default) and XPHERE_API_KEY for the deployment.
 
-const DEFAULT_XPHERE_API_URL = 'https://xphere.app';
 const ENV_XPHERE_API_KEY = process.env.XPHERE_API_KEY || '';
-const ENV_XPHERE_API_URL = process.env.XPHERE_API_URL || '';
 
 // The ingestion endpoint accepts up to 1000 records per call; stay under it.
 const BATCH_SIZE = 500;
@@ -37,9 +36,7 @@ export async function resolveXphereConfig(userId: string): Promise<XphereConfig 
     const apiKey = (user?.apiKey || ENV_XPHERE_API_KEY || '').trim();
     if (!apiKey) return null;
 
-    const apiUrl = (user?.apiUrl || ENV_XPHERE_API_URL || DEFAULT_XPHERE_API_URL)
-        .trim()
-        .replace(/\/$/, '');
+    const apiUrl = normalizeBaseUrl(user?.apiUrl) || getXphereUrl();
     return { apiUrl, apiKey };
 }
 

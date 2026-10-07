@@ -1,0 +1,19 @@
+# Build context is the repository root for both Dockerfiles. Keep it small.
+.git
+.github
+.paul
+.vercel
+**/node_modules
+**/dist
+**/logs
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+plan
+supabase
+docs
+api
+
+
+npm-debug.log*

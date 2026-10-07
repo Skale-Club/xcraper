@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
-
-const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+import { getApiBaseUrl } from './config';
 
 export function getApiUrl(path: string): string {
     if (/^https?:\/\//.test(path)) {
@@ -11,8 +10,10 @@ export function getApiUrl(path: string): string {
         ? path
         : `/api${path}`;
 
-    return API_BASE_URL
-        ? `${API_BASE_URL}${normalizedPath}`
+    const apiBaseUrl = getApiBaseUrl();
+
+    return apiBaseUrl
+        ? `${apiBaseUrl}${normalizedPath}`
         : normalizedPath;
 }
 

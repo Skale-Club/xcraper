@@ -1,7 +1,11 @@
 import * as winston from 'winston';
 import * as path from 'path';
 
-const isServerlessRuntime = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+// Serverless runtimes have a read-only filesystem. Containers should log to stdout only
+// (LOG_TO_FILE=false), where Docker/Coolify collects and rotates it.
+const isServerlessRuntime = process.env.VERCEL === '1'
+    || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME)
+    || process.env.LOG_TO_FILE === 'false';
 
 // Define log format
 const logFormat = winston.format.combine(

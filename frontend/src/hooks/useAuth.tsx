@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api';
+import { appUrl } from '@/lib/config';
 
 // Extended user type with app-specific fields
 export interface AppUser {
@@ -245,7 +246,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: `${window.location.origin}/auth/callback`,
+                    redirectTo: appUrl('/auth/callback'),
                 },
             });
 
@@ -264,7 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'github',
                 options: {
-                    redirectTo: `${window.location.origin}/auth/callback`,
+                    redirectTo: appUrl('/auth/callback'),
                 },
             });
 
@@ -288,7 +289,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const resetPassword = async (email: string, captchaToken?: string): Promise<{ error: string | null }> => {
         try {
             const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: `${window.location.origin}/auth/reset-password`,
+                redirectTo: appUrl('/auth/reset-password'),
                 captchaToken,
             });
 

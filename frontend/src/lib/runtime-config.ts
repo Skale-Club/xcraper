@@ -1,4 +1,5 @@
 import { getApiUrl } from './api';
+import { getAppOrigin } from './config';
 
 type PublicRuntimeConfigResponse = {
     settings: {
@@ -94,7 +95,7 @@ function removeMeta(selector: string) {
 }
 
 function resolveAppAsset(url: string | null | undefined, fallbackPath: string) {
-    return url || new URL(fallbackPath, window.location.origin).toString();
+    return url || new URL(fallbackPath, getAppOrigin()).toString();
 }
 
 function applyManifest(config: PublicRuntimeConfigResponse) {

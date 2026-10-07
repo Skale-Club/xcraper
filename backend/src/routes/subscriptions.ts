@@ -7,6 +7,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { z } from 'zod';
 import Stripe from 'stripe';
 import { createPortalSession, stripe } from '../services/stripe.js';
+import { appUrl } from '../config/urls.js';
 
 const router = Router();
 
@@ -559,8 +560,8 @@ router.post('/subscribe', requireAuth, async (req: Request, res: Response) => {
                     quantity: 1,
                 },
             ],
-            success_url: `${process.env.FRONTEND_URL}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.FRONTEND_URL}/billing?checkout=canceled`,
+            success_url: appUrl('/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}'),
+            cancel_url: appUrl('/billing?checkout=canceled'),
             metadata: {
                 userId: user.id,
                 planId: plan.id,

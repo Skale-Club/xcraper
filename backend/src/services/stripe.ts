@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { db } from '../db/index.js';
 import { users, creditTransactions, creditPackages, billingEvents } from '../db/schema.js';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { appUrl } from '../config/urls.js';
 
 // Initialize Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -18,7 +19,6 @@ export const stripe = stripeSecretKey
     })
     : null;
 
-const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 function getPaymentsWebhookSecret(): string | null {
     return process.env.STRIPE_PAYMENTS_WEBHOOK_SECRET
@@ -341,8 +341,8 @@ export async function createCheckoutSession(
             packageId,
             credits: creditPackage.credits.toString(),
         },
-        success_url: `${frontendUrl}/billing?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${frontendUrl}/billing?payment=canceled`,
+        success_url: appUrl('/billing?payment=success&session_id={CHECKOUT_SESSION_ID}'),
+        cancel_url: appUrl('/billing?payment=canceled'),
     });
 
     return {
@@ -361,7 +361,7 @@ export async function createPortalSession(
 
     const session = await stripe.billingPortal.sessions.create({
         customer: customerId,
-        return_url: `${frontendUrl}/billing`,
+        return_url: appUrl('/billing'),
     });
 
     return {

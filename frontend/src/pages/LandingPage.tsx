@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { settingsApi, subscriptionApi } from '@/lib/api';
 import { useAuthDialog } from '@/hooks/useAuthDialog';
+import { getAppHost } from '@/lib/config';
 import {
     Search,
     Shield,
@@ -369,7 +370,7 @@ export default function LandingPage() {
                                             <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
                                         </div>
                                         <div className="flex-1 ml-3 h-6 bg-slate-900/50 rounded-lg flex items-center px-3 text-[10px] text-slate-500 font-mono">
-                                            xcraper.skale.club/app/search
+                                            {getAppHost()}/app/search
                                         </div>
                                     </div>
 

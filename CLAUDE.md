@@ -115,8 +115,12 @@ GOOGLE_PLACES_API_KEY                # Google Places API (backend)
 STRIPE_SECRET_KEY                    # Stripe secret key (sk_live_... in prod)
 STRIPE_PAYMENTS_WEBHOOK_SECRET       # Signing secret for /api/payments/webhook
 STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET  # Signing secret for /api/subscriptions/webhook
-FRONTEND_URL                         # http://localhost:5173 (dev) / https://xcraper.skale.club (prod)
-BACKEND_URL                          # http://localhost:3001 (dev)
+FRONTEND_URL                         # Public app origin (Stripe return URLs + CORS). http://localhost:5173 (dev) / https://xcraper.skale.club (prod)
+BACKEND_URL                          # Public API origin (Apify webhook target); falls back to FRONTEND_URL in prod
+CORS_ALLOWED_ORIGINS                 # Optional extra CORS origins, comma-separated
+XPHERE_API_URL                       # Optional Xphere base URL (default: canonical Xphere origin)
+TRUST_PROXY                          # Proxy hops for the rate limiter (default 1; docker-compose uses 2)
+LOG_TO_FILE                          # false = stdout only (containers)
 PORT                                 # Default: 3001
 NODE_ENV                             # development | production
 ADMIN_EMAIL                          # Admin contact email
@@ -129,7 +133,8 @@ CREDITS_PER_CONTACT                  # Credits consumed per contact export (defa
 ```
 VITE_SUPABASE_URL          # Supabase project URL
 VITE_SUPABASE_ANON_KEY     # Supabase anon/publishable key
-VITE_API_URL               # Backend API URL (production only)
+VITE_API_URL               # Backend API URL (only when not same-origin; empty on Vercel and docker-compose)
+VITE_APP_URL               # Optional public app origin (defaults to window.location.origin)
 VITE_GOOGLE_MAPS_API_KEY   # Google Maps API (frontend)
 VITE_TURNSTILE_SITE_KEY    # Cloudflare Turnstile site key
 ```
@@ -169,6 +174,18 @@ VITE_TURNSTILE_SITE_KEY    # Cloudflare Turnstile site key
 - Admin endpoints: 200 req / 15 min
 - General API: 1000 req / 15 min
 
+### URLs, domains and hosting portability
+
+- **All absolute URLs come from one config module per side:** `backend/src/config/urls.ts`
+  (app URL, API URL, CORS origins, Xphere URL, Apify webhook URL) and
+  `backend/src/config/runtime.ts` (serverless vs long-running, port, trust proxy);
+  `frontend/src/lib/config.ts` for the SPA. Never hardcode a domain elsewhere:
+  `backend/src/config/noDomainLiterals.test.ts` fails if a production domain appears in
+  `backend/src`, `frontend/src`, `frontend/index.html` or `api/`.
+- Changing the public domain: `docs/DOMAIN-CHANGE.md`. Self-hosting / leaving Vercel:
+  `docs/SELF-HOSTING.md` (`backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`).
+- Production is still Vercel; the Docker path is prepared, not active.
+
 ### API Routing (Vercel)
 
 - `/api/*` → Express server (serverless function in `api/`)
@@ -196,6 +213,8 @@ VITE_TURNSTILE_SITE_KEY    # Cloudflare Turnstile site key
 | `frontend/src/hooks/useAuth.tsx` | Auth context + Turnstile captcha |
 | `frontend/src/pages/AuthPage.tsx` | Login / Register / Reset pages |
 | `vercel.json` | Vercel routing + function config |
+| `backend/src/config/urls.ts` | Every absolute URL / CORS origin (single source of truth) |
+| `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile` | Self-hosting (Coolify) path, see `docs/SELF-HOSTING.md` |
 
 ---
 

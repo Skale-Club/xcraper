@@ -384,6 +384,31 @@ Make sure to set these in production:
 - Production `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
 - Production `FRONTEND_URL`
 
+URL and hosting variables (all read through `backend/src/config/urls.ts`,
+`backend/src/config/runtime.ts` and `frontend/src/lib/config.ts`; nothing else in the code
+hardcodes a domain):
+
+| Variable | Side | Default | Purpose |
+|---|---|---|---|
+| `FRONTEND_URL` | backend | `http://localhost:5173` | Public origin of the app: Stripe return URLs and the production CORS origin |
+| `BACKEND_URL` | backend | `FRONTEND_URL` in production, else `http://localhost:$PORT` | Public origin of the API (Apify webhook target) |
+| `CORS_ALLOWED_ORIGINS` | backend | empty | Extra allowed browser origins, comma-separated (e.g. the old domain during a migration) |
+| `XPHERE_API_URL` | backend | the canonical Xphere origin | Xphere base URL (a per-user saved URL still wins) |
+| `TRUST_PROXY` | backend | `1` | Reverse-proxy hops in front of the API (rate limiter client IP). `2` in docker-compose |
+| `LOG_TO_FILE` | backend | on (off on Vercel) | `false` = stdout only (containers) |
+| `VITE_API_URL` | frontend (build) | empty = same origin | API origin, only if it differs from the SPA's |
+| `VITE_APP_URL` | frontend (build) | `window.location.origin` | Public origin used in OAuth / password-reset redirects |
+
+### Moving to another domain or host
+
+- Changing the public domain is configuration plus an external checklist (Supabase, Stripe,
+  Apify, Google Maps referrers, Turnstile, Hermes, ...): see
+  [`docs/DOMAIN-CHANGE.md`](docs/DOMAIN-CHANGE.md).
+- Self-hosting on Docker / Coolify (`backend/Dockerfile`, `frontend/Dockerfile`,
+  `docker-compose.yml`, `.env.example`), cutover from Vercel and rollback: see
+  [`docs/SELF-HOSTING.md`](docs/SELF-HOSTING.md). Vercel remains the production path until
+  that cutover is done.
+
 ### Database Migrations
 
 ```bash

@@ -3,6 +3,7 @@ import type { ActorStartOptions } from 'apify-client';
 import * as dotenv from 'dotenv';
 import { scraperRegistry } from './scrapers/registry.js';
 import type { ScraperSearchParams, NormalizedContact } from './scrapers/types.js';
+import { getApifyWebhookUrl } from '../config/urls.js';
 
 dotenv.config();
 
@@ -107,8 +108,7 @@ export async function startScrapingTask(scraperKey: string, params: ScraperSearc
     const input = template.buildInput(normalized, runtime);
     const startOptions = template.buildStartOptions(normalized, runtime, global);
 
-    const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
-    const webhookUrl = `${backendUrl}/api/webhooks/apify`;
+    const webhookUrl = getApifyWebhookUrl();
 
     try {
         const run = await apifyClient.actor(runtime.actorId).start(input, startOptions);

@@ -27,6 +27,8 @@ import integrationsRoutes from './routes/integrations.js';
 import serviceRoutes from './routes/service.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { logger, logError } from './utils/logger.js';
+import { getCorsOriginOption } from './config/urls.js';
+import { getTrustProxy } from './config/runtime.js';
 
 let sentryInitialized = false;
 
@@ -40,8 +42,8 @@ const WEBHOOK_PATHS = new Set([
 
 /**
  * Build the fully-configured Express app. Single source of truth for both the
- * traditional server (src/index.ts) and the Vercel serverless entry
- * (api/index.ts) — middleware added here applies to production automatically.
+ * traditional server (src/index.ts, used by the Docker image) and the Vercel
+ * serverless entry (api/index.ts) — middleware added here applies to production automatically.
  */
 export function createApp(): express.Express {
     if (process.env.SENTRY_DSN && !sentryInitialized) {
@@ -56,8 +58,9 @@ export function createApp(): express.Express {
 
     const app = express();
 
-    // Trust proxy for rate limiting behind reverse proxy (Vercel/local proxies)
-    app.set('trust proxy', 1);
+    // Trust proxy for rate limiting behind a reverse proxy. One hop by default
+    // (Vercel edge / Traefik); TRUST_PROXY overrides it for deeper chains.
+    app.set('trust proxy', getTrustProxy());
 
     // Security middleware
     app.use(helmet({
@@ -79,9 +82,7 @@ export function createApp(): express.Express {
 
     // CORS configuration
     app.use(cors({
-        origin: process.env.NODE_ENV === 'production'
-            ? process.env.FRONTEND_URL
-            : 'http://localhost:5173',
+        origin: getCorsOriginOption(),
         credentials: true,
     }));
 

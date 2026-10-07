@@ -1,0 +1,85 @@
+# Xcraper, self-hosted. Meant for Coolify ("Docker Compose" build pack) but plain
+# `docker compose up --build` works the same way. See docs/SELF-HOSTING.md.
+#
+# Topology:   browser -> Traefik (TLS) -> xcraper-web (nginx :8080)
+#                                            |-- static SPA
+#                                            '-- /api/*  ->  xcraper-api (:3001)
+# One public origin, like Vercel today: no CORS, no VITE_API_URL needed.
+#
+# Service names are prefixed on purpose: Coolify joins every stack to a shared
+# network, where a bare "backend"/"web" would collide with other stacks' DNS names.
+#
+# Nothing here is published on the host. In Coolify, assign your domain to the
+# `xcraper-web` service (port 8080). For a local run, add the port in an
+# untracked docker-compose.override.yml:
+#   services: { xcraper-web: { ports: ["8080:8080"] } }
+
+name: xcraper
+
+services:
+  xcraper-api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    expose:
+      - "3001"
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      LOG_TO_FILE: "false"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Traefik -> nginx -> api is two proxy hops. Use 1 if you route straight to the api.
+      TRUST_PROXY: ${TRUST_PROXY:-2}
+
+      # --- Public URLs (see docs/DOMAIN-CHANGE.md) ---
+      FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL to the public https origin, e.g. https://xcraper.example.com}
+      BACKEND_URL: ${BACKEND_URL:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+
+      # --- Required ---
+      DATABASE_URL: ${DATABASE_URL:?}
+      SUPABASE_URL: ${SUPABASE_URL:?}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-${VITE_SUPABASE_ANON_KEY:-}}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?}
+      APIFY_API_TOKEN: ${APIFY_API_TOKEN:?}
+      APIFY_WEBHOOK_SECRET: ${APIFY_WEBHOOK_SECRET:-}
+
+      # --- Features (leave empty to disable) ---
+      GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PAYMENTS_WEBHOOK_SECRET: ${STRIPE_PAYMENTS_WEBHOOK_SECRET:-}
+      STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET: ${STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET:-}
+      XCRAPER_SERVICE_KEY: ${XCRAPER_SERVICE_KEY:-}
+      XCRAPER_SERVICE_USER_EMAIL: ${XCRAPER_SERVICE_USER_EMAIL:-}
+      XPHERE_API_URL: ${XPHERE_API_URL:-}
+      XPHERE_API_KEY: ${XPHERE_API_KEY:-}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      KEEPALIVE_SECRET: ${KEEPALIVE_SECRET:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      HOMELAB_SCRAPER_URL: ${HOMELAB_SCRAPER_URL:-}
+      HOMELAB_SCRAPER_CF_CLIENT_ID: ${HOMELAB_SCRAPER_CF_CLIENT_ID:-}
+      HOMELAB_SCRAPER_CF_CLIENT_SECRET: ${HOMELAB_SCRAPER_CF_CLIENT_SECRET:-}
+      HOMELAB_SCRAPER_MAX_TIME_SECONDS: ${HOMELAB_SCRAPER_MAX_TIME_SECONDS:-}
+      HOMELAB_SCRAPER_DEPTH: ${HOMELAB_SCRAPER_DEPTH:-}
+
+  xcraper-web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      # VITE_* are compiled into the bundle: changing one requires a rebuild.
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?}
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_APP_URL: ${VITE_APP_URL:-}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      BACKEND_UPSTREAM: xcraper-api:3001
