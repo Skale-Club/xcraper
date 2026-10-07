@@ -73,6 +73,10 @@ const PLATFORM_EMAIL_DOMAINS = new Set([
     'zenoti.com',
     'boulevard.io',
     'pocketsuite.io',
+    // 2026-10-07: aligned with Xmail and Xphere (the three lists must match).
+    'getsquire.com',
+    'mytime.com',
+    'bookedin.com',
 ]);
 
 /**
