@@ -13,7 +13,7 @@ import {
 } from '../services/scrapeProvider.js';
 import { HomelabError } from '../services/homelab.js';
 import { dispatchHomelabQueueSafely, getHomelabQueuePosition } from '../services/homelabQueue.js';
-import { canUseScraper, SCRAPER_FORBIDDEN_MESSAGE } from '../services/scrapers/access.js';
+import { canUseScraper, isSuperAdminEmail, SCRAPER_FORBIDDEN_MESSAGE } from '../services/scrapers/access.js';
 import { scraperRegistry } from '../services/scrapers/registry.js';
 import { syncSearchRecordState } from './search.js';
 import { pushRunToXphere } from '../services/xphere.js';
@@ -64,7 +64,10 @@ const scrapeSchema = z.object({
     // 'standard' = Google Maps business listings; 'enriched' = + email extraction;
     // 'homelab' = owner-only run on the homelab engine (allowed only when the service
     // user is the super admin, SUPER_ADMIN_EMAIL).
-    scrapeType: z.enum(['standard', 'enriched', 'homelab']).optional().default('standard'),
+    // Omitted -> 'homelab' when the service user is the super admin and the homelab is configured
+    // (2026-10-07: Hermes left it out, fell back to Apify and failed on an exhausted Apify balance),
+    // otherwise 'standard'.
+    scrapeType: z.enum(['standard', 'enriched', 'homelab']).optional(),
     hypothesis: z.object({
         premise: z.string().trim().min(1).max(2000).optional(),
         expected: z.record(z.string(), z.union([z.string().max(500), z.number()])).optional(),
@@ -91,7 +94,14 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
             res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() });
             return;
         }
-        const { query, location, maxResults, scrapeType, hypothesis } = parsed.data;
+        const { query, location, maxResults, hypothesis } = parsed.data;
+        let scrapeType = parsed.data.scrapeType;
+        if (!scrapeType) {
+            const defaultUser = await resolveServiceUser();
+            scrapeType = defaultUser && isSuperAdminEmail(defaultUser.email) && isScraperProviderConfigured('homelab')
+                ? 'homelab'
+                : 'standard';
+        }
 
         if (!isScraperProviderConfigured(scrapeType)) {
             res.status(503).json({

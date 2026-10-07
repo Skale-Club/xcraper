@@ -228,6 +228,19 @@ describe('GET /api/service/scrape/:id for a queued run', () => {
     });
 });
 
+describe('POST /api/service/scrape without scrapeType', () => {
+    it('defaults to the homelab when the service user is the super admin', async () => {
+        state.serviceUser = serviceUser('skale.club@gmail.com');
+        state.searchRow = { id: 'search-1', status: 'running', apifyRunId: 'job-9' };
+
+        const res = await scrape({ query: 'barber shop', location: 'Waltham, MA', maxResults: 10 });
+
+        expect(res.status).toBe(202);
+        expect(res.body).toMatchObject({ scrapeType: 'homelab' });
+        expect(apify.startScrapingTask).not.toHaveBeenCalled();
+    });
+});
+
 describe('POST /api/service/scrape on the Apify path (unchanged)', () => {
     it('keeps running standard scrapes through Apify for any service user', async () => {
         state.serviceUser = serviceUser('hermes@example.com');
