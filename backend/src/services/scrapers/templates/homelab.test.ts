@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { homelabTemplate, mapHomelabPlace, parseHomelabEmails } from './homelab.js';
+import { homelabTemplate, depthForMaxResults, mapHomelabPlace, parseHomelabEmails } from './homelab.js';
 import { parseHomelabCsv } from '../../homelab.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -126,7 +126,7 @@ describe('homelab job payload', () => {
             name: 'xcraper: barber shop in Framingham, MA',
             keywords: ['barber shop in Framingham, MA'],
             lang: 'en',
-            depth: 10,
+            depth: 4,
             email: true,
             max_time: 1800,
             fast_mode: false,
@@ -137,10 +137,20 @@ describe('homelab job payload', () => {
         process.env.HOMELAB_SCRAPER_DEPTH = '3';
         process.env.HOMELAB_SCRAPER_MAX_TIME_SECONDS = '600';
         const input = homelabTemplate.buildInput(
-            { maxResults: 10, language: 'en', countryCode: 'us', query: 'a b', location: 'c d' },
+            { maxResults: 100, language: 'en', countryCode: 'us', query: 'a b', location: 'c d' },
             homelabTemplate.defaults,
         );
         expect(input).toMatchObject({ depth: 3, max_time: 600 });
+    });
+
+    it('scales depth with the requested result count, capped by HOMELAB_SCRAPER_DEPTH', () => {
+        expect(depthForMaxResults(10, 10)).toBe(2);
+        expect(depthForMaxResults(30, 10)).toBe(4);
+        expect(depthForMaxResults(50, 10)).toBe(6);
+        expect(depthForMaxResults(100, 10)).toBe(10);
+        expect(depthForMaxResults(500, 10)).toBe(10);
+        expect(depthForMaxResults(undefined, 10)).toBe(10);
+        expect(depthForMaxResults(100, 3)).toBe(3);
     });
 
     it('is a zero-credit owner-only homelab template', () => {

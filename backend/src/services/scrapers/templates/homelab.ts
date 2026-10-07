@@ -127,6 +127,19 @@ export function mapHomelabPlace(row: Record<string, unknown>): NormalizedContact
     };
 }
 
+/**
+ * Scroll depth proportional to how many results were asked for, capped by HOMELAB_SCRAPER_DEPTH.
+ * The engine does not stop at a result count: it scrolls the Maps list `depth` times and then visits
+ * every place's website for emails, one tab at a time (the homelab runs `-c 1`). Measured 2026-10-07 at
+ * depth 10: a 10-result request in Framingham, MA took ~12 min. Google Maps loads roughly a dozen places
+ * per scroll, so ceil(maxResults / 12) + 1 covers the request with one scroll of slack.
+ *   10 -> 2, 30 -> 4, 50 -> 6, 100 -> 10 (cap), 0/undefined -> cap.
+ */
+export function depthForMaxResults(maxResults: number | undefined, maxDepth: number): number {
+    if (!maxResults || maxResults <= 0) return maxDepth;
+    return Math.min(maxDepth, Math.max(2, Math.ceil(maxResults / 12) + 1));
+}
+
 export const homelabTemplate: ScraperTemplate = {
     key: HOMELAB_SCRAPER_KEY,
     source: 'google_maps',
@@ -161,7 +174,8 @@ export const homelabTemplate: ScraperTemplate = {
         const query = (params.query ?? '').trim();
         const location = (params.location ?? '').trim();
         const keyword = `${query} in ${location}`;
-        const { depth, maxTimeSeconds } = getHomelabJobSettings();
+        const { depth: maxDepth, maxTimeSeconds } = getHomelabJobSettings();
+        const depth = depthForMaxResults(params.maxResults, maxDepth);
 
         return {
             name: `xcraper: ${keyword}`.slice(0, 120),
