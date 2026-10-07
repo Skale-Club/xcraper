@@ -333,7 +333,7 @@ router.get('/searches', async (req: Request, res: Response) => {
         const search = req.query.search as string;
         const offset = (page - 1) * limit;
 
-        const validStatuses = ['pending', 'running', 'completed', 'failed', 'paused'];
+        const validStatuses = ['queued', 'pending', 'running', 'completed', 'failed', 'paused'];
         const statusFilter = status && validStatuses.includes(status) ? status : null;
 
         const allSearches = await db

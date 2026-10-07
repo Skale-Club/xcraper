@@ -180,6 +180,7 @@ export default function SearchesPage() {
             return {
                 ...current,
                 status: selectedSearchStatus.status,
+                queuePosition: selectedSearchStatus.queuePosition ?? null,
                 totalResults: selectedSearchStatus.totalResults ?? current.totalResults,
                 savedResults: selectedSearchStatus.savedResults ?? current.savedResults,
                 creditsUsed: selectedSearchStatus.creditsUsed ?? current.creditsUsed,
@@ -211,7 +212,7 @@ export default function SearchesPage() {
         }
     };
 
-    const isSearchActive = (status: string) => status === 'running' || status === 'pending';
+    const isSearchActive = (status: string) => status === 'running' || status === 'pending' || status === 'queued';
     const isAdmin = user?.role === 'admin';
     const creditsPerStandardLead = settingsData?.settings.creditsPerStandardResult ?? 1;
     const creditsPerEnrichedLead = settingsData?.settings.creditsPerEnrichedResult ?? 3;
@@ -256,8 +257,9 @@ export default function SearchesPage() {
         }
     };
 
-    const getStatusBadge = (status: string) => {
+    const getStatusBadge = (status: string, queuePosition?: number | null) => {
         switch (status) {
+            case 'queued': return <Badge variant="outline" className="bg-sky-100 dark:bg-sky-500/10 text-sky-800 dark:text-sky-400 border-sky-200 dark:border-sky-500/20 min-w-[90px] justify-center">{queuePosition ? `Queued (#${queuePosition})` : 'Queued'}</Badge>;
             case 'completed': return <Badge variant="secondary" className="bg-emerald-100 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20 min-w-[90px] justify-center">Completed</Badge>;
             case 'failed': return <Badge variant="destructive" className="bg-red-100 dark:bg-red-500/10 text-red-800 dark:text-red-400 border-red-200 dark:border-red-500/20 min-w-[90px] justify-center">Failed</Badge>;
             case 'running': return <Badge variant="secondary" className="bg-amber-100 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/20 min-w-[90px] justify-center">Running</Badge>;
@@ -369,7 +371,7 @@ export default function SearchesPage() {
                                 </div>
 
                                 <div className="flex items-center gap-2 shrink-0">
-                                    {getStatusBadge(search.status)}
+                                    {getStatusBadge(search.status, search.queuePosition)}
                                     <ChevronRight className="h-4 w-4 text-muted-foreground/50 hidden sm:block" />
                                 </div>
                             </motion.div>
@@ -437,7 +439,7 @@ export default function SearchesPage() {
                             <h1 className="text-2xl font-bold tracking-tight text-foreground capitalize">
                                 {selectedSearch.query}
                             </h1>
-                            {getStatusBadge(selectedSearch.status)}
+                            {getStatusBadge(selectedSearch.status, selectedSearch.queuePosition)}
                         </div>
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1">
@@ -463,7 +465,7 @@ export default function SearchesPage() {
                                     ) : (
                                         <PauseCircle className="mr-2 h-4 w-4" />
                                     )}
-                                    Pause
+                                    {selectedSearch.status === 'queued' ? 'Cancel' : 'Pause'}
                                 </Button>
                             )}
                             {!isB2B && (

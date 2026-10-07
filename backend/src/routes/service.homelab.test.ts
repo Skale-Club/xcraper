@@ -4,7 +4,7 @@ import express from 'express';
 
 const state = vi.hoisted(() => ({
     serviceUser: null as Record<string, unknown> | null,
-    homelabBusy: false,
+    searchRow: null as Record<string, unknown> | null,
     inserts: [] as Array<Record<string, unknown>>,
     updates: [] as Array<Record<string, unknown>>,
 }));
@@ -13,7 +13,7 @@ vi.mock('../db/index.js', async () => {
     const schema = await import('../db/schema.js');
     const rowsFor = (table: unknown): unknown[] => {
         if (table === schema.users) return state.serviceUser ? [state.serviceUser] : [];
-        if (table === schema.searchHistory) return state.homelabBusy ? [{ id: 'busy-1' }] : [];
+        if (table === schema.searchHistory) return state.searchRow ? [state.searchRow] : [];
         return [];
     };
     const select = () => {
@@ -46,6 +46,11 @@ vi.mock('../db/index.js', async () => {
         },
     };
 });
+const queue = vi.hoisted(() => ({
+    dispatchHomelabQueueSafely: vi.fn(async () => null),
+    getHomelabQueuePosition: vi.fn(async () => null as number | null),
+}));
+vi.mock('../services/homelabQueue.js', () => queue);
 vi.mock('./search.js', () => ({ syncSearchRecordState: vi.fn() }));
 vi.mock('../services/xphere.js', () => ({ pushRunToXphere: vi.fn() }));
 vi.mock('../services/systemSettings.js', () => ({
@@ -77,6 +82,7 @@ vi.mock('../services/apify.js', () => ({
 }));
 
 import * as apify from '../services/apify.js';
+import { syncSearchRecordState } from './search.js';
 import serviceRouter from './service.js';
 
 const SERVICE_KEY = 'test-service-key';
@@ -116,7 +122,9 @@ beforeEach(() => {
     process.env.HOMELAB_SCRAPER_CF_CLIENT_ID = 'cid';
     process.env.HOMELAB_SCRAPER_CF_CLIENT_SECRET = 'csecret';
     state.serviceUser = null;
-    state.homelabBusy = false;
+    state.searchRow = null;
+    queue.dispatchHomelabQueueSafely.mockReset().mockResolvedValue(null);
+    queue.getHomelabQueuePosition.mockReset().mockResolvedValue(null);
     state.inserts.length = 0;
     state.updates.length = 0;
     fetchMock.mockReset();
@@ -131,52 +139,53 @@ afterEach(() => {
 });
 
 describe('POST /api/service/scrape with scrapeType homelab', () => {
-    it('is allowed when the service user is the super admin', async () => {
+    it('starts right away when the service user is the super admin and the homelab is idle', async () => {
         state.serviceUser = serviceUser('Skale.Club@gmail.com');
-        fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: 'job-9' }), { status: 200 }));
+        state.searchRow = { id: 'search-1', status: 'running', apifyRunId: 'job-9' };
 
         const res = await scrape(homelabBody);
 
         expect(res.status).toBe(202);
-        expect(res.body).toMatchObject({ searchId: 'search-1', scrapeType: 'homelab', apifyRunId: 'job-9' });
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(state.inserts[0]).toMatchObject({ scrapeType: 'homelab', userId: 'svc-user' });
-        expect(state.updates.at(-1)).toMatchObject({ status: 'running', apifyRunId: 'job-9' });
+        expect(res.body).toMatchObject({ searchId: 'search-1', status: 'running', queued: false, queuePosition: null, scrapeType: 'homelab', apifyRunId: 'job-9' });
+        expect(state.inserts[0]).toMatchObject({ scrapeType: 'homelab', userId: 'svc-user', status: 'queued' });
+        expect(queue.dispatchHomelabQueueSafely).toHaveBeenCalledTimes(1);
     });
 
-    it('is denied with 403 when the service user is another admin', async () => {
+    it('queues instead of answering 409 when the homelab is busy, returning status queued and the position', async () => {
+        state.serviceUser = serviceUser('skale.club@gmail.com');
+        state.searchRow = { id: 'search-1', status: 'queued', apifyRunId: null };
+        queue.getHomelabQueuePosition.mockResolvedValue(3);
+
+        const res = await scrape(homelabBody);
+
+        expect(res.status).toBe(202);
+        expect(res.body).toMatchObject({ searchId: 'search-1', status: 'queued', queued: true, queuePosition: 3, apifyRunId: null });
+        expect(res.body.poll).toBe('/api/service/scrape/search-1');
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('is denied with 403 when the service user is another admin, before anything is queued', async () => {
         state.serviceUser = serviceUser('hermes@example.com');
 
         const res = await scrape(homelabBody);
 
         expect(res.status).toBe(403);
-        expect(fetchMock).not.toHaveBeenCalled();
         expect(state.inserts).toHaveLength(0);
+        expect(queue.dispatchHomelabQueueSafely).not.toHaveBeenCalled();
     });
 
-    it('answers 409 when the homelab is busy', async () => {
+    it('answers 502 naming the homelab when the dispatcher failed to start it', async () => {
         state.serviceUser = serviceUser('skale.club@gmail.com');
-        state.homelabBusy = true;
-
-        const res = await scrape(homelabBody);
-
-        expect(res.status).toBe(409);
-        expect(res.body.error).toMatch(/homelab scraper is busy/i);
-        expect(fetchMock).not.toHaveBeenCalled();
-        expect(state.inserts).toHaveLength(0);
-    });
-
-    it('fails the search and answers 502 naming the homelab when it is unreachable', async () => {
-        state.serviceUser = serviceUser('skale.club@gmail.com');
-        fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+        state.searchRow = {
+            id: 'search-1',
+            status: 'failed',
+            errorMessage: 'The homelab scraper is unavailable (network error). Try the Apify scrapers.',
+        };
 
         const res = await scrape(homelabBody);
 
         expect(res.status).toBe(502);
         expect(res.body.message).toMatch(/homelab/i);
-        expect(state.updates.find((u) => u.status === 'failed')).toMatchObject({
-            errorMessage: expect.stringMatching(/homelab.*Apify/i),
-        });
         expect(apify.startScrapingTask).not.toHaveBeenCalled();
     });
 
@@ -193,6 +202,29 @@ describe('POST /api/service/scrape with scrapeType homelab', () => {
     it('still requires the service key', async () => {
         const res = await request(app).post('/api/service/scrape').send(homelabBody);
         expect(res.status).toBe(401);
+    });
+});
+
+describe('GET /api/service/scrape/:id for a queued run', () => {
+    it('reports status queued with queuePosition', async () => {
+        state.serviceUser = serviceUser('skale.club@gmail.com');
+        state.searchRow = { id: 'search-1', userId: 'svc-user', status: 'queued', xpherePushedAt: null };
+        vi.mocked(syncSearchRecordState).mockResolvedValue({ status: 'queued', queuePosition: 2 });
+
+        const res = await request(app).get('/api/service/scrape/search-1').set('x-service-key', SERVICE_KEY);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ searchId: 'search-1', status: 'queued', queuePosition: 2, xphere: { pushed: false } });
+    });
+
+    it('reports a null queuePosition once the run is no longer queued', async () => {
+        state.serviceUser = serviceUser('skale.club@gmail.com');
+        state.searchRow = { id: 'search-1', userId: 'svc-user', status: 'running', xpherePushedAt: null };
+        vi.mocked(syncSearchRecordState).mockResolvedValue({ status: 'running', progress: 50 });
+
+        const res = await request(app).get('/api/service/scrape/search-1').set('x-service-key', SERVICE_KEY);
+
+        expect(res.body).toMatchObject({ status: 'running', queuePosition: null });
     });
 });
 

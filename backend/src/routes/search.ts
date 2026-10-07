@@ -25,7 +25,8 @@ import {
     providerNotConfiguredMessage,
 } from '../services/scrapeProvider.js';
 import { HomelabError } from '../services/homelab.js';
-import { HOMELAB_BUSY_MESSAGE, findActiveHomelabSearch, isHomelabSearchOverdue } from '../services/homelabBusy.js';
+import { isHomelabSearchOverdue } from '../services/homelabBusy.js';
+import { dispatchHomelabQueueSafely, getHomelabQueuePosition } from '../services/homelabQueue.js';
 import { canUseScraper, SCRAPER_FORBIDDEN_MESSAGE } from '../services/scrapers/access.js';
 import { creditRulesService } from '../services/creditRules.js';
 import { autoTopUpService } from '../services/autoTopUp.js';
@@ -38,7 +39,7 @@ dotenv.config();
 
 const router = Router();
 
-type SearchStatusValue = 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+type SearchStatusValue = 'queued' | 'pending' | 'running' | 'completed' | 'failed' | 'paused';
 type SearchResultsSortBy = 'business' | 'contact' | 'location';
 
 type ErrorDetails = {
@@ -56,6 +57,8 @@ type SearchStatusPayload = {
     requestEnrichment?: boolean;
     progress?: number;
     itemsCount?: number;
+    /** 1-based place in the homelab queue; only set while status is 'queued'. */
+    queuePosition?: number | null;
     totalResults?: number | null;
     savedResults?: number | null;
     standardResults?: number | null;
@@ -566,7 +569,7 @@ async function finalizeCompletedSearch(searchRecord: SearchRecord, userId: strin
     };
 }
 
-export async function syncSearchRecordState(searchRecord: SearchRecord, userId: string, isAdmin: boolean = false): Promise<SearchStatusPayload> {
+async function syncSearchRecordStateCore(searchRecord: SearchRecord, userId: string, isAdmin: boolean = false): Promise<SearchStatusPayload> {
     if (isTerminalStatus(searchRecord.status) || !searchRecord.apifyRunId) {
         return buildSearchPayload(searchRecord, isAdmin);
     }
@@ -723,6 +726,49 @@ export async function syncSearchRecordState(searchRecord: SearchRecord, userId: 
     }
 }
 
+/**
+ * Sync a search's state with its provider. Apify searches go straight to the original
+ * logic. Homelab searches additionally drive the FIFO queue: reading a queued search
+ * runs the dispatcher (a cheap no-op while the homelab is busy), and a homelab search
+ * reaching a terminal state frees the slot and runs it again.
+ */
+export async function syncSearchRecordState(searchRecord: SearchRecord, userId: string, isAdmin: boolean = false): Promise<SearchStatusPayload> {
+    if (!isHomelabScraper(searchRecord.scrapeType)) {
+        return syncSearchRecordStateCore(searchRecord, userId, isAdmin);
+    }
+
+    let current = searchRecord;
+
+    if (current.status === 'queued') {
+        await dispatchHomelabQueueSafely();
+        current = (await getOwnedSearch(current.id, userId)) ?? current;
+        if (current.status === 'queued') {
+            return {
+                ...buildSearchPayload(current, isAdmin),
+                queuePosition: await getHomelabQueuePosition(current.id).catch(() => null),
+            };
+        }
+    }
+
+    // Claimed (`pending`) but the job id was never recorded: the start did not complete.
+    // Core ignores records without a run id, so enforce the deadline here.
+    if (!isTerminalStatus(current.status) && !current.apifyRunId) {
+        const overdue = await failOverdueHomelabSearch(current, isAdmin);
+        if (overdue) {
+            await dispatchHomelabQueueSafely();
+            return overdue;
+        }
+        return buildSearchPayload(current, isAdmin);
+    }
+
+    const wasTerminal = isTerminalStatus(current.status);
+    const payload = await syncSearchRecordStateCore(current, userId, isAdmin);
+    if (!wasTerminal && isTerminalStatus(payload.status)) {
+        await dispatchHomelabQueueSafely();
+    }
+    return payload;
+}
+
 async function failOverdueHomelabSearch(
     searchRecord: SearchRecord,
     isAdmin: boolean,
@@ -875,14 +921,7 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             return;
         }
 
-        // The homelab runs one job at a time; refuse before creating any record.
-        if (isHomelabScraper(template.key)) {
-            const busy = await findActiveHomelabSearch();
-            if (busy) {
-                res.status(409).json({ error: 'Homelab busy', message: HOMELAB_BUSY_MESSAGE });
-                return;
-            }
-        }
+        const isHomelab = isHomelabScraper(template.key);
 
         const creditsPerLead = runtime.creditsPerResult;
         const estimatedCredits = maxResults * creditsPerLead;
@@ -914,12 +953,48 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             requestEnrichment: template.extractsEmails,
             scrapeType: template.key,
             searchFilters: template.source === 'google_maps' ? null : (filters ?? {}),
-            status: 'pending',
+            // Homelab searches always enter the FIFO queue; the dispatcher claims the oldest
+            // one when the single homelab slot is free (this closes the check-then-insert race).
+            status: isHomelab ? 'queued' : 'pending',
             creditsUsed: 0,
             standardResultsCount: template.extractsEmails ? null : 0,
             enrichedResultsCount: template.extractsEmails ? 0 : null,
         }).returning();
         createdSearchId = searchRecord.id;
+
+        if (isHomelab) {
+            await dispatchHomelabQueueSafely();
+            const [current] = await db.select()
+                .from(searchHistory)
+                .where(eq(searchHistory.id, searchRecord.id))
+                .limit(1);
+            const state = current ?? searchRecord;
+
+            if (state.status === 'failed') {
+                res.status(502).json({
+                    error: 'Failed to start search',
+                    message: state.errorMessage || 'The homelab scraper could not start this search.',
+                });
+                return;
+            }
+
+            const queued = state.status === 'queued';
+            res.status(202).json({
+                message: queued ? 'Search queued; it will start when the homelab is free' : 'Search started successfully',
+                searchId: searchRecord.id,
+                apifyRunId: state.apifyRunId ?? null,
+                scrapeType: template.key,
+                estimatedCredits: 0,
+                creditsPerLead,
+                requestEnrichment: template.extractsEmails,
+                topUpTriggered: creditCheck.topUpTriggered,
+                isAdmin,
+                status: state.status,
+                queued,
+                queuePosition: queued ? await getHomelabQueuePosition(searchRecord.id) : null,
+            });
+            return;
+        }
 
         let startedTask!: StartedTask;
 
@@ -1049,6 +1124,41 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
 
         if (isTerminalStatus(searchRecord.status)) {
             res.status(409).json({ error: `Search is already ${searchRecord.status}` });
+            return;
+        }
+
+        // Cancel a homelab search that is still waiting in the queue. Owner-only (the
+        // homelab template is). The conditional UPDATE means a search the dispatcher
+        // claimed in the meantime is not touched, so a cancelled search never starts.
+        if (searchRecord.status === 'queued' && isHomelabScraper(searchRecord.scrapeType)) {
+            const template = scraperRegistry.getTemplate(searchRecord.scrapeType);
+            if (!template || !canUseScraper(template, req.user.email)) {
+                res.status(403).json({ error: 'Forbidden', message: SCRAPER_FORBIDDEN_MESSAGE });
+                return;
+            }
+
+            const cancelledAt = new Date();
+            const cancelled = await db.update(searchHistory)
+                .set({
+                    status: 'paused',
+                    completedAt: cancelledAt,
+                    apifyStatusMessage: 'Cancelled while queued',
+                })
+                .where(and(eq(searchHistory.id, searchRecord.id), eq(searchHistory.status, 'queued')))
+                .returning({ id: searchHistory.id });
+
+            if (cancelled.length === 0) {
+                res.status(409).json({ error: 'This search already started; a running homelab search cannot be paused.' });
+                return;
+            }
+
+            res.json({
+                message: 'Queued search cancelled',
+                status: 'paused',
+                completedAt: cancelledAt,
+                partialLeadsSaved: 0,
+                creditsCharged: 0,
+            });
             return;
         }
 
@@ -1274,7 +1384,7 @@ router.get('/history', requireAuth, async (req, res: Response): Promise<void> =>
         const syncedHistory: SearchRecord[] = [];
 
         for (const searchRecord of history) {
-            if (searchRecord.status === 'running' || searchRecord.status === 'pending') {
+            if (searchRecord.status === 'running' || searchRecord.status === 'pending' || searchRecord.status === 'queued') {
                 await syncSearchRecordState(searchRecord, req.user.id, isAdmin);
                 const refreshedRecord = await getOwnedSearch(searchRecord.id, req.user.id);
                 syncedHistory.push(refreshedRecord ?? searchRecord);
@@ -1285,8 +1395,18 @@ router.get('/history', requireAuth, async (req, res: Response): Promise<void> =>
 
         const total = countResult?.count ?? 0;
 
+        // Annotate queued homelab searches with their place in the queue ("Queued (#N)").
+        const queuedIds = syncedHistory.filter((r) => r.status === 'queued').map((r) => r.id);
+        const positions = new Map<string, number | null>();
+        if (queuedIds.length > 0) {
+            await Promise.all(queuedIds.map(async (id) => {
+                positions.set(id, await getHomelabQueuePosition(id).catch(() => null));
+            }));
+        }
+        const annotatedHistory = syncedHistory.map((r) => (r.status === 'queued' ? { ...r, queuePosition: positions.get(r.id) ?? null } : r));
+
         res.json({
-            history: syncedHistory,
+            history: annotatedHistory,
             total,
             page,
             totalPages: Math.max(1, Math.ceil(total / limit)),
@@ -1418,6 +1538,11 @@ router.delete('/:searchId', requireAuth, async (req, res: Response): Promise<voi
 
         await db.delete(searchHistory)
             .where(eq(searchHistory.id, (req.params.searchId as string)));
+
+        // Deleting a homelab search that held (or waited for) the slot: let the queue move on.
+        if (isHomelabScraper(searchRecord.scrapeType) && !isTerminalStatus(searchRecord.status)) {
+            await dispatchHomelabQueueSafely();
+        }
 
         res.json({ message: 'Search deleted successfully' });
     } catch (error) {

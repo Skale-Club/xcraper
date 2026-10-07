@@ -3,8 +3,9 @@ import { getApiUrl } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
 interface SSEStatusPayload {
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+    status: 'queued' | 'pending' | 'running' | 'completed' | 'failed' | 'paused';
     progress?: number;
+    queuePosition?: number | null;
     itemsCount?: number;
     totalResults?: number | null;
     savedResults?: number | null;

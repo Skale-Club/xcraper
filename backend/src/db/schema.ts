@@ -203,7 +203,9 @@ export const searchHistory = pgTable('search_history', {
     scrapeType: text('scrape_type').notNull().default('standard'),
     // Structured filters for templates that don't use the query+location model (e.g. B2B leads)
     searchFilters: jsonb('search_filters').$type<Record<string, unknown>>(),
-    status: text('status', { enum: ['pending', 'running', 'completed', 'failed', 'paused'] }).notNull().default('pending'),
+    // 'queued' = waiting for the single homelab slot (see services/homelabQueue.ts). The DB
+    // column is plain text with no CHECK constraint, so adding a value needs no migration.
+    status: text('status', { enum: ['queued', 'pending', 'running', 'completed', 'failed', 'paused'] }).notNull().default('pending'),
     apifyRunId: text('apify_run_id'),
     apifyActorId: text('apify_actor_id'),
     apifyActorName: text('apify_actor_name'),

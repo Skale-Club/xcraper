@@ -40,8 +40,9 @@ setInterval(() => {
 }, 60000); // Clean up every minute
 
 interface SSEStatusPayload {
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+    status: 'queued' | 'pending' | 'running' | 'completed' | 'failed' | 'paused';
     progress?: number;
+    queuePosition?: number | null;
     itemsCount?: number;
     totalResults?: number | null;
     savedResults?: number | null;
@@ -95,6 +96,7 @@ router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise
     let heartbeatInterval: NodeJS.Timeout | null = null;
     let lastStatus = searchRecord.status;
     let lastItemsCount = searchRecord.totalResults || 0;
+    let lastQueuePosition: number | null | undefined;
     let closed = false;
 
     const cleanup = () => {
@@ -163,6 +165,26 @@ router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise
                 return;
             }
 
+            // A queued (homelab) search has no run yet. Reading it through the sync path runs
+            // the queue dispatcher, which starts it once the homelab is free.
+            let queuePosition: number | null | undefined;
+            if (currentSearch.status === 'queued') {
+                try {
+                    const synced = await syncSearchRecordState(currentSearch, userId, isAdmin);
+                    queuePosition = synced.queuePosition ?? null;
+                    const [refreshed] = await db
+                        .select()
+                        .from(searchHistory)
+                        .where(eq(searchHistory.id, searchId))
+                        .limit(1);
+                    if (refreshed) {
+                        currentSearch = refreshed;
+                    }
+                } catch (error) {
+                    console.error('Error syncing queued search from SSE poller:', error);
+                }
+            }
+
             // If we have an Apify run ID, get live status
             let apifyStatus: TaskStatus | null = null;
             if (currentSearch.apifyRunId && !TERMINAL_STATUSES.includes(currentSearch.status)) {
@@ -204,15 +226,18 @@ router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise
                 creditsUsed: currentSearch.creditsUsed,
                 completedAt: currentSearch.completedAt?.toISOString() || null,
                 apifyStatusMessage: apifyStatus?.statusMessage || currentSearch.apifyStatusMessage,
+                ...(currentSearch.status === 'queued' ? { queuePosition: queuePosition ?? null } : {}),
                 itemsCount: apifyStatus?.itemsCount ?? currentSearch.totalResults ?? undefined,
             };
 
             // Only send if something changed
             if (
                 currentSearch.status !== lastStatus ||
-                (apifyStatus?.itemsCount || 0) !== lastItemsCount
+                (apifyStatus?.itemsCount || 0) !== lastItemsCount ||
+                (currentSearch.status === 'queued' && queuePosition !== lastQueuePosition)
             ) {
                 lastStatus = currentSearch.status;
+                lastQueuePosition = queuePosition;
                 lastItemsCount = apifyStatus?.itemsCount || currentSearch.totalResults || 0;
                 res.write(`data: ${JSON.stringify(payload)}\n\n`);
             }

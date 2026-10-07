@@ -38,12 +38,13 @@ import { ErrorDetailsDialog } from '@/components/ErrorDetailsDialog';
 
 interface TimelineData {
     id: string;
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+    status: 'queued' | 'pending' | 'running' | 'completed' | 'failed' | 'paused';
     createdAt: string;
 }
 
 function StatusBadge({ status }: { status: string }) {
     const config = {
+        queued: { icon: Clock, label: 'Queued', className: 'bg-sky-500/10 text-sky-600 border-sky-500/20' },
         pending: { icon: Clock, label: 'Pending', className: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' },
         running: { icon: Play, label: 'Running', className: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
         paused: { icon: AlertTriangle, label: 'Paused', className: 'bg-slate-500/10 text-slate-600 border-slate-500/20' },
@@ -85,6 +86,7 @@ function TimelineBar({ data }: { data: TimelineData[] }) {
                 return 'bg-amber-500';
             case 'paused':
                 return 'bg-slate-500';
+            case 'queued':
             case 'pending':
                 return 'bg-yellow-500';
             default:
@@ -382,6 +384,7 @@ export default function AdminSearchesPage() {
                                         <SelectItem value="all">All Status</SelectItem>
                                         <SelectItem value="completed">Completed</SelectItem>
                                         <SelectItem value="failed">Failed</SelectItem>
+                                        <SelectItem value="queued">Queued</SelectItem>
                                         <SelectItem value="running">Running</SelectItem>
                                         <SelectItem value="paused">Paused</SelectItem>
                                         <SelectItem value="pending">Pending</SelectItem>

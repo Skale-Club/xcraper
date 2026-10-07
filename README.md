@@ -257,15 +257,23 @@ templates (plus emails, address parts, rating, coordinates and place id) and cos
   scraper settings) for everyone else, and `POST /api/search` and `POST /api/service/scrape`
   answer 403. The service route attributes the run to `XCRAPER_SERVICE_USER_EMAIL` (or the first
   admin), so Hermes can use `scrapeType: "homelab"` only when that user is the super admin.
-- **One job at a time.** The homelab runs a single job (`-c 1`) on purpose. While another homelab
-  search is pending/running, a new one gets HTTP 409. A job is dropped from that check once it is
-  older than `max_time` plus 10 minutes.
+- **One job at a time, with a FIFO queue.** The homelab runs a single job (`-c 1`) on purpose. A
+  new homelab search is created as `queued` and started only when the homelab is idle; otherwise
+  it waits (`Queued (#N)` in the UI, `status: "queued"` plus `queuePosition` in the service API).
+  There is no worker: `startNextQueuedHomelabSearch()` (`services/homelabQueue.ts`) runs when a
+  search is created, when a homelab search reaches a terminal state, and whenever a queued search
+  is read (status poll, history, SSE, service poll). It claims the oldest queued search with one
+  conditional `UPDATE` under a transaction-level advisory lock, so concurrent callers start only
+  one. The job deadline (`max_time` plus 10 minutes) is measured from when the job started, not
+  from when it was queued. A search still queued after 24 hours fails with "expired in the homelab
+  queue". The owner can cancel a queued search with the Pause/Cancel action; it never starts.
+  Nothing advances the queue while nobody reads it (no cron exists in this repo).
 - **No silent fallback.** If the homelab is unreachable (network error, 5xx, Cloudflare 403) the
   search is marked failed with a message that names the homelab and suggests the Apify scrapers.
   It never falls back to Apify by itself, since that would spend Apify credit unasked. A job the
   engine reports as `failed` fails the search. Transient poll errors are tolerated; a job still
   unfinished after `max_time` plus 10 minutes is failed.
-- **Pause is not available** for homelab searches (the engine cannot abort a job).
+- **Pause is not available** for a running homelab search (the engine cannot abort a job); only queued ones can be cancelled.
 - A search takes minutes (about 6 for depth 3 in a measured run), and the job id is stored in
   `search_history.apify_run_id` like an Apify run id.
 

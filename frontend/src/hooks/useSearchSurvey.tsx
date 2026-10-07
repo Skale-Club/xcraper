@@ -306,11 +306,18 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
 
             const response = await searchApi.start(input);
             setActiveSearchId(response.searchId);
-            setSearchStatus({ status: 'running' });
+            setSearchStatus(response.queued
+                ? { status: 'queued', queuePosition: response.queuePosition ?? null }
+                : { status: 'running' });
 
             queryClient.invalidateQueries({ queryKey: ['search-history'] });
 
-            toast({ title: 'Search Started', description: 'Your scraping task has been initiated...' });
+            toast(response.queued
+                ? {
+                    title: 'Search Queued',
+                    description: `The homelab runs one search at a time. Your search is #${response.queuePosition ?? 1} in the queue.`,
+                }
+                : { title: 'Search Started', description: 'Your scraping task has been initiated...' });
 
             setIsSearchSurveyOpen(false);
             resetDraft();

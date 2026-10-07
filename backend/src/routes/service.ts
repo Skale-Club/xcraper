@@ -12,7 +12,7 @@ import {
     providerNotConfiguredMessage,
 } from '../services/scrapeProvider.js';
 import { HomelabError } from '../services/homelab.js';
-import { HOMELAB_BUSY_MESSAGE, findActiveHomelabSearch } from '../services/homelabBusy.js';
+import { dispatchHomelabQueueSafely, getHomelabQueuePosition } from '../services/homelabQueue.js';
 import { canUseScraper, SCRAPER_FORBIDDEN_MESSAGE } from '../services/scrapers/access.js';
 import { scraperRegistry } from '../services/scrapers/registry.js';
 import { syncSearchRecordState } from './search.js';
@@ -130,14 +130,6 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
             return;
         }
 
-        if (isHomelabScraper(template.key)) {
-            const busy = await findActiveHomelabSearch();
-            if (busy) {
-                res.status(409).json({ error: HOMELAB_BUSY_MESSAGE });
-                return;
-            }
-        }
-
         const maxR = Math.min(Math.max(maxResults, runtime.minResults), runtime.maxResults);
 
         const [searchRecord] = await db.insert(searchHistory).values({
@@ -151,11 +143,48 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
             // otherwise use searchFilters, so the existing JSON column carries
             // Journey metadata without a schema migration.
             searchFilters: hypothesis ? { journey_hypothesis: hypothesis } : null,
-            status: 'pending',
+            // Homelab runs always enter the FIFO queue (one job at a time on the homelab);
+            // the dispatcher claims the oldest when the slot is free.
+            status: isHomelabScraper(template.key) ? 'queued' : 'pending',
             creditsUsed: 0,
             standardResultsCount: template.extractsEmails ? null : 0,
             enrichedResultsCount: template.extractsEmails ? 0 : null,
         }).returning();
+
+        if (isHomelabScraper(template.key)) {
+            await dispatchHomelabQueueSafely();
+            const [current] = await db.select()
+                .from(searchHistory)
+                .where(eq(searchHistory.id, searchRecord.id))
+                .limit(1);
+            const state = current ?? searchRecord;
+
+            if (state.status === 'failed') {
+                res.status(502).json({
+                    error: 'Failed to start scrape',
+                    message: state.errorMessage || 'The homelab scraper could not start this search.',
+                });
+                return;
+            }
+
+            const queued = state.status === 'queued';
+            res.status(202).json({
+                searchId: searchRecord.id,
+                status: state.status === 'queued' ? 'queued' : 'running',
+                queued,
+                queuePosition: queued ? await getHomelabQueuePosition(searchRecord.id) : null,
+                scrapeType: template.key,
+                query: query.trim(),
+                location: location.trim(),
+                maxResults: maxR,
+                apifyRunId: state.apifyRunId ?? null,
+                poll: `/api/service/scrape/${searchRecord.id}`,
+                hint: queued
+                    ? 'The homelab runs one search at a time; this one is queued. Poll the `poll` URL (every ~20s) until status is "completed"; status "queued" carries `queuePosition`.'
+                    : 'Poll the `poll` URL every ~20s until status is "completed"; the response then includes the Xphere push result.',
+            });
+            return;
+        }
 
         let startedTask: StartedTask;
         try {
@@ -247,6 +276,7 @@ router.get('/scrape/:id', requireServiceKey, async (req: Request, res: Response)
             totalResults: payload.totalResults ?? null,
             progress: payload.progress ?? null,
             itemsCount: payload.itemsCount ?? null,
+            queuePosition: payload.status === 'queued' ? (payload.queuePosition ?? null) : null,
             apifyStatusMessage: payload.apifyStatusMessage ?? null,
             xphere,
         });

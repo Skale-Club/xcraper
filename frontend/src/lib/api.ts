@@ -87,7 +87,7 @@ export interface SearchHistory {
     requestedMaxResults: number;
     requestEnrichment: boolean;
     scrapeType?: string;
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+    status: 'queued' | 'pending' | 'running' | 'completed' | 'failed' | 'paused';
     apifyRunId?: string | null;
     apifyActorId?: string | null;
     apifyActorName?: string | null;
@@ -102,13 +102,16 @@ export interface SearchHistory {
     savedResults?: number;
     createdAt: string;
     completedAt?: string | null;
+    /** 1-based place in the homelab queue; only present while status is 'queued'. */
+    queuePosition?: number | null;
 }
 
 export interface SearchStatus {
     requestedMaxResults?: number;
     requestEnrichment?: boolean;
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+    status: 'queued' | 'pending' | 'running' | 'completed' | 'failed' | 'paused';
     progress?: number;
+    queuePosition?: number | null;
     itemsCount?: number;
     totalResults?: number;
     savedResults?: number;
@@ -370,7 +373,7 @@ export const searchApi = {
         apiFetch<{ scrapers: ScraperOption[] }>('/search/scrapers'),
 
     start: (input: StartSearchInput) =>
-        apiFetch<{ message: string; searchId: string; apifyRunId: string; scrapeType?: string; estimatedCredits?: number; creditsPerLead?: number; requestEnrichment?: boolean }>('/search/', {
+        apiFetch<{ message: string; searchId: string; apifyRunId: string; scrapeType?: string; estimatedCredits?: number; creditsPerLead?: number; requestEnrichment?: boolean; queued?: boolean; queuePosition?: number | null }>('/search/', {
             method: 'POST',
             body: JSON.stringify(input),
         }),
@@ -948,7 +951,7 @@ export interface AdminSearch {
     location: string;
     requestedMaxResults: number;
     requestEnrichment: boolean;
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+    status: 'queued' | 'pending' | 'running' | 'completed' | 'failed' | 'paused';
     apifyRunId?: string | null;
     apifyActorId?: string | null;
     apifyActorName?: string | null;
@@ -971,7 +974,7 @@ export interface AdminSearch {
 export interface AdminSearchTimeline {
     timeline: Array<{
         id: string;
-        status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+        status: 'queued' | 'pending' | 'running' | 'completed' | 'failed' | 'paused';
         createdAt: string;
     }>;
     stats: {

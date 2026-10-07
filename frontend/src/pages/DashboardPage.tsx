@@ -156,8 +156,10 @@ export default function DashboardPage() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className="font-semibold text-amber-900 dark:text-foreground">
-                                        Search in Progress
-                                        {searchStatus.itemsCount ? ` — ${searchStatus.itemsCount} results found` : ''}
+                                        {searchStatus.status === 'queued'
+                                            ? `Queued${searchStatus.queuePosition ? ` (#${searchStatus.queuePosition})` : ''} — waiting for the homelab`
+                                            : 'Search in Progress'}
+                                        {searchStatus.status !== 'queued' && searchStatus.itemsCount ? ` — ${searchStatus.itemsCount} results found` : ''}
                                     </p>
                                     <div className="h-5 mt-0.5 overflow-hidden relative">
                                         <AnimatePresence mode="wait">
@@ -379,7 +381,9 @@ export default function DashboardPage() {
 
                                             <div className="flex items-center gap-2 shrink-0">
                                                 <span className={`inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap min-w-[90px] ${getStatusColor(search.status)}`}>
-                                                    {search.status.charAt(0).toUpperCase() + search.status.slice(1)}
+                                                    {search.status === 'queued' && search.queuePosition
+                                                        ? `Queued (#${search.queuePosition})`
+                                                        : search.status.charAt(0).toUpperCase() + search.status.slice(1)}
                                                 </span>
                                                 <ChevronRight className="h-4 w-4 text-muted-foreground/50 hidden sm:block" />
                                             </div>
