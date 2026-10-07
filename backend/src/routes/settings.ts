@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { systemSettingsService } from '../services/systemSettings.js';
 import { scraperRegistry, templateToSeedRow } from '../services/scrapers/registry.js';
+import { canUseScraper } from '../services/scrapers/access.js';
 
 const router = Router();
 const DEFAULT_ID = 'default';
@@ -419,12 +420,14 @@ const updateScraperSchema = z.object({
 });
 
 // GET /api/settings/scrapers — code templates merged with editable DB params (admin).
-router.get('/scrapers', requireAuth, requireAdmin, async (_req, res: Response): Promise<void> => {
+router.get('/scrapers', requireAuth, requireAdmin, async (req, res: Response): Promise<void> => {
     try {
         const rows = await db.select().from(scraperTemplates);
         const rowMap = new Map(rows.map((r) => [r.key, r]));
 
-        const scrapers = scraperRegistry.listTemplates().map((t) => {
+        // Owner-only templates (homelab) are hidden from every admin but the super admin.
+        const visible = scraperRegistry.listTemplates().filter((t) => canUseScraper(t, req.user?.email));
+        const scrapers = visible.map((t) => {
             const row = rowMap.get(t.key);
             const d = t.defaults;
             return {
@@ -464,7 +467,7 @@ router.patch('/scrapers/:key', requireAuth, requireAdmin, async (req, res: Respo
     try {
         const { key } = req.params as Record<string, string>;
         const template = scraperRegistry.getTemplate(key);
-        if (!template) {
+        if (!template || !canUseScraper(template, req.user?.email)) {
             res.status(404).json({ error: 'Unknown scraper template' });
             return;
         }

@@ -5,6 +5,7 @@ import { logger } from '../../utils/logger.js';
 import { standardTemplate } from './templates/standard.js';
 import { enrichedTemplate } from './templates/enriched.js';
 import { b2bLeadsTemplate } from './templates/b2bLeads.js';
+import { homelabTemplate } from './templates/homelab.js';
 import type {
     ScraperTemplate,
     ScraperRuntimeParams,
@@ -16,7 +17,7 @@ import type {
  * Code half of the hybrid registry — the LOGIC, keyed by template key.
  * Order here is the default display order when seeding the DB.
  */
-const CODE_TEMPLATES: ScraperTemplate[] = [standardTemplate, enrichedTemplate, b2bLeadsTemplate];
+const CODE_TEMPLATES: ScraperTemplate[] = [standardTemplate, enrichedTemplate, b2bLeadsTemplate, homelabTemplate];
 const CODE_TEMPLATE_MAP: Record<string, ScraperTemplate> = Object.fromEntries(
     CODE_TEMPLATES.map((t) => [t.key, t]),
 );

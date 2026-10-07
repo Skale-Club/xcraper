@@ -14,14 +14,19 @@ import {
 import { eq, desc, and, asc, sql } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
 import { limitConcurrentSearches } from '../middleware/userRateLimit.js';
+import type { StartedTask } from '../services/apify.js';
 import {
     startScrapingTask,
     getTaskStatus,
     getTaskResults,
-    isApifyConfigured,
     abortTask,
-    type StartedTask,
-} from '../services/apify.js';
+    isHomelabScraper,
+    isScraperProviderConfigured,
+    providerNotConfiguredMessage,
+} from '../services/scrapeProvider.js';
+import { HomelabError } from '../services/homelab.js';
+import { HOMELAB_BUSY_MESSAGE, findActiveHomelabSearch, isHomelabSearchOverdue } from '../services/homelabBusy.js';
+import { canUseScraper, SCRAPER_FORBIDDEN_MESSAGE } from '../services/scrapers/access.js';
 import { creditRulesService } from '../services/creditRules.js';
 import { autoTopUpService } from '../services/autoTopUp.js';
 import { billingAlertService } from '../services/billingAlerts.js';
@@ -567,7 +572,7 @@ export async function syncSearchRecordState(searchRecord: SearchRecord, userId: 
     }
 
     try {
-        const apifyStatus = await getTaskStatus(searchRecord.apifyRunId);
+        const apifyStatus = await getTaskStatus(searchRecord.apifyRunId, searchRecord.scrapeType);
 
         const trackingUpdate = {
             ...buildApifyTrackingUpdate({
@@ -593,9 +598,12 @@ export async function syncSearchRecordState(searchRecord: SearchRecord, userId: 
             const completedAt = new Date();
 
             // Save error details for admin debugging
+            const isHomelab = isHomelabScraper(searchRecord.scrapeType);
+            const failureMessage = apifyStatus.statusMessage
+                || (isHomelab ? 'Homelab scraper job failed' : 'Apify task failed');
             const errorDetails: ErrorDetails = {
-                type: 'ApifyTaskFailed',
-                message: apifyStatus.statusMessage || 'Apify task failed',
+                type: isHomelab ? 'HomelabJobFailed' : 'ApifyTaskFailed',
+                message: failureMessage,
                 apifyError: {
                     status: apifyStatus.status,
                     statusMessage: apifyStatus.statusMessage,
@@ -608,8 +616,10 @@ export async function syncSearchRecordState(searchRecord: SearchRecord, userId: 
             await db.update(searchHistory)
                 .set({
                     status: 'failed',
-                    errorMessage: apifyStatus.statusMessage || 'Apify task failed',
-                    errorCode: apifyStatus.exitCode ? String(apifyStatus.exitCode) : 'APIFY_TASK_FAILED',
+                    errorMessage: failureMessage,
+                    errorCode: apifyStatus.exitCode
+                        ? String(apifyStatus.exitCode)
+                        : (isHomelab ? 'HOMELAB_JOB_FAILED' : 'APIFY_TASK_FAILED'),
                     errorDetails,
                     failedAt: completedAt,
                     completedAt,
@@ -665,6 +675,11 @@ export async function syncSearchRecordState(searchRecord: SearchRecord, userId: 
             };
         }
 
+        // A homelab job that is still not terminal long after its max_time (engine hung
+        // or restarted) is failed rather than left pending forever.
+        const overdue = await failOverdueHomelabSearch(searchRecord, isAdmin);
+        if (overdue) return overdue;
+
         const nextStatus: SearchStatusValue = apifyStatus.status === 'READY' ? 'pending' : 'running';
 
         if (searchRecord.status !== nextStatus || Object.keys(trackingUpdate).length > 0) {
@@ -695,8 +710,56 @@ export async function syncSearchRecordState(searchRecord: SearchRecord, userId: 
         };
     } catch (error) {
         console.error(`Error syncing Apify status for search ${searchRecord.id}:`, error);
+        // Transient poll errors are tolerated (the next poll retries), but a homelab
+        // job we have been unable to read past its deadline is failed so the one-job
+        // slot is released.
+        try {
+            const overdue = await failOverdueHomelabSearch(searchRecord, isAdmin);
+            if (overdue) return overdue;
+        } catch (overdueError) {
+            console.error(`Error failing overdue homelab search ${searchRecord.id}:`, overdueError);
+        }
         return buildSearchPayload(searchRecord, isAdmin);
     }
+}
+
+async function failOverdueHomelabSearch(
+    searchRecord: SearchRecord,
+    isAdmin: boolean,
+): Promise<SearchStatusPayload | null> {
+    if (!isHomelabScraper(searchRecord.scrapeType) || !isHomelabSearchOverdue(searchRecord)) {
+        return null;
+    }
+
+    const message = 'The homelab scraper job did not finish in time and was marked as failed. Try again later or use one of the Apify scrapers (Standard or Enriched).';
+    const completedAt = new Date();
+    const errorDetails: ErrorDetails = {
+        type: 'HomelabJobTimeout',
+        message,
+        timestamp: completedAt.toISOString(),
+    };
+
+    await db.update(searchHistory)
+        .set({
+            status: 'failed',
+            errorMessage: message,
+            errorCode: 'HOMELAB_JOB_TIMEOUT',
+            errorDetails,
+            apifyStatusMessage: message,
+            failedAt: completedAt,
+            completedAt,
+        })
+        .where(and(eq(searchHistory.id, searchRecord.id), sql`${searchHistory.status} IN ('pending', 'running')`));
+
+    return {
+        ...buildSearchPayload({
+            ...searchRecord,
+            status: 'failed',
+            apifyStatusMessage: message,
+            completedAt,
+        }, isAdmin),
+        message: 'Scraping task failed',
+    };
 }
 
 router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response): Promise<void> => {
@@ -738,17 +801,24 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             filters,
         } = validationResult.data;
 
-        if (!isApifyConfigured()) {
-            res.status(503).json({
-                error: 'Scraping service is not configured. Please contact administrator.',
-            });
-            return;
-        }
-
         // Resolve the scraper template. Back-compat: clients that still send
         // `requestEnrichment` map onto the standard/enriched Google Maps templates.
         const scrapeType = requestedScrapeType ?? (requestEnrichment ? 'enriched' : 'standard');
         const template = scraperRegistry.getTemplate(scrapeType);
+
+        // Owner-only templates (homelab): `role === 'admin'` is not enough. Checked
+        // before the configuration check so other users cannot probe how it is set up.
+        if (template && !canUseScraper(template, req.user.email)) {
+            res.status(403).json({ error: 'Forbidden', message: SCRAPER_FORBIDDEN_MESSAGE });
+            return;
+        }
+
+        if (!isScraperProviderConfigured(scrapeType)) {
+            res.status(503).json({
+                error: providerNotConfiguredMessage(scrapeType),
+            });
+            return;
+        }
 
         if (!template) {
             res.status(400).json({ error: 'Invalid scraper', message: `Unknown scraper type "${scrapeType}".` });
@@ -803,6 +873,15 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
         if (user.accountRiskFlag === 'suspended' || user.accountRiskFlag === 'restricted') {
             res.status(403).json({ error: 'Account is restricted' });
             return;
+        }
+
+        // The homelab runs one job at a time; refuse before creating any record.
+        if (isHomelabScraper(template.key)) {
+            const busy = await findActiveHomelabSearch();
+            if (busy) {
+                res.status(409).json({ error: 'Homelab busy', message: HOMELAB_BUSY_MESSAGE });
+                return;
+            }
         }
 
         const creditsPerLead = runtime.creditsPerResult;
@@ -869,7 +948,12 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
                 })
                 .where(eq(searchHistory.id, searchRecord.id));
         } catch (apifyError) {
-            await saveSearchError(searchRecord.id, apifyError, 'Failed to start search');
+            // HomelabError messages are user-safe and name the homelab; keep them.
+            await saveSearchError(
+                searchRecord.id,
+                apifyError,
+                apifyError instanceof HomelabError ? apifyError.message : 'Failed to start search',
+            );
             searchErrorSaved = true;
             throw apifyError;
         }
@@ -893,7 +977,7 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
             await saveSearchError(createdSearchId, error, 'Failed to start search');
         }
 
-        res.status(500).json({
+        res.status(error instanceof HomelabError ? 502 : 500).json({
             error: 'Failed to start search',
             message: errorMessage,
         });
@@ -901,9 +985,11 @@ router.post('/', requireAuth, limitConcurrentSearches, async (req, res: Response
 });
 
 // List the active scrapers and their input schemas — drives the dynamic search form.
-router.get('/scrapers', requireAuth, async (_req, res: Response): Promise<void> => {
+router.get('/scrapers', requireAuth, async (req, res: Response): Promise<void> => {
     try {
-        const active = await scraperRegistry.listActive();
+        // Owner-only templates are filtered out for everyone but the super admin.
+        const active = (await scraperRegistry.listActive())
+            .filter(({ template }) => canUseScraper(template, req.user?.email));
         res.json({
             scrapers: active.map(({ template, runtime }) => ({
                 key: template.key,
@@ -973,8 +1059,15 @@ router.post('/:searchId/pause', requireAuth, async (req, res: Response): Promise
 
         const userId = req.user.id;
 
+        // The homelab engine has no abort; a pause would also free the one-job slot while
+        // the job keeps running. Refuse instead of lying about it.
+        if (isHomelabScraper(searchRecord.scrapeType)) {
+            res.status(409).json({ error: 'A homelab search cannot be paused; wait for the job to finish.' });
+            return;
+        }
+
         // Abort the Apify task
-        await abortTask(searchRecord.apifyRunId);
+        await abortTask(searchRecord.apifyRunId, searchRecord.scrapeType);
 
         // Collect any partial results gathered before the abort, then persist
         // everything — credit debit, contacts, and the paused status — inside ONE

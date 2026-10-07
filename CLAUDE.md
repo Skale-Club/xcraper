@@ -105,6 +105,12 @@ SUPABASE_URL                         # Supabase project URL
 SUPABASE_SERVICE_ROLE_KEY            # Supabase service role key (never commit)
 APIFY_API_TOKEN                      # Apify API token
 APIFY_WEBHOOK_SECRET                 # Shared secret for /api/webhooks/apify (sent as x-apify-webhook-secret header or ?secret= query)
+SUPER_ADMIN_EMAIL                    # Only account allowed to use owner-only scrapers (default skale.club@gmail.com)
+HOMELAB_SCRAPER_URL                  # Homelab gosom/google-maps-scraper base URL (owner-only 'homelab' template)
+HOMELAB_SCRAPER_CF_CLIENT_ID         # Cloudflare Access service token id (CF-Access-Client-Id)
+HOMELAB_SCRAPER_CF_CLIENT_SECRET     # Cloudflare Access service token secret (never log)
+HOMELAB_SCRAPER_MAX_TIME_SECONDS     # Optional, engine max_time per job (default 1800)
+HOMELAB_SCRAPER_DEPTH                # Optional, engine depth per query (default 10)
 GOOGLE_PLACES_API_KEY                # Google Places API (backend)
 STRIPE_SECRET_KEY                    # Stripe secret key (sk_live_... in prod)
 STRIPE_PAYMENTS_WEBHOOK_SECRET       # Signing secret for /api/payments/webhook

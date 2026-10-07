@@ -244,6 +244,45 @@ xcraper/
 - `PATCH /api/settings/packages/:id` - Update package (admin)
 - `DELETE /api/settings/packages/:id` - Delete package (admin)
 
+## 🏠 Homelab scraper provider (owner-only)
+
+Besides the Apify-backed scrapers, the `homelab` template ("Google Maps (Homelab)") runs the
+open-source [`gosom/google-maps-scraper`](https://github.com/gosom/google-maps-scraper) engine
+(web/API mode) on the owner's home server. It returns the same contact shape as the Google Maps
+templates (plus emails, address parts, rating, coordinates and place id) and costs no credits.
+
+- **Owner-only.** Only the user whose email equals `SUPER_ADMIN_EMAIL` (default
+  `skale.club@gmail.com`, case-insensitive, trimmed) can see or use it. `role === 'admin'` is not
+  enough. Enforced on the server: it is filtered out of `GET /api/search/scrapers` (and the admin
+  scraper settings) for everyone else, and `POST /api/search` and `POST /api/service/scrape`
+  answer 403. The service route attributes the run to `XCRAPER_SERVICE_USER_EMAIL` (or the first
+  admin), so Hermes can use `scrapeType: "homelab"` only when that user is the super admin.
+- **One job at a time.** The homelab runs a single job (`-c 1`) on purpose. While another homelab
+  search is pending/running, a new one gets HTTP 409. A job is dropped from that check once it is
+  older than `max_time` plus 10 minutes.
+- **No silent fallback.** If the homelab is unreachable (network error, 5xx, Cloudflare 403) the
+  search is marked failed with a message that names the homelab and suggests the Apify scrapers.
+  It never falls back to Apify by itself, since that would spend Apify credit unasked. A job the
+  engine reports as `failed` fails the search. Transient poll errors are tolerated; a job still
+  unfinished after `max_time` plus 10 minutes is failed.
+- **Pause is not available** for homelab searches (the engine cannot abort a job).
+- A search takes minutes (about 6 for depth 3 in a measured run), and the job id is stored in
+  `search_history.apify_run_id` like an Apify run id.
+
+Environment variables (backend):
+
+| Variable | Purpose |
+|---|---|
+| `HOMELAB_SCRAPER_URL` | Base URL of the engine behind Cloudflare Access (required) |
+| `HOMELAB_SCRAPER_CF_CLIENT_ID` | Cloudflare Access service token id, sent as `CF-Access-Client-Id` (required) |
+| `HOMELAB_SCRAPER_CF_CLIENT_SECRET` | Service token secret, sent as `CF-Access-Client-Secret` (required, never logged) |
+| `HOMELAB_SCRAPER_MAX_TIME_SECONDS` | Engine `max_time` per job (default `1800`) |
+| `HOMELAB_SCRAPER_DEPTH` | Engine scroll `depth` per query (default `10`) |
+| `SUPER_ADMIN_EMAIL` | The one account allowed to use owner-only scrapers (default `skale.club@gmail.com`) |
+
+If the URL or either credential is missing, the template reports "not configured" and the rest
+of the app is unaffected.
+
 ## 💳 Credit System
 
 The platform uses a credit-based billing system:

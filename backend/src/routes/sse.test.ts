@@ -4,7 +4,7 @@ import express from 'express';
 import sseRouter from './sse.js';
 
 // Mock dependencies
-vi.mock('../services/apify.js', () => ({
+vi.mock('../services/scrapeProvider.js', () => ({
     getTaskStatus: vi.fn(() => Promise.resolve({
         id: 'test-run-id',
         status: 'RUNNING',

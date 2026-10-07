@@ -4,7 +4,16 @@ import { z } from 'zod';
 import { eq, and, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users, searchHistory, type User } from '../db/schema.js';
-import { startScrapingTask, isApifyConfigured, type StartedTask } from '../services/apify.js';
+import type { StartedTask } from '../services/apify.js';
+import {
+    startScrapingTask,
+    isHomelabScraper,
+    isScraperProviderConfigured,
+    providerNotConfiguredMessage,
+} from '../services/scrapeProvider.js';
+import { HomelabError } from '../services/homelab.js';
+import { HOMELAB_BUSY_MESSAGE, findActiveHomelabSearch } from '../services/homelabBusy.js';
+import { canUseScraper, SCRAPER_FORBIDDEN_MESSAGE } from '../services/scrapers/access.js';
 import { scraperRegistry } from '../services/scrapers/registry.js';
 import { syncSearchRecordState } from './search.js';
 import { pushRunToXphere } from '../services/xphere.js';
@@ -52,8 +61,10 @@ const scrapeSchema = z.object({
     query: z.string().min(2).max(500),
     location: z.string().min(2).max(500),
     maxResults: z.number().int().min(1).max(1000).optional().default(50),
-    // 'standard' = Google Maps business listings; 'enriched' = + email extraction.
-    scrapeType: z.enum(['standard', 'enriched']).optional().default('standard'),
+    // 'standard' = Google Maps business listings; 'enriched' = + email extraction;
+    // 'homelab' = owner-only run on the homelab engine (allowed only when the service
+    // user is the super admin, SUPER_ADMIN_EMAIL).
+    scrapeType: z.enum(['standard', 'enriched', 'homelab']).optional().default('standard'),
     hypothesis: z.object({
         premise: z.string().trim().min(1).max(2000).optional(),
         expected: z.record(z.string(), z.union([z.string().max(500), z.number()])).optional(),
@@ -82,8 +93,12 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
         }
         const { query, location, maxResults, scrapeType, hypothesis } = parsed.data;
 
-        if (!isApifyConfigured()) {
-            res.status(503).json({ error: 'Scraping service is not configured.' });
+        if (!isScraperProviderConfigured(scrapeType)) {
+            res.status(503).json({
+                error: isHomelabScraper(scrapeType)
+                    ? providerNotConfiguredMessage(scrapeType)
+                    : 'Scraping service is not configured.',
+            });
             return;
         }
 
@@ -106,6 +121,21 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
         if (user.accountRiskFlag === 'suspended' || user.accountRiskFlag === 'restricted') {
             res.status(403).json({ error: 'Service account is restricted.' });
             return;
+        }
+
+        // Owner-only templates: the run is attributed to the service user, so it is
+        // allowed only when that user is the super admin.
+        if (!canUseScraper(template, user.email)) {
+            res.status(403).json({ error: SCRAPER_FORBIDDEN_MESSAGE });
+            return;
+        }
+
+        if (isHomelabScraper(template.key)) {
+            const busy = await findActiveHomelabSearch();
+            if (busy) {
+                res.status(409).json({ error: HOMELAB_BUSY_MESSAGE });
+                return;
+            }
         }
 
         const maxR = Math.min(Math.max(maxResults, runtime.minResults), runtime.maxResults);
@@ -170,7 +200,7 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
-        res.status(500).json({ error: 'Failed to start scrape', message });
+        res.status(error instanceof HomelabError ? 502 : 500).json({ error: 'Failed to start scrape', message });
     }
 });
 

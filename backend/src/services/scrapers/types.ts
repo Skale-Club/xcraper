@@ -14,6 +14,8 @@ import type { ActorStartOptions } from 'apify-client';
 
 export type ScraperSource = 'google_maps' | 'b2b_leads';
 export type ScraperContactType = 'place' | 'b2b_lead';
+/** Where a template's job runs. Absent means 'apify' (the original, default provider). */
+export type ScraperProvider = 'apify' | 'homelab';
 export type ScraperBilling = 'pay_per_result' | 'pay_per_event';
 export type ScraperFormFieldType = 'text' | 'tags' | 'select' | 'multiselect' | 'combobox' | 'number';
 
@@ -78,6 +80,13 @@ export interface NormalizedContact {
     title: string;
     category?: string;
     address?: string;
+    // Address parts, when the source provides them (the homelab engine does). Not yet
+    // persisted as columns; the full structure also stays in `rawData`.
+    street?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
     phone?: string;
     website?: string;
     email?: string;
@@ -135,13 +144,25 @@ export interface ScraperTemplate {
     billing: ScraperBilling;
     extractsEmails: boolean;
 
+    /** Execution provider. Defaults to 'apify' when omitted. */
+    provider?: ScraperProvider;
+
+    /**
+     * When true only the super admin (SUPER_ADMIN_EMAIL) may see or run this
+     * template. `role === 'admin'` is NOT enough — see services/scrapers/access.ts.
+     */
+    ownerOnly?: boolean;
+
     /** Schema the frontend uses to render the search form for this scraper. */
     inputSchema: ScraperFormField[];
 
     /** Code defaults used to seed the DB and as a fallback before seeding. */
     defaults: ScraperRuntimeParams;
 
-    /** Build the Apify actor input from user params. */
+    /**
+     * Build the provider job input from user params: the Apify actor input, or for the
+     * homelab provider the gosom job payload.
+     */
     buildInput(params: ScraperSearchParams, runtime: ScraperRuntimeParams): Record<string, unknown>;
 
     /** Build the Apify start options (memory + maxTotalChargeUsd cost ceiling). */

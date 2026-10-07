@@ -3,7 +3,7 @@ import { db } from '../db/index.js';
 import { searchHistory } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
-import { getTaskStatus, type TaskStatus } from '../services/apify.js';
+import { getTaskStatus, type TaskStatus } from '../services/scrapeProvider.js';
 import { syncSearchRecordState } from './search.js';
 
 const TERMINAL_STATUSES = ['completed', 'failed', 'paused'];
@@ -167,7 +167,7 @@ router.get('/:searchId/stream', requireAuth, async (req, res: Response): Promise
             let apifyStatus: TaskStatus | null = null;
             if (currentSearch.apifyRunId && !TERMINAL_STATUSES.includes(currentSearch.status)) {
                 try {
-                    apifyStatus = await getTaskStatus(currentSearch.apifyRunId);
+                    apifyStatus = await getTaskStatus(currentSearch.apifyRunId, currentSearch.scrapeType);
                 } catch (error) {
                     console.error('Error fetching Apify status:', error);
                 }

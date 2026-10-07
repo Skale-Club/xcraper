@@ -255,7 +255,10 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
     const creditsPerLead = selectedScraper?.creditsPerResult ?? 1;
     const minimumResults = selectedScraper?.minResults ?? 1;
     const scraperMax = selectedScraper?.maxResults ?? 500;
-    const maxSelectableResults = isAdmin ? scraperMax : Math.min(scraperMax, Math.floor(userCredits / creditsPerLead));
+    // A zero-credit scraper (e.g. the owner-only homelab one) is not limited by balance.
+    const maxSelectableResults = isAdmin || creditsPerLead <= 0
+        ? scraperMax
+        : Math.min(scraperMax, Math.floor(userCredits / creditsPerLead));
     const canAffordMinimumSearch = isAdmin || maxSelectableResults >= minimumResults;
     const sliderMax = canAffordMinimumSearch ? maxSelectableResults : minimumResults;
 
@@ -508,7 +511,9 @@ export function SearchSurveyProvider({ children }: { children: ReactNode }) {
                                                                             variant="outline"
                                                                             className="w-fit rounded-full border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
                                                                         >
-                                                                            {scraper.creditsPerResult} credit{scraper.creditsPerResult === 1 ? '' : 's'}/result
+                                                                            {scraper.creditsPerResult === 0
+                                                                                ? 'Free'
+                                                                                : `${scraper.creditsPerResult} credit${scraper.creditsPerResult === 1 ? '' : 's'}/result`}
                                                                         </Badge>
                                                                     </div>
                                                                 </button>
