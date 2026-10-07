@@ -6,7 +6,10 @@ import { homelabTemplate, mapHomelabPlace, parseHomelabEmails } from './homelab.
 import { parseHomelabCsv } from '../../homelab.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const csv = readFileSync(join(here, '__fixtures__', 'homelab-sample.csv'), 'utf-8');
+// Normalise line endings: git may check the fixture out with CRLF on Windows.
+const csv = readFileSync(join(here, '__fixtures__', 'homelab-sample.csv'), 'utf-8').replace(/
+/g, '
+');
 
 const EXPECTED_HEADER = 'input_id,link,title,category,address,open_hours,popular_times,website,phone,plus_code,review_count,review_rating,reviews_per_rating,latitude,longitude,cid,status,descriptions,reviews_link,thumbnail,timezone,price_range,data_id,street_view_url,place_id,images,reservations,order_online,menu,owner,complete_address,about,user_reviews,user_reviews_extended,emails';
 
