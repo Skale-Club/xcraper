@@ -17,6 +17,7 @@ import { canUseScraper, isSuperAdminEmail, SCRAPER_FORBIDDEN_MESSAGE } from '../
 import { scraperRegistry } from '../services/scrapers/registry.js';
 import { syncSearchRecordState } from './search.js';
 import { pushRunToXphere } from '../services/xphere.js';
+import { optionalNicheSchema } from '../utils/niche.js';
 
 // Machine-to-machine ("service") API for trusted backends (e.g. the Hermes agent)
 // to run a Google Maps scrape and push the results into Xphere WITHOUT a browser
@@ -97,6 +98,10 @@ const scrapeSchema = z.object({
     // (2026-10-07: Hermes left it out, fell back to Apify and failed on an exhausted Apify balance),
     // otherwise 'standard'.
     scrapeType: z.enum(['standard', 'enriched', 'homelab']).optional(),
+    // Prospecting niche slug ("barbershop", "nail_salon"). Xphere files every business of the run
+    // under it and keeps one Meta audience per niche. Optional on purpose: when absent it stays
+    // null; it is never guessed from the query.
+    niche: optionalNicheSchema,
     hypothesis: z.object({
         premise: z.string().trim().min(1).max(2000).optional(),
         expected: z.record(z.string(), z.union([z.string().max(500), z.number()])).optional(),
@@ -123,7 +128,7 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
             res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() });
             return;
         }
-        const { query, location, maxResults, hypothesis } = parsed.data;
+        const { query, location, maxResults, hypothesis, niche } = parsed.data;
         let scrapeType = parsed.data.scrapeType;
         if (!scrapeType) {
             const defaultUser = await resolveServiceUser();
@@ -180,8 +185,10 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
             scrapeType: template.key,
             // Capture this before Apify starts. Google Maps service runs do not
             // otherwise use searchFilters, so the existing JSON column carries
-            // Journey metadata without a schema migration.
-            searchFilters: hypothesis ? { journey_hypothesis: hypothesis } : null,
+            // Journey metadata (and the niche) without a schema migration.
+            searchFilters: hypothesis || niche
+                ? { ...(hypothesis ? { journey_hypothesis: hypothesis } : {}), ...(niche ? { niche } : {}) }
+                : null,
             // Homelab runs always enter the FIFO queue (one job at a time on the homelab);
             // the dispatcher claims the oldest when the slot is free.
             status: isHomelabScraper(template.key) ? 'queued' : 'pending',

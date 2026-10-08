@@ -5,6 +5,7 @@ import { logError } from '../utils/logger.js';
 import { classifyWebPresence, type WebPresenceClassification } from './webPresence.js';
 import { wasEmailRejectedAsPlaceholder } from './emailPlaceholders.js';
 import { getXphereUrl, normalizeBaseUrl } from '../config/urls.js';
+import { readRunNiche } from '../utils/niche.js';
 
 // Xphere is the prospecting hub: Xcraper pushes extracted business leads into the
 // caller's Xphere workspace via the public ingestion API (POST /api/v1/prospects),
@@ -141,6 +142,9 @@ export function buildSourceMetadata(
             metadata.emails_lost_to_placeholder = emailsLostToPlaceholder;
         }
     }
+    // Niche segment of the run (set by the service API). Absent stays absent: no key, no guess.
+    const niche = readRunNiche(run.searchFilters);
+    if (niche) metadata.niche = niche;
     const hypothesis = run.searchFilters?.journey_hypothesis;
     if (hypothesis && typeof hypothesis === 'object' && !Array.isArray(hypothesis)) {
         metadata.hypothesis = hypothesis;
@@ -227,6 +231,7 @@ export async function pushRunToXphere(searchId: string, userId: string): Promise
         c.twitter,
         c.youtube,
     ]));
+    const niche = readRunNiche(run.searchFilters);
     const prospects: ProspectPayload[] = rows.map((c, index) => {
         const presence = presences[index];
         return {
@@ -251,6 +256,9 @@ export async function pushRunToXphere(searchId: string, userId: string): Promise
                 booking_platform: presence.bookingPlatform,
                 booking_url: presence.bookingUrl,
                 google_maps_url: c.googleMapsUrl ?? null,
+                // Only when the run declared one. Xphere unions niches across runs, so a
+                // business found by two niche scrapes belongs to both.
+                ...(niche ? { niche } : {}),
             },
             source_payload: {
                 place_id: c.placeId ?? null,

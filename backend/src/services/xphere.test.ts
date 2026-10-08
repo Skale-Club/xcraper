@@ -125,6 +125,29 @@ describe('buildSourceMetadata', () => {
         expect(metadata.hypothesis).toEqual(hypothesis);
     });
 
+    describe('niche', () => {
+        it('sends the niche of the run in the source metadata', () => {
+            const metadata = buildSourceMetadata({ ...baseRun, searchFilters: { niche: 'barbershop' } }, 7);
+            expect(metadata.niche).toBe('barbershop');
+        });
+
+        it('keeps the niche next to the hypothesis', () => {
+            const hypothesis = { premise: 'p' };
+            const metadata = buildSourceMetadata({ ...baseRun, searchFilters: { niche: 'nail_salon', journey_hypothesis: hypothesis } }, 7);
+            expect(metadata.niche).toBe('nail_salon');
+            expect(metadata.hypothesis).toEqual(hypothesis);
+        });
+
+        it('omits the key when the run has no niche (no filters, or filters without one)', () => {
+            expect('niche' in buildSourceMetadata(baseRun, 7)).toBe(false);
+            expect('niche' in buildSourceMetadata({ ...baseRun, searchFilters: { journey_hypothesis: {} } }, 7)).toBe(false);
+        });
+
+        it('ignores a stored value that is not a valid slug', () => {
+            expect('niche' in buildSourceMetadata({ ...baseRun, searchFilters: { niche: 'Nail Salon' } }, 7)).toBe(false);
+        });
+    });
+
     it('includes a commercial web-presence summary when supplied', () => {
         const summary = summarizeWebPresence([
             classifyWebPresence('https://example.com'),
