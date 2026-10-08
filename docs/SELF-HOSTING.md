@@ -271,3 +271,19 @@ and are inert there:
   which only decide between "export a handler" and "listen".
 - The `maxDuration` limits in `vercel.json`: they shape behaviour on Vercel only.
 - The GitHub Actions keepalive and CI workflows are host-independent.
+
+## Homelab queue tick
+
+The homelab runs one job at a time and queued runs wait in Postgres. The queue advances when a
+run's status is read, so something must read it even when no agent is polling:
+`POST /api/service/homelab/tick` (header `X-Service-Key`) refreshes the service user's open
+homelab runs, pushes completed ones to Xphere, and runs the dispatcher. Call it every 2 minutes
+from any scheduler that can reach the API. Today (2026-10-07) that is a cron on the Hetzner host
+that also runs Hermes, reading the key from the Hermes container so no secret is copied:
+
+```
+*/2 * * * * root /opt/hermes/xcraper-tick.sh >/dev/null 2>&1
+```
+
+Moving hosts: recreate the cron (or a GitHub Actions schedule, or a Vercel cron on a Pro plan)
+wherever it can call the URL with the key. Nothing in Xcraper depends on which scheduler it is.

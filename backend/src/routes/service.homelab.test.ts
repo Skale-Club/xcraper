@@ -272,3 +272,35 @@ describe('POST /api/service/scrape on the Apify path (unchanged)', () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 });
+
+describe('POST /api/service/homelab/tick', () => {
+    it('refreshes an open homelab run nobody is polling, pushes it when completed, and runs the dispatcher', async () => {
+        state.serviceUser = serviceUser('Skale.Club@gmail.com');
+        state.searchRow = { id: 'search-7', status: 'running', scrapeType: 'homelab', apifyRunId: 'job-7', xpherePushedAt: null };
+        vi.mocked(syncSearchRecordState).mockResolvedValue({ status: 'completed', savedResults: 12 } as never);
+        const { pushRunToXphere } = await import('../services/xphere.js');
+        vi.mocked(pushRunToXphere).mockResolvedValue({ ok: true, imported: 12 } as never);
+
+        const res = await request(app).post('/api/service/homelab/tick').set('x-service-key', SERVICE_KEY).send({});
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ refreshed: 1, runs: [{ searchId: 'search-7', status: 'completed', xphere: { pushed: true } }] });
+        expect(vi.mocked(syncSearchRecordState)).toHaveBeenCalledWith(expect.objectContaining({ id: 'search-7' }), 'svc-user', true);
+        expect(queue.dispatchHomelabQueueSafely).toHaveBeenCalled();
+    });
+
+    it('still runs the dispatcher when there is nothing open', async () => {
+        state.serviceUser = serviceUser('Skale.Club@gmail.com');
+        state.searchRow = null;
+        const res = await request(app).post('/api/service/homelab/tick').set('x-service-key', SERVICE_KEY).send({});
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ refreshed: 0, runs: [] });
+        expect(queue.dispatchHomelabQueueSafely).toHaveBeenCalledTimes(1);
+    });
+
+    it('requires the service key', async () => {
+        const res = await request(app).post('/api/service/homelab/tick').send({});
+        expect(res.status).toBe(401);
+        expect(queue.dispatchHomelabQueueSafely).not.toHaveBeenCalled();
+    });
+});

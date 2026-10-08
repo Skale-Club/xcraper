@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { timingSafeEqual } from 'crypto';
 import { z } from 'zod';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, or, inArray, isNull, gte } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users, searchHistory, type User } from '../db/schema.js';
 import type { StartedTask } from '../services/apify.js';
@@ -281,6 +281,35 @@ router.post('/scrape', requireServiceKey, async (req: Request, res: Response): P
 // push leaves xpherePushedAt null, so it's retried on every subsequent poll until
 // one succeeds. The push itself is idempotent on the Xphere side (dedup by source
 // id), so re-attempting is always safe.
+/**
+ * Sync one service run with its provider and auto-push it to Xphere once completed (retrying
+ * until a push succeeds). Shared by GET /scrape/:id and POST /homelab/tick, so a run that nobody
+ * polls still finishes, frees the homelab and reaches Xphere.
+ */
+async function refreshServiceRun(record: typeof searchHistory.$inferSelect, user: User): Promise<Record<string, unknown>> {
+    const isAdmin = user.role === 'admin';
+    const payload = await syncSearchRecordState(record, user.id, isAdmin);
+
+    let xphere: Record<string, unknown> = { pushed: false };
+    if (payload.status === 'completed') {
+        xphere = record.xpherePushedAt
+            ? { pushed: false, note: `Already pushed on ${record.xpherePushedAt.toISOString()}. POST /push to re-send.` }
+            : await pushToXphere(record.id, user.id);
+    }
+
+    return {
+        searchId: record.id,
+        status: payload.status,
+        savedResults: payload.savedResults ?? null,
+        totalResults: payload.totalResults ?? null,
+        progress: payload.progress ?? null,
+        itemsCount: payload.itemsCount ?? null,
+        queuePosition: payload.status === 'queued' ? (payload.queuePosition ?? null) : null,
+        apifyStatusMessage: payload.apifyStatusMessage ?? null,
+        xphere,
+    };
+}
+
 router.get('/scrape/:id', requireServiceKey, async (req: Request, res: Response): Promise<void> => {
     try {
         const user = await resolveServiceUser();
@@ -297,31 +326,55 @@ router.get('/scrape/:id', requireServiceKey, async (req: Request, res: Response)
             return;
         }
 
-        const isAdmin = user.role === 'admin';
-        const payload = await syncSearchRecordState(record, user.id, isAdmin);
-
-        // Auto-push (and retry) until a push actually succeeds.
-        let xphere: Record<string, unknown> = { pushed: false };
-        if (payload.status === 'completed') {
-            xphere = record.xpherePushedAt
-                ? { pushed: false, note: `Already pushed on ${record.xpherePushedAt.toISOString()}. POST /push to re-send.` }
-                : await pushToXphere(record.id, user.id);
-        }
-
-        res.json({
-            searchId: record.id,
-            status: payload.status,
-            savedResults: payload.savedResults ?? null,
-            totalResults: payload.totalResults ?? null,
-            progress: payload.progress ?? null,
-            itemsCount: payload.itemsCount ?? null,
-            queuePosition: payload.status === 'queued' ? (payload.queuePosition ?? null) : null,
-            apifyStatusMessage: payload.apifyStatusMessage ?? null,
-            xphere,
-        });
+        res.json(await refreshServiceRun(record, user));
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         res.status(500).json({ error: 'Failed to read scrape status', message });
+    }
+});
+
+/** How many open homelab runs one tick refreshes. The homelab runs one job at a time. */
+export const HOMELAB_TICK_LIMIT = 10;
+
+// POST /api/service/homelab/tick — advance the homelab queue without anyone polling
+// (2026-10-07: a queued run only started when someone read its status). Refreshes the service
+// user's open homelab runs (queued/pending/running) and completed ones not yet pushed to Xphere,
+// oldest first, then runs the dispatcher once. Called every 2 minutes by a scheduler outside
+// Xcraper (docs/SELF-HOSTING.md, "Homelab queue tick"); safe to call any time.
+router.post('/homelab/tick', requireServiceKey, async (_req: Request, res: Response): Promise<void> => {
+    try {
+        const user = await resolveServiceUser();
+        if (!user) {
+            res.status(500).json({ error: 'No service user found.' });
+            return;
+        }
+        const records = await db.select()
+            .from(searchHistory)
+            .where(and(
+                eq(searchHistory.userId, user.id),
+                eq(searchHistory.scrapeType, 'homelab'),
+                or(
+                    inArray(searchHistory.status, ['queued', 'pending', 'running']),
+                    and(eq(searchHistory.status, 'completed'), isNull(searchHistory.xpherePushedAt), gte(searchHistory.createdAt, new Date(Date.now() - 2 * 24 * 3600_000))),
+                ),
+            ))
+            .orderBy(asc(searchHistory.createdAt))
+            .limit(HOMELAB_TICK_LIMIT);
+
+        const runs: Array<Record<string, unknown>> = [];
+        for (const record of records) {
+            try {
+                const refreshed = await refreshServiceRun(record, user);
+                runs.push({ searchId: refreshed.searchId, status: refreshed.status, xphere: refreshed.xphere });
+            } catch (error) {
+                runs.push({ searchId: record.id, error: error instanceof Error ? error.message : 'Unknown error' });
+            }
+        }
+        await dispatchHomelabQueueSafely();
+        res.json({ refreshed: runs.length, runs });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        res.status(500).json({ error: 'Homelab tick failed', message });
     }
 });
 
