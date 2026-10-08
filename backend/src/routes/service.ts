@@ -21,28 +21,57 @@ import { pushRunToXphere } from '../services/xphere.js';
 // Machine-to-machine ("service") API for trusted backends (e.g. the Hermes agent)
 // to run a Google Maps scrape and push the results into Xphere WITHOUT a browser
 // login. Every other Xcraper route is gated by a Supabase user session; this one
-// is gated by a single shared secret (XCRAPER_SERVICE_KEY) instead, and attributes
+// is gated by per-agent shared secrets (XCRAPER_SERVICE_KEY, XCRAPER_SERVICE_KEYS) instead, and attributes
 // the run + credits to a designated service user (XCRAPER_SERVICE_USER_EMAIL, or
 // the first admin). It deliberately reuses the same trigger/finalize/push code the
 // interactive flow uses, so credits, dedup and storage all behave identically.
 
 const router = Router();
 
-/** Timing-safe shared-secret check via the `X-Service-Key` header. Fails closed. */
+/**
+ * Accepted service keys, each with the caller's name. XCRAPER_SERVICE_KEY is the original
+ * single key (the Hermes agent); XCRAPER_SERVICE_KEYS adds more callers as
+ * `name=key,name2=key2` (2026-10-07: Kai needed homelab access too). One key per agent means
+ * one can be revoked without cutting the other, and the logs say who triggered each run.
+ */
+export function configuredServiceKeys(env: NodeJS.ProcessEnv = process.env): Array<{ name: string; key: string }> {
+    const keys: Array<{ name: string; key: string }> = [];
+    if (env.XCRAPER_SERVICE_KEY) keys.push({ name: 'hermes', key: env.XCRAPER_SERVICE_KEY });
+    for (const entry of (env.XCRAPER_SERVICE_KEYS ?? '').split(',')) {
+        const at = entry.indexOf('=');
+        if (at <= 0) continue;
+        const name = entry.slice(0, at).trim();
+        const key = entry.slice(at + 1).trim();
+        if (name && key.length >= 16) keys.push({ name, key });
+    }
+    return keys;
+}
+
+/** Name of the caller whose key matches, or null. Timing-safe per key. */
+export function matchServiceKey(provided: string, keys: Array<{ name: string; key: string }>): string | null {
+    const b = Buffer.from(provided);
+    let match: string | null = null;
+    for (const { name, key } of keys) {
+        const a = Buffer.from(key);
+        if (a.length === b.length && timingSafeEqual(a, b)) match = name;
+    }
+    return match;
+}
+
+/** Shared-secret check via the `X-Service-Key` header. Fails closed. */
 function requireServiceKey(req: Request, res: Response, next: NextFunction): void {
-    const expected = process.env.XCRAPER_SERVICE_KEY;
-    if (!expected) {
+    const keys = configuredServiceKeys();
+    if (keys.length === 0) {
         res.status(503).json({ error: 'Service API is not configured (set XCRAPER_SERVICE_KEY).' });
         return;
     }
     const headerKey = req.headers['x-service-key'];
-    const provided = typeof headerKey === 'string' ? headerKey : '';
-    const a = Buffer.from(expected);
-    const b = Buffer.from(provided);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    const caller = matchServiceKey(typeof headerKey === 'string' ? headerKey : '', keys);
+    if (!caller) {
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
+    console.info(`[service] ${req.method} ${req.path} caller=${caller}`);
     next();
 }
 

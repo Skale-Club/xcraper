@@ -92,7 +92,8 @@ root [`.env.example`](../.env.example).
 | `APIFY_WEBHOOK_SECRET` | recommended | Webhook fails closed without it |
 | `STRIPE_SECRET_KEY`, `STRIPE_PAYMENTS_WEBHOOK_SECRET`, `STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET` (`STRIPE_WEBHOOK_SECRET` legacy) | for billing | |
 | `GOOGLE_PLACES_API_KEY` | for place autocomplete | |
-| `XCRAPER_SERVICE_KEY`, `XCRAPER_SERVICE_USER_EMAIL` | for Hermes | Service API fails closed without the key |
+| `XCRAPER_SERVICE_KEY`, `XCRAPER_SERVICE_USER_EMAIL` | for Hermes | Service API fails closed without a key |
+| `XCRAPER_SERVICE_KEYS` | for more agents (Kai) | `name=key,name2=key2`, one key per agent, caller name goes to the log |
 | `XPHERE_API_URL`, `XPHERE_API_KEY` | optional | URL defaults to the canonical Xphere origin |
 | `SUPER_ADMIN_EMAIL`, `ADMIN_EMAIL`, `KEEPALIVE_SECRET`, `SENTRY_DSN` | optional | |
 | `HOMELAB_SCRAPER_*` | optional | |

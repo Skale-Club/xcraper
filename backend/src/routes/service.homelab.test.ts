@@ -109,12 +109,14 @@ function clearEnv() {
     }
     delete process.env.SUPER_ADMIN_EMAIL;
     delete process.env.XCRAPER_SERVICE_KEY;
+    delete process.env.XCRAPER_SERVICE_KEYS;
     delete process.env.XCRAPER_SERVICE_USER_EMAIL;
 }
 
 beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
     clearEnv();
     process.env.XCRAPER_SERVICE_KEY = SERVICE_KEY;
     process.env.XCRAPER_SERVICE_USER_EMAIL = 'hermes@example.com';
@@ -201,6 +203,23 @@ describe('POST /api/service/scrape with scrapeType homelab', () => {
 
     it('still requires the service key', async () => {
         const res = await request(app).post('/api/service/scrape').send(homelabBody);
+        expect(res.status).toBe(401);
+    });
+
+    it('accepts a second agent key from XCRAPER_SERVICE_KEYS and logs who called (Kai, 2026-10-07)', async () => {
+        process.env.XCRAPER_SERVICE_KEYS = 'kai=kai-key-0123456789abcdef';
+        state.serviceUser = serviceUser('Skale.Club@gmail.com');
+        state.searchRow = { id: 'search-1', status: 'running', apifyRunId: 'job-9' };
+
+        const res = await request(app).post('/api/service/scrape').set('x-service-key', 'kai-key-0123456789abcdef').send(homelabBody);
+
+        expect(res.status).toBe(202);
+        expect(vi.mocked(console.info)).toHaveBeenCalledWith(expect.stringContaining('caller=kai'));
+    });
+
+    it('rejects a key that is not configured even when XCRAPER_SERVICE_KEYS is set', async () => {
+        process.env.XCRAPER_SERVICE_KEYS = 'kai=kai-key-0123456789abcdef';
+        const res = await request(app).post('/api/service/scrape').set('x-service-key', 'kai-key-0123456789abcdeX').send(homelabBody);
         expect(res.status).toBe(401);
     });
 });
