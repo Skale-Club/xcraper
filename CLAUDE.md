@@ -1,5 +1,15 @@
 # Xcraper — CLAUDE.md
 
+## Prospecting system documentation (read first, keep current)
+
+Xcraper is one part of the Skale Club prospecting pipeline (homelab scraper → Xcraper → Xphere →
+Xmail, driven by the Hermes agent). The whole system is described in ONE place, in English:
+`docs/prospecting/README.md` in the **xmail** repository
+(https://github.com/Skale-Club/xmail/blob/main/docs/prospecting/README.md). Any change here that
+alters prospecting behavior (queue, homelab rules, providers, push to Xphere, the service API,
+hosts or domains) updates that file too, in a commit of the xmail repo made alongside this one.
+
+
 ## Project Overview
 
 Xcraper is a B2B lead generation SaaS that scrapes Google Maps via Apify to extract business contacts (phone, email, social media). Users buy credits to run searches and export results.
