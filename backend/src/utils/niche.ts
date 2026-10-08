@@ -27,10 +27,12 @@ export function isValidNiche(value: unknown): value is string {
  * with a clear message instead of silently becoming a different niche. `null` is treated as
  * "absent".
  */
-export const optionalNicheSchema = z
+export const nicheSchema = z
     .string()
     .trim()
-    .refine(isValidNiche, { message: NICHE_FORMAT_MESSAGE })
+    .refine(isValidNiche, { message: NICHE_FORMAT_MESSAGE });
+
+export const optionalNicheSchema = nicheSchema
     .nullish()
     .transform((value) => value ?? undefined);
 

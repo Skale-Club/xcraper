@@ -17,3 +17,10 @@ cc23876b4b8acb6a2a8733717c114bbd79490cdd:CLAUDE.md:generic-api-key:428
 # The fixture was since changed to the readable slug form; this entry only
 # silences the commit that still carries the opaque id in history.
 54e73984151e4a931de8c2baa416a17f509e44f4:backend/src/services/xphere.test.ts:generic-api-key:38
+
+# High-entropy service-key fixtures introduced in 8e2ae90. They were synthetic,
+# contained no production value, and the current tests use low-entropy fixtures.
+8e2ae90a07e449e0b3a4b33749f148a7c2365445:backend/src/routes/service.keys.test.ts:generic-api-key:16
+8e2ae90a07e449e0b3a4b33749f148a7c2365445:backend/src/routes/service.keys.test.ts:generic-api-key:26
+8e2ae90a07e449e0b3a4b33749f148a7c2365445:backend/src/routes/service.homelab.test.ts:generic-api-key:210
+8e2ae90a07e449e0b3a4b33749f148a7c2365445:backend/src/routes/service.homelab.test.ts:generic-api-key:221

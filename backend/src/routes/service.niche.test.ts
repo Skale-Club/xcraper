@@ -151,25 +151,26 @@ describe('POST /api/service/scrape niche', () => {
         },
     );
 
-    it('leaves the niche absent when not sent: it is never guessed from the query', async () => {
+    it('rejects a missing niche instead of guessing it from the query', async () => {
         const res = await scrape({ ...baseBody, query: 'barbershop' });
 
-        expect(res.status).toBe(202);
-        expect(state.inserts[0].searchFilters).toBeNull();
+        expect(res.status).toBe(400);
+        expect(JSON.stringify(res.body.details)).toMatch(/niche/);
+        expect(state.inserts).toHaveLength(0);
     });
 
-    it('treats an explicit null niche as absent', async () => {
+    it('rejects an explicit null niche', async () => {
         const res = await scrape({ ...baseBody, niche: null });
 
-        expect(res.status).toBe(202);
-        expect(state.inserts[0].searchFilters).toBeNull();
+        expect(res.status).toBe(400);
+        expect(state.inserts).toHaveLength(0);
     });
 
-    it('keeps the hypothesis-only shape unchanged when there is no niche', async () => {
+    it('rejects a hypothesis-only request when there is no niche', async () => {
         const hypothesis = { premise: 'p' };
         const res = await scrape({ ...baseBody, hypothesis });
 
-        expect(res.status).toBe(202);
-        expect(state.inserts[0].searchFilters).toEqual({ journey_hypothesis: hypothesis });
+        expect(res.status).toBe(400);
+        expect(state.inserts).toHaveLength(0);
     });
 });

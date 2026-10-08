@@ -17,7 +17,7 @@ import { canUseScraper, isSuperAdminEmail, SCRAPER_FORBIDDEN_MESSAGE } from '../
 import { scraperRegistry } from '../services/scrapers/registry.js';
 import { syncSearchRecordState } from './search.js';
 import { pushRunToXphere } from '../services/xphere.js';
-import { optionalNicheSchema } from '../utils/niche.js';
+import { nicheSchema } from '../utils/niche.js';
 
 // Machine-to-machine ("service") API for trusted backends (e.g. the Hermes agent)
 // to run a Google Maps scrape and push the results into Xphere WITHOUT a browser
@@ -98,10 +98,9 @@ const scrapeSchema = z.object({
     // (2026-10-07: Hermes left it out, fell back to Apify and failed on an exhausted Apify balance),
     // otherwise 'standard'.
     scrapeType: z.enum(['standard', 'enriched', 'homelab']).optional(),
-    // Prospecting niche slug ("barbershop", "nail_salon"). Xphere files every business of the run
-    // under it and keeps one Meta audience per niche. Optional on purpose: when absent it stays
-    // null; it is never guessed from the query.
-    niche: optionalNicheSchema,
+    // Prospecting niche slug ("barbershop", "nail_salon"). Every service run
+    // must be classified before it starts; never guess it from query text.
+    niche: nicheSchema,
     hypothesis: z.object({
         premise: z.string().trim().min(1).max(2000).optional(),
         expected: z.record(z.string(), z.union([z.string().max(500), z.number()])).optional(),

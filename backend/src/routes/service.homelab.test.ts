@@ -101,7 +101,7 @@ const serviceUser = (email: string) => ({
 const scrape = (body: Record<string, unknown>) =>
     request(app).post('/api/service/scrape').set('x-service-key', SERVICE_KEY).send(body);
 
-const homelabBody = { query: 'barber shop', location: 'Framingham, MA', maxResults: 30, scrapeType: 'homelab' };
+const homelabBody = { query: 'barber shop', location: 'Framingham, MA', niche: 'barbershop', maxResults: 30, scrapeType: 'homelab' };
 
 function clearEnv() {
     for (const key of Object.keys(process.env)) {
@@ -207,19 +207,19 @@ describe('POST /api/service/scrape with scrapeType homelab', () => {
     });
 
     it('accepts a second agent key from XCRAPER_SERVICE_KEYS and logs who called (Kai, 2026-10-07)', async () => {
-        process.env.XCRAPER_SERVICE_KEYS = 'kai=kai-key-0123456789abcdef';
+        process.env.XCRAPER_SERVICE_KEYS = 'kai=kai-key-aaaaaaaaaaaaaaaa';
         state.serviceUser = serviceUser('Skale.Club@gmail.com');
         state.searchRow = { id: 'search-1', status: 'running', apifyRunId: 'job-9' };
 
-        const res = await request(app).post('/api/service/scrape').set('x-service-key', 'kai-key-0123456789abcdef').send(homelabBody);
+        const res = await request(app).post('/api/service/scrape').set('x-service-key', 'kai-key-aaaaaaaaaaaaaaaa').send(homelabBody);
 
         expect(res.status).toBe(202);
         expect(vi.mocked(console.info)).toHaveBeenCalledWith(expect.stringContaining('caller=kai'));
     });
 
     it('rejects a key that is not configured even when XCRAPER_SERVICE_KEYS is set', async () => {
-        process.env.XCRAPER_SERVICE_KEYS = 'kai=kai-key-0123456789abcdef';
-        const res = await request(app).post('/api/service/scrape').set('x-service-key', 'kai-key-0123456789abcdeX').send(homelabBody);
+        process.env.XCRAPER_SERVICE_KEYS = 'kai=kai-key-aaaaaaaaaaaaaaaa';
+        const res = await request(app).post('/api/service/scrape').set('x-service-key', 'kai-key-aaaaaaaaaaaaaaab').send(homelabBody);
         expect(res.status).toBe(401);
     });
 });
@@ -252,7 +252,7 @@ describe('POST /api/service/scrape without scrapeType', () => {
         state.serviceUser = serviceUser('skale.club@gmail.com');
         state.searchRow = { id: 'search-1', status: 'running', apifyRunId: 'job-9' };
 
-        const res = await scrape({ query: 'barber shop', location: 'Waltham, MA', maxResults: 10 });
+        const res = await scrape({ query: 'barber shop', location: 'Waltham, MA', niche: 'barbershop', maxResults: 10 });
 
         expect(res.status).toBe(202);
         expect(res.body).toMatchObject({ scrapeType: 'homelab' });
@@ -264,7 +264,7 @@ describe('POST /api/service/scrape on the Apify path (unchanged)', () => {
     it('keeps running standard scrapes through Apify for any service user', async () => {
         state.serviceUser = serviceUser('hermes@example.com');
 
-        const res = await scrape({ query: 'dentists', location: 'Boston, MA', maxResults: 50 });
+        const res = await scrape({ query: 'dentists', location: 'Boston, MA', niche: 'dentist', maxResults: 50 });
 
         expect(res.status).toBe(202);
         expect(res.body).toMatchObject({ scrapeType: 'standard', apifyRunId: 'apify-run-1' });

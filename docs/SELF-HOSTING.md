@@ -298,13 +298,12 @@ wherever it can call the URL with the key. Nothing in Xcraper depends on which s
 | `location` | yes | 2-500 chars, e.g. `Framingham, MA` |
 | `maxResults` | no | 1-1000, default 50 (clamped to the scraper's limits) |
 | `scrapeType` | no | `standard`, `enriched` or `homelab`; omitted means `homelab` when the service user is the super admin and the homelab is configured |
-| `niche` | no | the business segment, as a slug (see below) |
+| `niche` | **yes** | the business segment, as a slug (see below) |
 | `hypothesis` | no | Journey metadata (`premise`, `expected`, `basis`), capped at 4096 bytes |
 
 **`niche`.** A lowercase slug matching `^[a-z0-9]+(?:_[a-z0-9]+)*$`, 2-40 characters, singular English:
-`barbershop`, `nail_salon`, `hair_salon`. Anything else is rejected with 400 (the slug is never
-rewritten, and never guessed from `query`). It is stored on the run at `searchFilters.niche` and,
+`barbershop`, `nail_salon`, `hair_salon`. Missing, null or invalid values are rejected with 400
+(the slug is never rewritten or guessed from `query`). It is stored on the run at `searchFilters.niche` and,
 on the push to Xphere, added to every prospect's `custom_fields.niche` and to the source
-`metadata.niche`. A run without `niche` pushes no `niche` key at all; Xphere then leaves the
-businesses unclassified (the Google Maps `category` is sent either way, unchanged). Xphere keeps
-one Meta audience per niche, so send the niche on every scrape of a segment.
+`metadata.niche`. Xphere keeps one Meta audience per niche, so the service refuses to start an
+unclassified scrape.
