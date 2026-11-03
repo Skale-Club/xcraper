@@ -7,9 +7,13 @@ or no downtime and a quick way back. **Nothing here changes what Vercel builds o
 Related: [DOMAIN-CHANGE.md](./DOMAIN-CHANGE.md) (changing the public domain, which is a
 separate operation from changing the host).
 
-> Status: the Dockerfiles, nginx config and compose file were written carefully but **not
-> built or run** on the machine where they were authored (docker was off limits there).
-> Do the first build on the VPS, or in CI, as a dry run (section 5) before any DNS change.
+> Status (2026-11-03): both Docker images build successfully on Node 24 Alpine.
+> A local two-container smoke check passed for the SPA, deep links, nginx/API health,
+> authentication guards, missing assets, immutable assets and service-worker caching.
+> The frontend check used placeholder Supabase build variables; production database,
+> sign-in and integration checks remain required before the DNS cutover.
+> Coolify application `q1e2slt51mha3wghalptw60b` is created with auto-deploy disabled;
+> production variables and the first staging deployment are pending Vercel verification.
 
 ---
 
@@ -17,7 +21,7 @@ separate operation from changing the host).
 
 | File | Purpose |
 |---|---|
-| `backend/Dockerfile` | API image. Multi-stage, Node 20 Alpine, non-root (`node`), healthcheck on `/api/health`, runs `node dist/index.js` |
+| `backend/Dockerfile` | API image. Multi-stage, Node 24 Alpine, non-root (`node`), healthcheck on `/api/health`, runs `node dist/index.js` |
 | `frontend/Dockerfile` | Vite build served by `nginx-unprivileged` (non-root, port 8080), healthcheck on `/healthz` |
 | `frontend/docker/nginx.conf.template` | SPA fallback, immutable `/assets`, and the `/api` reverse proxy (SSE-safe). Mirrors `vercel.json` |
 | `docker-compose.yml` | Wires `xcraper-api` and `xcraper-web`. Nothing is published on the host; the domain is attached to `xcraper-web` |

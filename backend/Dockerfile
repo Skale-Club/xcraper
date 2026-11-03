@@ -9,7 +9,7 @@
 # whenever VERCEL is not set). Vercel keeps using api/index.ts; this file is
 # not involved in the Vercel build.
 
-ARG NODE_VERSION=20
+ARG NODE_VERSION=24
 
 # ---- deps: full install (dev deps needed by tsc) ----------------------------
 FROM node:${NODE_VERSION}-alpine AS build
