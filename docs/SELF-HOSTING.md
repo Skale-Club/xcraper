@@ -1,15 +1,24 @@
 # Self-hosting Xcraper (Docker, Coolify on a VPS)
 
-Production still runs on Vercel. This document describes the portable setup that lives
-next to it in the repository, how to run it, and how to move over from Vercel with little
-or no downtime and a quick way back. **Nothing here changes what Vercel builds or serves.**
+Production runs on Coolify/Hetzner since 2026-11-03, at the unchanged public origin
+`https://xcraper.skale.club`. This document describes the Docker setup, the migration
+procedure and rollback. Vercel is retained temporarily as a rollback target.
 
 Related: [DOMAIN-CHANGE.md](./DOMAIN-CHANGE.md) (changing the public domain, which is a
 separate operation from changing the host).
 
-> Status: the Dockerfiles, nginx config and compose file were written carefully but **not
-> built or run** on the machine where they were authored (docker was off limits there).
-> Do the first build on the VPS, or in CI, as a dry run (section 5) before any DNS change.
+> Status (2026-11-03): both Docker images build successfully on Node 24 Alpine.
+> A local two-container smoke check passed for the SPA, deep links, nginx/API health,
+> authentication guards, missing assets, immutable assets and service-worker caching.
+> Coolify application `q1e2slt51mha3wghalptw60b` serves the production and staging
+> (`https://xcraper-stage.skale.club`) origins. Production TLS, SPA/deep links, API health,
+> database-backed settings/pricing, service-key authentication and read-only homelab
+> access from the API container were verified. A dedicated Cloudflare service token
+> (`Xcraper Coolify Production`) permits only the homelab scraper application.
+> No real payment or scrape was started; browser sign-in still needs an interactive check.
+> Supabase database/auth and the Hermes tick scheduler were preserved.
+> `FRONTEND_URL` and `BACKEND_URL` use the canonical domain; the old production
+> `FRONTEND_URL` incorrectly referred to a Vercel hostname.
 
 ---
 
@@ -17,7 +26,7 @@ separate operation from changing the host).
 
 | File | Purpose |
 |---|---|
-| `backend/Dockerfile` | API image. Multi-stage, Node 20 Alpine, non-root (`node`), healthcheck on `/api/health`, runs `node dist/index.js` |
+| `backend/Dockerfile` | API image. Multi-stage, Node 24 Alpine, non-root (`node`), healthcheck on `/api/health`, runs `node dist/index.js` |
 | `frontend/Dockerfile` | Vite build served by `nginx-unprivileged` (non-root, port 8080), healthcheck on `/healthz` |
 | `frontend/docker/nginx.conf.template` | SPA fallback, immutable `/assets`, and the `/api` reverse proxy (SSE-safe). Mirrors `vercel.json` |
 | `docker-compose.yml` | Wires `xcraper-api` and `xcraper-web`. Nothing is published on the host; the domain is attached to `xcraper-web` |
@@ -124,8 +133,9 @@ Never put secrets in a `VITE_*` variable: they end up in the public JS bundle.
    `xcraper-api`: it is reachable only through nginx, on the internal network.
 4. **Deploy.** Check the logs of both services; both should turn healthy within a minute
    (`xcraper-api` waits for its 20 s start period).
-5. Disable "auto deploy on push" at first, so production does not move on every commit
-   while you are still validating.
+5. Keep Coolify's native auto-deploy disabled. `.github/workflows/deploy.yml` is the
+   production trigger: successful CI for a push to `main`, then a pinned-SHA deployment,
+   followed by health checks. Configure its `COOLIFY_TOKEN` repository secret.
 
 Service names are prefixed (`xcraper-api`, `xcraper-web`) on purpose. Coolify attaches all
 stacks to a shared Docker network, and a generic `backend` would collide with other apps.
@@ -208,7 +218,7 @@ overlap it does not matter which one a given request reaches.
 - [ ] After a few days of clean operation, remove the domain from the Vercel project and
       disconnect its Git integration. Until you do, a push to `main` still triggers a Vercel
       build that no longer serves anyone.
-- [ ] Enable "auto deploy on push" in Coolify for the production branch.
+- [ ] Enable the CI-gated GitHub deployment workflow; keep native auto-deploy disabled.
 - [ ] Update `KEEPALIVE_URL` only if the domain changed (it does not in this plan).
 - [ ] Raise the DNS TTL back.
 - [ ] Update the "Deploy" row in `CLAUDE.md` and the README.
@@ -248,7 +258,7 @@ previous commit from the application's deployments list.
 
 - **Logs:** `docker logs -f <container>` or the Coolify log view. The API logs JSON to
   stdout in production.
-- **Update:** push to the tracked branch (auto deploy) or press Deploy. Coolify builds both
+- **Update:** push to `main`; successful CI triggers the deployment workflow. Coolify builds both
   images and replaces the containers; `SIGTERM` handling lets in-flight requests complete.
 - **Database migrations:** the runtime image has no `drizzle-kit`. Run migrations as today,
   from a dev machine or CI with `DATABASE_URL` set:
@@ -266,7 +276,7 @@ Nothing in the Docker path does. The following Vercel-specific pieces remain in 
 and are inert there:
 
 - `vercel.json`, `backend/vercel.json`, `api/index.ts` and the `@vercel/node` dev
-  dependency: the production deploy path until the cutover.
+  dependency: retained only for the old rollback deployment; unused by Coolify.
 - `process.env.VERCEL === '1'` checks in `backend/src/config/runtime.ts` (and the logger),
   which only decide between "export a handler" and "listen".
 - The `maxDuration` limits in `vercel.json`: they shape behaviour on Vercel only.
@@ -285,8 +295,9 @@ that also runs Hermes, reading the key from the Hermes container so no secret is
 */2 * * * * root /opt/hermes/xcraper-tick.sh >/dev/null 2>&1
 ```
 
-Moving hosts: recreate the cron (or a GitHub Actions schedule, or a Vercel cron on a Pro plan)
-wherever it can call the URL with the key. Nothing in Xcraper depends on which scheduler it is.
+The 2026-11-03 host move preserved the public URL and service key, so this scheduler does
+not need to move or change. Reconfigure the scheduler only if its own host or the public
+API URL changes. Nothing in Xcraper depends on which scheduler it is.
 
 ## Service API: starting a scrape
 

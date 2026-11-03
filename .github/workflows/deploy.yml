@@ -1,0 +1,98 @@
+name: Deploy to Coolify
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coolify-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+      COOLIFY_APP_UUID: q1e2slt51mha3wghalptw60b
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Deploy the verified commit and wait for health
+        shell: python
+        run: |
+          import json, os, time, urllib.error, urllib.request
+
+          base = 'https://coolify.skale.club/api/v1'
+          token = os.environ['COOLIFY_TOKEN']
+          app = os.environ['COOLIFY_APP_UUID']
+          sha = os.environ['DEPLOY_SHA']
+          if not token:
+              raise SystemExit('COOLIFY_TOKEN is not configured')
+
+          def api(path, method='GET', payload=None):
+              request = urllib.request.Request(
+                  base + path,
+                  data=json.dumps(payload).encode() if payload is not None else None,
+                  headers={'Authorization': 'Bearer ' + token,
+                           'Content-Type': 'application/json', 'Accept': 'application/json'},
+                  method=method,
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  raise SystemExit(f'Coolify {method} {path}: HTTP {error.code}')
+
+          request = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GH_REPOSITORY']}/commits/main",
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                       'Accept': 'application/vnd.github+json'},
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              latest_sha = json.load(response)['sha']
+          if sha != latest_sha:
+              print('A newer main commit exists; its CI run will deploy it.')
+              raise SystemExit(0)
+
+          # Pin the tested SHA: a later push must not change what this build runs.
+          api('/applications/' + app, 'PATCH',
+              {'git_branch': 'main', 'git_commit_sha': sha, 'is_auto_deploy_enabled': False})
+          queued = api('/deploy', 'POST', {'uuid': app})
+          deployment = queued['deployments'][0]['deployment_uuid']
+          print(f'Deploying {sha}: {deployment}', flush=True)
+          for attempt in range(100):
+              result = api('/deployments/' + deployment)
+              status = result.get('status')
+              print(f'Deployment status: {status}', flush=True)
+              if status == 'finished':
+                  if result.get('commit') != sha:
+                      raise SystemExit('Deployed commit differs from the tested commit')
+                  break
+              if status in ('failed', 'cancelled', 'canceled'):
+                  raise SystemExit('Coolify deployment ' + status)
+              time.sleep(10)
+          else:
+              raise SystemExit('Timed out waiting for Coolify')
+
+          # Probe the origin that already points to Coolify during the DNS cutover.
+          for path in ('/healthz', '/api/health', '/api/settings/public'):
+              with urllib.request.urlopen('https://xcraper-stage.skale.club' + path,
+                                          timeout=30) as response:
+                  if response.status != 200:
+                      raise SystemExit('Health check failed: ' + path)
+                  if response.headers.get('x-vercel-id'):
+                      raise SystemExit('Health check reached Vercel instead of Coolify')
+          print('Coolify deployment and health checks passed.')

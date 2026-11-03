@@ -10,7 +10,7 @@
 # VITE_* values are compiled into the JS bundle, so they are build ARGs, not
 # runtime env. Changing one means rebuilding the image.
 
-ARG NODE_VERSION=20
+ARG NODE_VERSION=24
 
 FROM node:${NODE_VERSION}-alpine AS build
 WORKDIR /app

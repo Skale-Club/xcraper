@@ -72,6 +72,13 @@ server {
 
     # The service worker and the HTML shell must always revalidate so a new
     # deploy is picked up (PWA autoUpdate).
+    # SPA fallbacks redirect internally to /index.html; an exact match keeps
+    # the generic file-extension location from caching the shell for an hour.
+    location = /index.html {
+        try_files $uri =404;
+        add_header Cache-Control "no-cache";
+    }
+
     location ~* ^/(sw\.js|workbox-[^/]+\.js|registerSW\.js)$ {
         try_files $uri =404;
         add_header Cache-Control "no-cache";
