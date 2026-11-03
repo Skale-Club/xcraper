@@ -15,7 +15,7 @@ hosts or domains) updates that file too, in a commit of the xmail repo made alon
 Xcraper is a B2B lead generation SaaS that scrapes Google Maps via Apify to extract business contacts (phone, email, social media). Users buy credits to run searches and export results.
 
 **Production URL:** https://xcraper.skale.club  
-**Stack:** React + Vite (frontend) / Express + Drizzle + PostgreSQL (backend) / Supabase Auth / Apify / Stripe / Vercel
+**Stack:** React + Vite (frontend) / Express + Drizzle + PostgreSQL (backend) / Supabase Auth / Apify / Stripe / Coolify on Hetzner
 
 ---
 
@@ -61,7 +61,7 @@ npm run dev:frontend     # Frontend only (Vite, port 5173)
 ```bash
 npm run build            # Build backend (tsc + tsc-alias) + frontend (vite build)
 npm run start            # Start production backend (node dist/index.js)
-vercel --prod            # Deploy to production
+git push origin main     # CI passes, then Deploy to Coolify pins and deploys the tested commit
 ```
 
 ### Database
@@ -100,7 +100,7 @@ npm run test:coverage --workspace=backend # Coverage report
 | Security | Helmet, express-rate-limit, CORS |
 | Logging | Winston + Morgan |
 | Testing | Vitest + Supertest (backend), Vitest + React Testing Library (frontend) |
-| Deploy | Vercel (serverless functions + static SPA) |
+| Deploy | Coolify / Hetzner, Docker Compose (nginx SPA + Express API, Node 24) |
 | Captcha | Cloudflare Turnstile (via Supabase native integration) |
 
 ---
@@ -194,14 +194,18 @@ VITE_TURNSTILE_SITE_KEY    # Cloudflare Turnstile site key
   `backend/src`, `frontend/src`, `frontend/index.html` or `api/`.
 - Changing the public domain: `docs/DOMAIN-CHANGE.md`. Self-hosting / leaving Vercel:
   `docs/SELF-HOSTING.md` (`backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`).
-- Production is still Vercel; the Docker path is prepared, not active.
+- Production moved to Coolify on 2026-11-03; the public domain and Supabase services are unchanged.
+- `.github/workflows/deploy.yml` runs after successful main-branch CI, pins the tested SHA,
+  and waits for deployment plus health checks. Keep Coolify's native auto-deploy OFF.
+- The Vercel deployment is retained temporarily for DNS rollback only.
 
-### API Routing (Vercel)
+### API Routing (production)
 
-- `/api/*` → Express server (serverless function in `api/`)
-- Static SPA catch-all → `frontend/dist/index.html`
+- Traefik terminates HTTPS and routes to `xcraper-web` (nginx, port 8080).
+- `/api/*` → `xcraper-api` (Express, port 3001, internal only)
+- Static SPA catch-all → `frontend/dist/index.html` (no-cache)
 - Assets cached 1 year (immutable)
-- Max function duration: 30s
+- SSE is unbuffered; nginx allows one hour for SSE and 120 seconds for other API requests.
 
 ### Path Aliases
 
@@ -230,7 +234,9 @@ VITE_TURNSTILE_SITE_KEY    # Cloudflare Turnstile site key
 
 ## Secrets Management
 
-- Secrets are stored in Vercel environment variables (production) and `.env` files (local)
+- Production secrets are stored in Coolify; public `VITE_*` values are build-time variables.
+- The homelab uses a dedicated Cloudflare service token, restricted to `scraper.skale.club`.
+- Vercel retains its old variables during the rollback window; `.env` files are local only.
 - `.env` files are in `.gitignore` — never commit them
 - `.gitleaksignore` suppresses known false positives from gitleaks scans
 - Run `gitleaks detect --source . --verbose` before pushing sensitive changes

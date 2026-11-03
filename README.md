@@ -48,7 +48,7 @@ A powerful multi-user contact scraping tool that extracts business information f
 
 ## 📋 Prerequisites
 
-- Node.js 18+ 
+- Node.js 24
 - PostgreSQL 14+
 - Supabase account (free tier works)
 - Apify account and API token
@@ -406,8 +406,9 @@ hardcodes a domain):
   [`docs/DOMAIN-CHANGE.md`](docs/DOMAIN-CHANGE.md).
 - Self-hosting on Docker / Coolify (`backend/Dockerfile`, `frontend/Dockerfile`,
   `docker-compose.yml`, `.env.example`), cutover from Vercel and rollback: see
-  [`docs/SELF-HOSTING.md`](docs/SELF-HOSTING.md). Vercel remains the production path until
-  that cutover is done.
+  [`docs/SELF-HOSTING.md`](docs/SELF-HOSTING.md). Production moved to Coolify/Hetzner on
+  2026-11-03, keeping `https://xcraper.skale.club`. Pushes to `main` deploy the tested
+  commit after CI succeeds; Coolify's native auto-deploy remains disabled.
 
 ### Database Migrations
 
