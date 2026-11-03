@@ -87,12 +87,30 @@ jobs:
           else:
               raise SystemExit('Timed out waiting for Coolify')
 
-          # Probe the origin that already points to Coolify during the DNS cutover.
-          for path in ('/healthz', '/api/health', '/api/settings/public'):
-              with urllib.request.urlopen('https://xcraper-stage.skale.club' + path,
-                                          timeout=30) as response:
-                  if response.status != 200:
-                      raise SystemExit('Health check failed: ' + path)
-                  if response.headers.get('x-vercel-id'):
-                      raise SystemExit('Health check reached Vercel instead of Coolify')
+          # Compose can finish before Traefik has discovered the replacement
+          # containers. Wait for readiness instead of failing on that brief 503.
+          def verify_origin(max_attempts=24, interval=5):
+              deadline = time.monotonic() + 120
+              for attempt in range(max_attempts):
+                  try:
+                      for path in ('/healthz', '/api/health', '/api/settings/public'):
+                          with urllib.request.urlopen('https://xcraper-stage.skale.club' + path,
+                                                      timeout=10) as response:
+                              if response.status != 200:
+                                  raise SystemExit('Health check failed: ' + path)
+                              if response.headers.get('x-vercel-id'):
+                                  raise SystemExit('Health check reached Vercel instead of Coolify')
+                      return
+                  except urllib.error.HTTPError as error:
+                      if error.code not in (502, 503, 504):
+                          raise SystemExit(f'Health check failed: HTTP {error.code}')
+                      reason = f'HTTP {error.code}'
+                  except (urllib.error.URLError, TimeoutError):
+                      reason = 'connection not ready'
+                  if attempt + 1 == max_attempts or time.monotonic() >= deadline:
+                      raise SystemExit('Origin did not become healthy: ' + reason)
+                  print(f'Waiting for origin readiness ({reason})', flush=True)
+                  time.sleep(interval)
+
+          verify_origin()
           print('Coolify deployment and health checks passed.')
