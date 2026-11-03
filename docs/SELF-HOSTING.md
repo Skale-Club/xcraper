@@ -15,7 +15,9 @@ separate operation from changing the host).
 > database-backed settings/pricing, service-key authentication and read-only homelab
 > access from the API container were verified. A dedicated Cloudflare service token
 > (`Xcraper Coolify Production`) permits only the homelab scraper application.
-> No real payment or scrape was started; browser sign-in still needs an interactive check.
+> The existing browser session survived the cutover: dashboard/search history and the
+> admin panel loaded with the owner's account. No real payment, scrape or fresh OAuth/
+> password sign-in was started as a deployment check.
 > Supabase database/auth and the Hermes tick scheduler were preserved.
 > `FRONTEND_URL` and `BACKEND_URL` use the canonical domain; the old production
 > `FRONTEND_URL` incorrectly referred to a Vercel hostname.
